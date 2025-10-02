@@ -9,7 +9,9 @@
     "dev": "tsc --watch",
     "clean": "rimraf dist",
     "type-check": "tsc --noEmit",
-    "lint": "eslint src/**/*.ts"
+    "lint": "eslint src/**/*.ts",
+    "test": "echo No shared tests",
+    "prepare": "npm run build"
   },
   "dependencies": {
     "zod": "^3.22.4",

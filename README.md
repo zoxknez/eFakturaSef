@@ -85,7 +85,7 @@ sefsrb/
 ## 🚀 Quick Start
 
 ### Preduslovi
-- Node.js 18+ 
+- Node.js 18+
 - PostgreSQL 13+
 - Redis 6+
 - Git
@@ -109,7 +109,7 @@ npm run install:all
 cp backend/.env.example backend/.env
 # Edituj backend/.env sa tvojim podešavanjima
 
-# Frontend 
+# Frontend
 cp frontend/.env.example frontend/.env
 # Edituj frontend/.env
 ```
@@ -127,8 +127,11 @@ npm run db:seed
 npm run dev
 
 # Ili pojedinačno:
-npm run dev:frontend  # Port 3000
-npm run dev:backend   # Port 3001
+npm run dev:frontend  # Frontend na http://localhost:3000
+npm run dev:backend   # Backend na http://localhost:3003
+
+# Ako je port 3003 zauzet (Windows), možeš ga osloboditi:
+npm run kill-port
 ```
 
 ## 🔧 Environment Configuration
@@ -136,7 +139,7 @@ npm run dev:backend   # Port 3001
 ### Backend (.env)
 ```env
 NODE_ENV=development
-PORT=3001
+PORT=3003
 DATABASE_URL=postgresql://user:password@localhost:5432/sef_efakture
 JWT_SECRET=your-super-secret-key
 FRONTEND_URL=http://localhost:3000
@@ -221,13 +224,18 @@ cd backend && npm run test:integration
 ### Database
 
 ```bash
-# Nove migracije
+# Docker baza i migracije (root):
+npm run db:up           # pokreće docker compose (Postgres/Redis)
+npm run db:migrate     # pokreće Prisma migrate dev (backend workspace)
+npm run db:seed        # seed podataka (backend workspace)
+
+# Nove migracije (backend):
 cd backend && npx prisma migrate dev --name your-migration-name
 
-# Reset baze
+# Reset baze (backend):
 cd backend && npx prisma migrate reset
 
-# Prisma Studio
+# Prisma Studio (backend):
 cd backend && npx prisma studio
 ```
 

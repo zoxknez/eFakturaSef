@@ -73,8 +73,11 @@ async function main() {
   });
 
   // Demo invoices
-  const invoice1 = await prisma.invoice.create({
-    data: {
+  // Idempotent create for invoice1 using unique sefId
+  const invoice1 = await prisma.invoice.upsert({
+    where: { sefId: 'SEF-2024-001-ABC123' },
+    update: {},
+    create: {
       invoiceNumber: '2024-001',
       issueDate: new Date('2024-10-01'),
       dueDate: new Date('2024-10-16'),
@@ -91,27 +94,37 @@ async function main() {
       companyId: demoCompany.id,
       sefId: 'SEF-2024-001-ABC123',
       sentAt: new Date('2024-10-01T14:30:00Z'),
-    },
+    }
   });
 
-  const invoice2 = await prisma.invoice.create({
-    data: {
+  // For invoice2 (no unique field except id), do findFirst and create if missing
+  let invoice2 = await prisma.invoice.findFirst({
+    where: {
       invoiceNumber: '2024-002',
-      issueDate: new Date('2024-10-02'),
-      dueDate: new Date('2024-10-17'),
-      direction: 'INCOMING',
-      status: 'SENT',
-      documentType: 'INVOICE',
       supplierId: clientCompany.id,
-      buyerId: demoCompany.id,
-      subtotal: 70000,
-      totalVat: 14000,
-      totalAmount: 84000,
-      currency: 'RSD',
-      note: 'Materijali za projekat',
-      companyId: demoCompany.id,
-    },
+      buyerId: demoCompany.id
+    }
   });
+  if (!invoice2) {
+    invoice2 = await prisma.invoice.create({
+      data: {
+        invoiceNumber: '2024-002',
+        issueDate: new Date('2024-10-02'),
+        dueDate: new Date('2024-10-17'),
+        direction: 'INCOMING',
+        status: 'SENT',
+        documentType: 'INVOICE',
+        supplierId: clientCompany.id,
+        buyerId: demoCompany.id,
+        subtotal: 70000,
+        totalVat: 14000,
+        totalAmount: 84000,
+        currency: 'RSD',
+        note: 'Materijali za projekat',
+        companyId: demoCompany.id,
+      }
+    });
+  }
 
   // Invoice items for detailed view
   await prisma.invoiceLine.createMany({

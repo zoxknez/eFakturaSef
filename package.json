@@ -5,7 +5,7 @@
   "private": true,
   "workspaces": [
     "frontend",
-    "backend", 
+    "backend",
     "shared"
   ],
   "scripts": {
@@ -19,7 +19,13 @@
     "lint": "npm run lint --workspaces",
     "type-check": "npm run type-check --workspaces",
     "clean": "npm run clean --workspaces",
-    "install:all": "npm install && npm install --workspaces"
+    "install:all": "npm install && npm install --workspaces",
+    "kill-port": "npm run kill-port --workspace=backend",
+    "prune": "npm prune --workspaces",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:migrate": "npm run migrate:dev --workspace=backend",
+    "db:seed": "npm run db:seed --workspace=backend"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

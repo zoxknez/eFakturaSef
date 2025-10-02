@@ -5,7 +5,7 @@ export const errorHandler = (
   err: any,
   req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ) => {
   logger.error('Error occurred:', {
     error: err.message,
@@ -45,6 +45,7 @@ export const errorHandler = (
 
   res.status(error.statusCode || 500).json({
     success: false,
-    error: error.message || 'Server Error'
+    message: error.message || 'Server Error',
+    requestId: (req as any).id
   });
 };

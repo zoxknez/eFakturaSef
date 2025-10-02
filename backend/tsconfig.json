@@ -16,6 +16,7 @@
     "declarationMap": true,
     "sourceMap": true,
     "composite": true,
+    "isolatedModules": true,
     "types": ["node", "jest"]
   },
   "include": [
@@ -25,6 +26,7 @@
     "node_modules",
     "dist",
     "**/*.test.ts",
-    "**/*.spec.ts"
+    "**/*.spec.ts",
+
   ]
 }

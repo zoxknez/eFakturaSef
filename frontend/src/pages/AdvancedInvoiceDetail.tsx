@@ -137,7 +137,7 @@ const StatusIcon = ({ status }: { status: string }) => {
 };
 
 export const AdvancedInvoiceDetail: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
+  const { id: _id } = useParams<{ id: string }>();
   const [activeTab, setActiveTab] = useState('sažetak');
   const [invoice] = useState<InvoiceDetail>(mockInvoice);
 
@@ -180,7 +180,7 @@ export const AdvancedInvoiceDetail: React.FC = () => {
       <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            <Link 
+            <Link
               to="/invoices"
               className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg"
             >
@@ -196,7 +196,7 @@ export const AdvancedInvoiceDetail: React.FC = () => {
               <p className="text-gray-600">SEF ID: {invoice.sefId}</p>
             </div>
           </div>
-          
+
           <div className="flex space-x-3">
             <button className="btn-primary bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
               📄 PDF
@@ -357,9 +357,9 @@ export const AdvancedInvoiceDetail: React.FC = () => {
                 <div className="bg-white rounded-xl p-6 border border-gray-200">
                   <h3 className="text-lg font-bold text-gray-900 mb-4 text-center">IPS QR Kod</h3>
                   <div className="flex flex-col items-center">
-                    <img 
-                      src={generateQRCode()} 
-                      alt="IPS QR Code" 
+                    <img
+                      src={generateQRCode()}
+                      alt="IPS QR Code"
                       className="w-40 h-40 border border-gray-200 rounded-lg"
                     />
                     <p className="text-xs text-gray-500 mt-2 text-center">
@@ -488,7 +488,7 @@ export const AdvancedInvoiceDetail: React.FC = () => {
                   </button>
                 </div>
               </div>
-              
+
               <div className="bg-gray-900 rounded-xl p-6 text-green-400 font-mono text-sm overflow-x-auto">
                 <pre>{`<?xml version="1.0" encoding="UTF-8"?>
 <Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2">
@@ -496,7 +496,7 @@ export const AdvancedInvoiceDetail: React.FC = () => {
   <IssueDate>${invoice.date}</IssueDate>
   <InvoiceTypeCode>380</InvoiceTypeCode>
   <DocumentCurrencyCode>${invoice.currency}</DocumentCurrencyCode>
-  
+
   <AccountingSupplierParty>
     <Party>
       <PartyTaxScheme>
@@ -507,7 +507,7 @@ export const AdvancedInvoiceDetail: React.FC = () => {
       </PartyLegalEntity>
     </Party>
   </AccountingSupplierParty>
-  
+
   <LegalMonetaryTotal>
     <LineExtensionAmount currencyID="${invoice.currency}">100000</LineExtensionAmount>
     <TaxExclusiveAmount currencyID="${invoice.currency}">100000</TaxExclusiveAmount>
@@ -528,7 +528,7 @@ export const AdvancedInvoiceDetail: React.FC = () => {
                   📄 Preuzmi PDF
                 </button>
               </div>
-              
+
               <div className="bg-gray-100 rounded-xl p-8 text-center">
                 <div className="text-6xl mb-4">📄</div>
                 <p className="text-gray-600 mb-4">PDF dokument je spreman za pregled</p>
@@ -543,7 +543,7 @@ export const AdvancedInvoiceDetail: React.FC = () => {
           {activeTab === 'povezano' && (
             <div className="space-y-6">
               <h3 className="text-lg font-bold text-gray-900">Povezani dokumenti</h3>
-              
+
               {invoice.relatedDocuments.length === 0 ? (
                 <div className="text-center py-8">
                   <div className="text-4xl mb-4">📋</div>

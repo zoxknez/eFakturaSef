@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Plus, FileText, Eye, Trash2, Send } from 'lucide-react';
 import { Invoice } from '../../types/invoice';
 import { invoiceService } from '../../services/invoiceService';
 
 const InvoiceList: React.FC = () => {
+  const navigate = useNavigate();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -88,8 +90,8 @@ const InvoiceList: React.FC = () => {
           <h1 className="text-2xl font-bold text-gray-900">Fakture</h1>
           <p className="text-gray-600">Upravljajte izdatim i primljenim fakturama</p>
         </div>
-        <button 
-          onClick={() => window.location.href = '/invoices/create'}
+        <button
+          onClick={() => navigate('/invoices/create')}
           className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
           <Plus className="w-4 h-4 mr-2" />
@@ -170,8 +172,8 @@ const InvoiceList: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        invoice.direction === 'OUTGOING' 
-                          ? 'bg-green-100 text-green-800' 
+                        invoice.direction === 'OUTGOING'
+                          ? 'bg-green-100 text-green-800'
                           : 'bg-blue-100 text-blue-800'
                       }`}>
                         {invoice.direction === 'OUTGOING' ? 'Izlazna' : 'Ulazna'}
@@ -180,7 +182,7 @@ const InvoiceList: React.FC = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex justify-end space-x-2">
                         <button
-                          onClick={() => window.location.href = `/invoices/${invoice.id}`}
+                          onClick={() => navigate(`/invoices/${invoice.id}`)}
                           className="text-blue-600 hover:text-blue-900 p-1"
                           title="Pogledaj"
                         >

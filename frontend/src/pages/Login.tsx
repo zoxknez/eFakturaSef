@@ -1,16 +1,26 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
 export const Login: React.FC = () => {
-  const [email, setEmail] = useState('admin@example.com');
-  const [password, setPassword] = useState('password');
+  const navigate = useNavigate();
+  const [email, setEmail] = useState('admin@democompany.rs');
+  const [password, setPassword] = useState('demo123');
+  const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    await login(email, password);
+    setError(null);
+    try {
+  await login(email, password);
+  // Navigate to dashboard; Layout + App gate will render accordingly
+  navigate('/');
+    } catch (e: any) {
+      setError(e?.message || 'Neuspešna prijava');
+    }
     setIsLoading(false);
   };
 
@@ -42,10 +52,16 @@ export const Login: React.FC = () => {
               </svg>
               <div>
                 <p className="text-sm font-medium text-blue-800">Demo podaci</p>
-                <p className="text-xs text-blue-600">Email: admin@example.com | Lozinka: password</p>
+                <p className="text-xs text-blue-600">Email: admin@democompany.rs | Lozinka: demo123</p>
               </div>
             </div>
           </div>
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-red-700 text-sm">
+              {error}
+            </div>
+          )}
 
           {/* Login Form */}
           <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
@@ -64,7 +80,7 @@ export const Login: React.FC = () => {
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
-              
+
               <div>
                 <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
                   Lozinka
@@ -166,7 +182,7 @@ export const Login: React.FC = () => {
             </div>
           </div>
         </div>
-        
+
         {/* Floating elements */}
         <div className="absolute top-20 right-20 w-20 h-20 bg-white/10 rounded-full floating"></div>
         <div className="absolute bottom-32 left-16 w-16 h-16 bg-white/5 rounded-full floating" style={{animationDelay: '2s'}}></div>
