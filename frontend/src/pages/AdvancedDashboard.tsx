@@ -114,20 +114,20 @@ const DeadlinesCard = () => (
         <span className="text-2xl font-bold text-red-600">3</span>
       </div>
 
-      <div className="flex items-center justify-between p-3 bg-orange-50 rounded-lg">
+  <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
         <div>
-          <p className="text-sm font-medium text-orange-900">Oprez (3-5 dana)</p>
-          <p className="text-xs text-orange-600">Ulazne fakture</p>
+          <p className="text-sm font-medium text-blue-900">Oprez (3-5 dana)</p>
+          <p className="text-xs text-blue-600">Ulazne fakture</p>
         </div>
-        <span className="text-2xl font-bold text-orange-600">7</span>
+  <span className="text-2xl font-bold text-blue-600">7</span>
       </div>
 
-      <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg">
+  <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
         <div>
-          <p className="text-sm font-medium text-yellow-900">Aging poslate</p>
-          <p className="text-xs text-yellow-600">Bez finalnog statusa</p>
+          <p className="text-sm font-medium text-blue-900">Aging poslate</p>
+          <p className="text-xs text-blue-600">Bez finalnog statusa</p>
         </div>
-        <span className="text-2xl font-bold text-yellow-600">12</span>
+  <span className="text-2xl font-bold text-blue-600">12</span>
       </div>
     </div>
   </div>
@@ -278,12 +278,12 @@ export const AdvancedDashboard: React.FC = () => {
                 <div
                   className={`px-4 py-2 rounded-full text-sm font-medium flex items-center border ${
                     isDemoMode
-                      ? 'bg-orange-50 text-orange-800 border-orange-200'
+                      ? 'bg-blue-50 text-blue-800 border-blue-200'
                       : 'bg-green-50 text-green-800 border-green-200'
                   }`}
                 >
                   <div
-                    className={`w-2 h-2 rounded-full mr-2 animate-pulse ${isDemoMode ? 'bg-orange-500' : 'bg-green-500'}`}
+                    className={`w-2 h-2 rounded-full mr-2 animate-pulse ${isDemoMode ? 'bg-blue-500' : 'bg-green-500'}`}
                   />
                   {isDemoMode ? 'DEMO OKRUŽENJE' : 'PRODUKCIJA'}
                 </div>
@@ -327,7 +327,7 @@ export const AdvancedDashboard: React.FC = () => {
           value="15"
           subtitle="Čeka odluku"
           icon="⏳"
-          gradient="bg-gradient-to-r from-yellow-500 to-orange-500"
+          gradient="bg-gradient-to-r from-sky-500 to-blue-500"
           trend={{ value: "-3%", positive: false }}
           onClick={() => navigate('/invoices')}
         />
@@ -377,10 +377,10 @@ export const AdvancedDashboard: React.FC = () => {
           </button>
           <button
             onClick={() => console.log('Sinhronizuj sa SEF')}
-            className="flex items-center justify-between p-4 rounded-xl border bg-amber-50 text-amber-900 hover:bg-amber-100 transition-colors"
+            className="flex items-center justify-between p-4 rounded-xl border bg-blue-50 text-blue-900 hover:bg-blue-100 transition-colors"
           >
             <span className="font-medium">🔁 Sinhronizuj SEF</span>
-            <span className="text-amber-600">→</span>
+            <span className="text-blue-600">→</span>
           </button>
           <button
             onClick={() => navigate('/invoices')}
@@ -439,7 +439,7 @@ export const AdvancedDashboard: React.FC = () => {
                 const cls = ok
                   ? 'bg-green-50 text-green-700 border-green-200'
                   : known
-                    ? 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                    ? 'bg-gray-100 text-gray-700 border-gray-200'
                     : 'bg-red-50 text-red-700 border-red-200';
                 return (
                   <span

@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3003';
 
-interface User {
+export interface User {
   id: string;
   email: string;
   firstName: string;
@@ -10,78 +10,84 @@ interface User {
   role: string;
 }
 
-interface AuthState {
+interface AuthContextShape {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  logout: () => void;
 }
 
-export const useAuth = () => {
-  const [authState, setAuthState] = useState<AuthState>({
-    user: null,
-    isAuthenticated: false,
-    isLoading: true
-  });
+const AuthContext = createContext<AuthContextShape | undefined>(undefined);
 
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // On first mount, if we have a token, fetch profile before rendering app to avoid flicker
   useEffect(() => {
-    const checkAuth = async () => {
+    const init = async () => {
       const token = localStorage.getItem('token');
       if (!token) {
-        setAuthState({ user: null, isAuthenticated: false, isLoading: false });
+        setIsLoading(false);
         return;
       }
       try {
         const res = await fetch(`${API_BASE_URL}/api/auth/profile`, {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok) throw new Error('Unauthorized');
         const body = await res.json();
-        const user = body?.data as User | undefined;
-        if (!user) throw new Error('Invalid profile payload');
-        setAuthState({ user, isAuthenticated: true, isLoading: false });
-      } catch (_) {
+        const u = body?.data as User | undefined;
+        if (!u) throw new Error('Invalid profile payload');
+        setUser(u);
+      } catch {
         localStorage.removeItem('token');
-        setAuthState({ user: null, isAuthenticated: false, isLoading: false });
+        setUser(null);
+      } finally {
+        setIsLoading(false);
       }
     };
-
-    checkAuth();
+    void init();
   }, []);
 
   const login = async (email: string, password: string) => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body?.message || 'Login failed');
-
-      const token = body?.data?.token as string | undefined;
-      const user = body?.data?.user as User | undefined;
-      if (!token || !user) throw new Error('Invalid login payload');
-
-      localStorage.setItem('token', token);
-      setAuthState({ user, isAuthenticated: true, isLoading: false });
-    } catch (err) {
-      setAuthState((s) => ({ ...s, isAuthenticated: false, user: null, isLoading: false }));
-      throw err;
-    }
+    const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body?.message || 'Login failed');
+    const token = body?.data?.token as string | undefined;
+    const u = body?.data?.user as User | undefined;
+    if (!token || !u) throw new Error('Invalid login payload');
+    localStorage.setItem('token', token);
+    setUser(u);
   };
 
   const logout = () => {
     localStorage.removeItem('token');
-    setAuthState({
-      user: null,
-      isAuthenticated: false,
-      isLoading: false
-    });
+    setUser(null);
   };
 
-  return {
-    ...authState,
+  const value = useMemo<AuthContextShape>(() => ({
+    user,
+    isAuthenticated: !!user,
+    isLoading,
     login,
-    logout
-  };
+    logout,
+  }), [user, isLoading]);
+
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+export const useAuth = (): AuthContextShape => {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used within <AuthProvider>');
+  return ctx;
 };
