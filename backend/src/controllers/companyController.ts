@@ -63,7 +63,7 @@ export const getCompany = async (req: AuthRequest, res: Response): Promise<void>
           select: {
             users: true,
             suppliedInvoices: true,
-            receivedInvoices: true
+            purchasedInvoices: true
           }
         }
       }

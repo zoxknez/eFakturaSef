@@ -8,7 +8,7 @@ interface LayoutProps {
 const navigation = [
   { name: 'Komandna tabla', href: '/', icon: '📊' },
   { name: 'Fakture', href: '/invoices', icon: '📄' },
-  { name: 'Nova faktura', href: '/invoices/new', icon: '➕' },
+  { name: 'Nova faktura', href: '/invoices/create', icon: '➕' },
   { name: 'Podešavanja', href: '/settings', icon: '⚙️' },
 ];
 

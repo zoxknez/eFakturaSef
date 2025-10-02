@@ -1,28 +1,19 @@
 import { Router } from 'express';
-// Quick invoice endpoints
-const quickGetInvoices = async (req: any, res: any) => {
-  try {
-    const invoices = await require('@prisma/client').PrismaClient().invoice.findMany({
-      where: {
-        OR: [
-          { supplierId: req.user.companyId },
-          { buyerId: req.user.companyId }
-        ]
-      },
-      include: { supplier: true, buyer: true },
-      take: 10
-    });
-    res.json({ success: true, data: invoices });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Error fetching invoices' });
-  }
-};
 import { authMiddleware, requireRole } from '../middleware/auth';
+import { 
+  createInvoice, 
+  getInvoices, 
+  getInvoiceById 
+} from '../controllers/invoiceController';
 
 const router = Router();
 
-// Simple invoice routes
+// Apply authentication to all routes
 router.use(authMiddleware);
-router.get('/', quickGetInvoices);
+
+// Invoice routes
+router.post('/', requireRole(['ADMIN', 'ACCOUNTANT']), createInvoice);
+router.get('/', getInvoices);
+router.get('/:id', getInvoiceById);
 
 export default router;
