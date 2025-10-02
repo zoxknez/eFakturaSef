@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, FileText, Eye, Trash2, Send } from 'lucide-react';
+import { Plus, FileText, Eye, Trash2, Send, Download } from 'lucide-react';
 import { Invoice } from '../../types/invoice';
 import { invoiceService } from '../../services/invoiceService';
 
@@ -88,14 +88,14 @@ const InvoiceList: React.FC = () => {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Fakture</h1>
-          <p className="text-gray-600">Upravljajte izdatim i primljenim fakturama</p>
+          <p className="text-gray-600">Pregled, pretraga i upravljanje fakturama</p>
         </div>
         <button
           onClick={() => navigate('/invoices/create')}
           className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
           <Plus className="w-4 h-4 mr-2" />
-          Nova Faktura
+          Nova faktura
         </button>
       </div>
 
@@ -106,13 +106,13 @@ const InvoiceList: React.FC = () => {
             <thead className="bg-white/10">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                  Broj Fakture
+                  Broj fakture
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                   Datum
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                  Kupac/Dobavljač
+                  Kupac / Dobavljač
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                   Iznos
@@ -184,10 +184,24 @@ const InvoiceList: React.FC = () => {
                         <button
                           onClick={() => navigate(`/invoices/${invoice.id}`)}
                           className="text-blue-600 hover:text-blue-900 p-1"
-                          title="Pogledaj"
+                          title="Pregled"
                         >
                           <Eye className="w-4 h-4" />
                         </button>
+                        <a
+                          href={`${import.meta.env.VITE_API_URL || 'http://localhost:3003'}/api/invoices/${invoice.id}/download?format=xml`}
+                          className="text-gray-700 hover:text-gray-900 p-1"
+                          title="Preuzmi (XML)"
+                        >
+                          <Download className="w-4 h-4" />
+                        </a>
+                        <a
+                          href={`${import.meta.env.VITE_API_URL || 'http://localhost:3003'}/api/invoices/${invoice.id}/download?format=pdf`}
+                          className="text-gray-700 hover:text-gray-900 p-1"
+                          title="Preuzmi (PDF)"
+                        >
+                          <Download className="w-4 h-4" />
+                        </a>
                         {invoice.status === 'DRAFT' && invoice.direction === 'OUTGOING' && (
                           <>
                             <button

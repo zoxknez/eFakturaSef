@@ -86,7 +86,7 @@ const CreateInvoice: React.FC = () => {
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (lines.some(line => !line.itemName || line.quantity <= 0 || line.unitPrice <= 0)) {
       setError('Sva polja u stavkama moraju biti popunjena sa validnim vrednostima');
       return;
@@ -107,7 +107,7 @@ const CreateInvoice: React.FC = () => {
       };
 
       const response = await invoiceService.createInvoice(invoiceData);
-      
+
       if (response.success) {
         navigate('/invoices');
       }
@@ -129,8 +129,8 @@ const CreateInvoice: React.FC = () => {
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Nova Faktura</h1>
-          <p className="text-gray-600">Kreirajte novu izlaznu fakturu</p>
+          <h1 className="text-2xl font-bold text-gray-900">Nova faktura</h1>
+          <p className="text-gray-600">Kreiranje nove izlazne fakture</p>
         </div>
       </div>
 
@@ -148,7 +148,7 @@ const CreateInvoice: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Broj Fakture *
+                Broj fakture *
               </label>
               <input
                 type="text"
@@ -161,7 +161,7 @@ const CreateInvoice: React.FC = () => {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Datum Izdavanja *
+                Datum izdavanja *
               </label>
               <input
                 type="date"
@@ -173,7 +173,7 @@ const CreateInvoice: React.FC = () => {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Datum Dospeća
+                Datum dospeća
               </label>
               <input
                 type="date"

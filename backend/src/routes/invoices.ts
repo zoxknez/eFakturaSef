@@ -8,6 +8,7 @@ import {
   getInvoiceById,
   updateInvoiceStatus,
   deleteInvoice,
+  downloadInvoice,
 } from '../controllers/invoiceController';
 
 const router = Router();
@@ -178,5 +179,35 @@ router.put('/:id/status', requireRole(['ADMIN', 'ACCOUNTANT']), updateInvoiceSta
  *         description: Not found
  */
 router.delete('/:id', requireRole(['ADMIN']), deleteInvoice);
+
+/**
+ * @openapi
+ * /api/invoices/{id}/download:
+ *   get:
+ *     summary: Download invoice as XML, JSON ili PDF
+ *     tags: [Invoices]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: format
+ *         schema:
+ *           type: string
+ *           enum: [xml, json, pdf]
+ *         description: Format fajla (podrazumevano xml)
+ *     responses:
+ *       200:
+ *         description: File stream
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Not found
+ */
+router.get('/:id/download', downloadInvoice);
 
 export default router;

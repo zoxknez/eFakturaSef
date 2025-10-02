@@ -1,6 +1,7 @@
 // src/controllers/invoiceController.ts
 
 import { Response } from 'express';
+// Lazy-load pdfkit only when needed to avoid type issues
 import prisma from '../db/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { z } from 'zod';
@@ -251,6 +252,140 @@ export const deleteInvoice = async (req: AuthRequest, res: Response): Promise<vo
     res.status(200).json({ success: true, data: null });
   } catch (error) {
     logger.error('Error deleting invoice:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+export const downloadInvoice = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user?.companyId) {
+      res.status(401).json({ success: false, message: 'Unauthorized' });
+      return;
+    }
+
+    const { id } = req.params as { id: string };
+    const format = ((req.query?.format as string) || 'xml').toLowerCase();
+    const companyId = req.user.companyId;
+
+    const invoice = await prisma.invoice.findFirst({
+      where: { id, OR: [{ supplierId: companyId }, { buyerId: companyId }] },
+      include: { lines: true, supplier: true, buyer: true },
+    });
+
+    if (!invoice) {
+      res.status(404).json({ success: false, message: 'Invoice not found' });
+      return;
+    }
+
+    const filenameSafe = (invoice.invoiceNumber || invoice.id).replace(/[^a-zA-Z0-9_-]+/g, '_');
+
+    if (format === 'json') {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="faktura_${filenameSafe}.json"`);
+      res.status(200).send(JSON.stringify(invoice, null, 2));
+      return;
+    }
+
+    if (format === 'pdf') {
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="faktura_${filenameSafe}.pdf"`);
+      // Lazy-load pdfkit to avoid TypeScript type resolution issues in environments without @types
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const PDFDocument = require('pdfkit');
+      const doc = new PDFDocument({ size: 'A4', margin: 50 });
+      doc.pipe(res);
+
+      // Header
+      doc.fontSize(18).text(`Faktura ${invoice.invoiceNumber}`, { align: 'center' });
+      doc.moveDown();
+
+      // Meta
+      doc
+        .fontSize(12)
+        .text(`Datum izdavanja: ${new Date(invoice.issueDate).toLocaleDateString('sr-RS')}`);
+      doc.text(`Valuta: ${invoice.currency}`);
+      doc.moveDown();
+
+      // Parties
+      doc.text(`Dobavljač: ${invoice.supplier.name} (PIB: ${invoice.supplier.pib})`);
+      doc.text(`Kupac: ${invoice.buyer.name} (PIB: ${invoice.buyer.pib})`);
+      doc.moveDown();
+
+      // Lines
+      doc.text('Stavke:', { underline: true });
+      invoice.lines.forEach((l) => {
+        doc.text(
+          `${l.lineNumber}. ${l.itemName}  x${l.quantity}  ${l.unitPrice.toFixed(2)} RSD  = ${l.lineTotal.toFixed(2)} RSD`
+        );
+      });
+      doc.moveDown();
+
+      // Totals
+      try {
+        doc.font('Helvetica-Bold');
+      } catch (_) {
+        // ignore if font not available in environment
+      }
+      doc.text(`Osnovica: ${invoice.subtotal.toFixed(2)} ${invoice.currency}`);
+      doc.text(`PDV: ${invoice.totalVat.toFixed(2)} ${invoice.currency}`);
+      doc.text(`Ukupno: ${invoice.totalAmount.toFixed(2)} ${invoice.currency}`);
+
+      doc.end();
+      return;
+    }
+
+    // Minimal UBL-like XML (demo). In produkciji koristiti pravi UBL generator.
+    const xmlLines = invoice.lines
+      .map(
+        (l) =>
+          `    <cac:InvoiceLine>\n      <cbc:ID>${l.lineNumber}</cbc:ID>\n      <cbc:InvoicedQuantity unitCode="${l.unitOfMeasure}">${l.quantity}</cbc:InvoicedQuantity>\n      <cbc:LineExtensionAmount currencyID="${invoice.currency}">${l.lineTotal.toFixed(2)}</cbc:LineExtensionAmount>\n      <cac:Item><cbc:Name>${l.itemName}</cbc:Name></cac:Item>\n      <cac:Price><cbc:PriceAmount currencyID="${invoice.currency}">${l.unitPrice.toFixed(2)}</cbc:PriceAmount></cac:Price>\n    </cac:InvoiceLine>`
+      )
+      .join('\n');
+
+    const issueDate = new Date(invoice.issueDate).toISOString().slice(0, 10);
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
+  <cbc:ID>${invoice.invoiceNumber}</cbc:ID>
+  <cbc:IssueDate>${issueDate}</cbc:IssueDate>
+  <cbc:DocumentCurrencyCode>${invoice.currency}</cbc:DocumentCurrencyCode>
+  <cac:AccountingSupplierParty>
+    <cac:Party>
+      <cac:PartyName><cbc:Name>${invoice.supplier.name}</cbc:Name></cac:PartyName>
+      <cac:PostalAddress>
+        <cbc:StreetName>${invoice.supplier.address}</cbc:StreetName>
+        <cbc:CityName>${invoice.supplier.city}</cbc:CityName>
+        <cbc:PostalZone>${invoice.supplier.postalCode}</cbc:PostalZone>
+        <cbc:CountrySubentity>RS</cbc:CountrySubentity>
+      </cac:PostalAddress>
+      <cac:PartyTaxScheme><cbc:CompanyID>${invoice.supplier.pib}</cbc:CompanyID></cac:PartyTaxScheme>
+    </cac:Party>
+  </cac:AccountingSupplierParty>
+  <cac:AccountingCustomerParty>
+    <cac:Party>
+      <cac:PartyName><cbc:Name>${invoice.buyer.name}</cbc:Name></cac:PartyName>
+      <cac:PostalAddress>
+        <cbc:StreetName>${invoice.buyer.address}</cbc:StreetName>
+        <cbc:CityName>${invoice.buyer.city}</cbc:CityName>
+        <cbc:PostalZone>${invoice.buyer.postalCode}</cbc:PostalZone>
+        <cbc:CountrySubentity>RS</cbc:CountrySubentity>
+      </cac:PostalAddress>
+      <cac:PartyTaxScheme><cbc:CompanyID>${invoice.buyer.pib}</cbc:CompanyID></cac:PartyTaxScheme>
+    </cac:Party>
+  </cac:AccountingCustomerParty>
+  <cac:LegalMonetaryTotal>
+    <cbc:LineExtensionAmount currencyID="${invoice.currency}">${invoice.subtotal.toFixed(2)}</cbc:LineExtensionAmount>
+    <cbc:TaxExclusiveAmount currencyID="${invoice.currency}">${invoice.subtotal.toFixed(2)}</cbc:TaxExclusiveAmount>
+    <cbc:TaxInclusiveAmount currencyID="${invoice.currency}">${invoice.totalAmount.toFixed(2)}</cbc:TaxInclusiveAmount>
+    <cbc:PayableAmount currencyID="${invoice.currency}">${invoice.totalAmount.toFixed(2)}</cbc:PayableAmount>
+  </cac:LegalMonetaryTotal>
+${xmlLines}
+</Invoice>`;
+
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="faktura_${filenameSafe}.xml"`);
+    res.status(200).send(xml);
+  } catch (error) {
+    logger.error('Error downloading invoice:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };

@@ -20,7 +20,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50">
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
-        <div 
+        <div
           className="fixed inset-0 z-30 bg-gray-600 bg-opacity-75 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
@@ -99,7 +99,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                 {navigation.find(item => item.href === location.pathname)?.name || 'SEF Portal'}
               </h1>
             </div>
-            
+
             <div className="flex items-center space-x-4">
               {/* Notifications */}
               <button className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100/70 rounded-lg relative">
