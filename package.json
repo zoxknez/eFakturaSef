@@ -1,0 +1,45 @@
+{
+  "name": "sef-efakture-app",
+  "version": "1.0.0",
+  "description": "Full-stack TypeScript aplikacija za SEF (Sistem Elektronskih Faktura) integraciju",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend", 
+    "shared"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "dev:backend": "npm run dev --workspace=backend",
+    "build": "npm run build --workspaces",
+    "build:frontend": "npm run build --workspace=frontend",
+    "build:backend": "npm run build --workspace=backend",
+    "test": "npm test --workspaces",
+    "lint": "npm run lint --workspaces",
+    "type-check": "npm run type-check --workspaces",
+    "clean": "npm run clean --workspaces",
+    "install:all": "npm install && npm install --workspaces"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "typescript": "^5.3.3",
+    "@types/node": "^20.10.5"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "keywords": [
+    "sef",
+    "efakture",
+    "serbia",
+    "ubl",
+    "e-invoicing",
+    "typescript",
+    "react",
+    "nodejs"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}
