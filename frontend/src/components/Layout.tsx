@@ -101,12 +101,6 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             </div>
             
             <div className="flex items-center space-x-4">
-              {/* Environment indicator */}
-              <div className="px-3 py-1 bg-gradient-to-r from-green-400 to-emerald-500 text-white text-xs font-medium rounded-full">
-                <span className="inline-block w-2 h-2 bg-white rounded-full mr-2 animate-pulse"></span>
-                Demo okruženje
-              </div>
-              
               {/* Notifications */}
               <button className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100/70 rounded-lg relative">
                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">

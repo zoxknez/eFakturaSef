@@ -197,7 +197,6 @@ const EXAMPLES = [
 export const AdvancedDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
-  const [isDemoMode, setIsDemoMode] = useState(true);
   const [selectedCompany, setSelectedCompany] = useState('Primer d.o.o. (12345678)');
   const [savedSearches, setSavedSearches] = useState<string[]>([
     'status:odbijeno datum:2025-10-02',
@@ -274,27 +273,7 @@ export const AdvancedDashboard: React.FC = () => {
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                <div
-                  className={`px-4 py-2 rounded-full text-sm font-medium flex items-center border ${
-                    isDemoMode
-                      ? 'bg-blue-50 text-blue-800 border-blue-200'
-                      : 'bg-green-50 text-green-800 border-green-200'
-                  }`}
-                >
-                  <div
-                    className={`w-2 h-2 rounded-full mr-2 animate-pulse ${isDemoMode ? 'bg-blue-500' : 'bg-green-500'}`}
-                  />
-                  {isDemoMode ? 'DEMO OKRUŽENJE' : 'PRODUKCIJA'}
-                </div>
-                <button
-                  onClick={() => setIsDemoMode(!isDemoMode)}
-                  className="px-3 py-2 rounded-lg border bg-white hover:bg-gray-50 text-sm text-gray-700 inline-flex items-center gap-2"
-                >
-                  <span>{isDemoMode ? 'Prebaci u PROD' : 'Prebaci u DEMO'}</span>
-                  <span className="opacity-70">⇆</span>
-                </button>
-              </div>
+              <div />
             </div>
           </div>
         );
