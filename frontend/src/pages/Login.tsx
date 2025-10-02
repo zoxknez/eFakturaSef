@@ -16,8 +16,8 @@ export const Login: React.FC = () => {
     setError(null);
     try {
   await login(email, password);
-  // Navigate to dashboard; Layout + App gate will render accordingly
-  navigate('/');
+  // Nakon uspešnog logina odmah ide na listu faktura
+  navigate('/invoices');
     } catch (e: any) {
       setError(e?.message || 'Neuspešna prijava');
     }
