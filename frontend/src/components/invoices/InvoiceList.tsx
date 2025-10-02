@@ -6,6 +6,7 @@ import { invoiceService } from '../../services/invoiceService';
 
 const InvoiceList: React.FC = () => {
   const navigate = useNavigate();
+  const API_BASE_URL = (import.meta.env.VITE_API_URL as string) || 'http://localhost:3003';
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +40,46 @@ const InvoiceList: React.FC = () => {
       await loadInvoices(); // Reload the list
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete invoice');
+    }
+  };
+
+  const parseFilename = (contentDisposition: string | null, fallback: string) => {
+    if (!contentDisposition) return fallback;
+    const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(contentDisposition);
+    const encoded = (match && (match[1] || match[2])) || fallback;
+    try {
+      return decodeURIComponent(encoded);
+    } catch {
+      return encoded;
+    }
+  };
+
+  const downloadInvoice = async (id: string, format: 'xml' | 'json' | 'pdf') => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE_URL}/api/invoices/${id}/download?format=${format}` as string, {
+        method: 'GET',
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        }
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(text || `Download failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const cd = res.headers.get('content-disposition');
+      const filename = parseFilename(cd, `faktura_${id}.${format}`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Download failed');
     }
   };
 
@@ -188,20 +229,20 @@ const InvoiceList: React.FC = () => {
                         >
                           <Eye className="w-4 h-4" />
                         </button>
-                        <a
-                          href={`${import.meta.env.VITE_API_URL || 'http://localhost:3003'}/api/invoices/${invoice.id}/download?format=xml`}
+                        <button
+                          onClick={() => downloadInvoice(invoice.id, 'xml')}
                           className="text-gray-700 hover:text-gray-900 p-1"
                           title="Preuzmi (XML)"
                         >
                           <Download className="w-4 h-4" />
-                        </a>
-                        <a
-                          href={`${import.meta.env.VITE_API_URL || 'http://localhost:3003'}/api/invoices/${invoice.id}/download?format=pdf`}
+                        </button>
+                        <button
+                          onClick={() => downloadInvoice(invoice.id, 'pdf')}
                           className="text-gray-700 hover:text-gray-900 p-1"
                           title="Preuzmi (PDF)"
                         >
                           <Download className="w-4 h-4" />
-                        </a>
+                        </button>
                         {invoice.status === 'DRAFT' && invoice.direction === 'OUTGOING' && (
                           <>
                             <button
