@@ -29,8 +29,9 @@ app.use(requestLogger);
 app.use(helmet());
 app.use(cors({
   origin: (origin, callback) => {
-    const allowed = [config.FRONTEND_URL, 'http://localhost:3000', 'http://localhost:3001'];
-    if (!origin || allowed.includes(origin)) return callback(null, true);
+    const allowed = new Set([config.FRONTEND_URL, 'http://localhost:3000', 'http://localhost:3001']);
+    const isVercel = origin ? /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin) : false;
+    if (!origin || allowed.has(origin) || isVercel) return callback(null, true);
     return callback(new Error('Not allowed by CORS'));
   },
   credentials: true

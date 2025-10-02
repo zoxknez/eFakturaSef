@@ -15,7 +15,8 @@
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
     "db:generate": "prisma generate",
-    "db:seed": "ts-node prisma/seed.ts",
+  "db:seed": "ts-node prisma/seed.ts",
+  "db:seed:js": "node prisma/seed.js",
     "postinstall": "prisma generate",
     "kill-port": "powershell -NoProfile -Command \"$p=Get-NetTCPConnection -LocalPort 3003 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess; if($p){ Stop-Process -Id $p -Force; Write-Host 'Freed port 3003 (PID' $p ')'; } else { Write-Host 'Port 3003 free'; }\""
   },
