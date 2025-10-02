@@ -273,6 +273,23 @@ cd backend && npx prisma studio
 
 ## 🚀 Production Deployment
 
+### Railway (Backend)
+- Kreiraj Railway projekat i Postgres plugin; kopiraj DATABASE_URL u backend service env.
+- Backend service vars:
+	- PORT=3003
+	- NODE_ENV=production
+	- DATABASE_URL=postgresql://...
+	- JWT_SECRET=…
+	- FRONTEND_URL=https://tvoj-frontend.vercel.app
+	- SEF_WEBHOOK_SECRET=…
+	- REDIS_URL=redis://… (opciono)
+- Start command: `npm run start` (skripta radi `prisma migrate deploy` + startuje server)
+- Health check: GET /health
+
+### Vercel (Frontend)
+- `vercel.json` je podešen za static build iz `frontend` i SPA fallback.
+- Postavi `VITE_API_URL` ka Railway backend URL-u.
+
 ### Docker
 ```bash
 # Build images
