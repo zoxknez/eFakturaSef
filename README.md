@@ -1,6 +1,15 @@
-# SEF eFakture Application
+# SEF eFakture Application 🇷🇸
 
-Kompleksna, full-stack TypeScript aplikacija za integraciju sa srpskim SEF (Sistem Elektronskih Faktura) API-jem.
+Profesionalna, full-stack TypeScript aplikacija za integraciju sa srpskim SEF (Sistem Elektronskih Faktura) API-jem.
+
+## 👨‍💻 Developer
+
+**Full-stack TypeScript Developer**
+
+- 🐙 **GitHub:** [github.com/zoxknez](https://github.com/zoxknez)
+- 📧 **Email:** [zoxknez@hotmail.com](mailto:zoxknez@hotmail.com)
+
+---
 
 ## 🚀 Karakteristike
 

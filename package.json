@@ -1,7 +1,32 @@
 {
   "name": "sef-efakture-app",
   "version": "1.0.0",
-  "description": "Full-stack TypeScript aplikacija za SEF (Sistem Elektronskih Faktura) integraciju",
+  "description": "Profesionalna full-stack TypeScript aplikacija za srpski SEF (Sistem Elektronskih Faktura) - enterprise solution",
+  "author": {
+    "name": "zoxknez",
+    "email": "zoxknez@hotmail.com",
+    "url": "https://github.com/zoxknez"
+  },
+  "homepage": "https://github.com/zoxknez/eFakturaSef",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zoxknez/eFakturaSef.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zoxknez/eFakturaSef/issues"
+  },
+  "keywords": [
+    "sef",
+    "efakture",
+    "serbia",
+    "typescript",
+    "react",
+    "nodejs",
+    "prisma",
+    "ubl",
+    "invoice",
+    "elektronske-fakture"
+  ],
   "private": true,
   "workspaces": [
     "frontend",
@@ -9,9 +34,12 @@
     "shared"
   ],
   "scripts": {
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev": "concurrently --kill-others-on-fail --prefix-colors \"bgBlue.bold,bgMagenta.bold\" \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:safe": "powershell -ExecutionPolicy Bypass -File scripts/dev-separate.ps1",
+    "dev:clean": "powershell -ExecutionPolicy Bypass -File scripts/cleanup.ps1 && npm run dev",
     "dev:frontend": "npm run dev --workspace=frontend",
     "dev:backend": "npm run dev --workspace=backend",
+    "db:setup": "powershell -ExecutionPolicy Bypass -File scripts/db-setup.ps1",
     "build": "npm run build --workspaces",
     "build:frontend": "npm run build --workspace=frontend",
     "build:backend": "npm run build --workspace=backend",
@@ -28,24 +56,14 @@
     "db:seed": "npm run db:seed --workspace=backend"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2",
-    "typescript": "^5.3.3",
-    "@types/node": "^20.10.5"
+    "@types/node": "^20.10.5",
+    "concurrently": "^9.2.1",
+    "typescript": "^5.3.3"
   },
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=9.0.0"
   },
-  "keywords": [
-    "sef",
-    "efakture",
-    "serbia",
-    "ubl",
-    "e-invoicing",
-    "typescript",
-    "react",
-    "nodejs"
-  ],
-  "author": "Your Name",
+
   "license": "MIT"
 }

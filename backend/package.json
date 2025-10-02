@@ -4,7 +4,8 @@
   "description": "Backend API server for SEF eFakture application",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "npm run kill-port && nodemon --exec ts-node src/index.ts",
+    "dev": "nodemon",
+    "dev:clean": "powershell -ExecutionPolicy Bypass -File ../scripts/cleanup.ps1 && nodemon",
     "build": "tsc",
     "start": "prisma migrate deploy && node dist/index.js",
     "clean": "rimraf dist",
@@ -18,7 +19,7 @@
     "db:seed": "ts-node prisma/seed.ts",
     "db:seed:js": "node prisma/seed.js",
     "postinstall": "prisma generate",
-    "kill-port": "powershell -NoProfile -Command \"$p=Get-NetTCPConnection -LocalPort 3003 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess; if($p){ Stop-Process -Id $p -Force; Write-Host 'Freed port 3003 (PID' $p ')'; } else { Write-Host 'Port 3003 free'; }\""
+    "kill-port": "powershell -NoProfile -Command \"try { $procs = Get-NetTCPConnection -LocalPort 3003 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess; if($procs) { $procs | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }; Write-Host 'Freed port 3003'; Start-Sleep -Seconds 1; } else { Write-Host 'Port 3003 already free'; } } catch { Write-Host 'Port cleanup completed'; }\""
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
@@ -34,11 +35,13 @@
     "express-rate-limit": "^7.1.5",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
     "pdfkit": "^0.15.2",
     "prisma": "^5.22.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "winston": "^3.11.0",
+    "xml2js": "^0.6.2",
     "zod": "^4.1.11"
   },
   "devDependencies": {
@@ -52,6 +55,7 @@
     "@types/supertest": "^6.0.2",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
+    "@types/xml2js": "^0.4.14",
     "@typescript-eslint/eslint-plugin": "^6.18.1",
     "@typescript-eslint/parser": "^6.18.1",
     "eslint": "^8.56.0",

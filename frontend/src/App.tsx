@@ -7,7 +7,9 @@ import { AdvancedInvoiceDetail } from './pages/AdvancedInvoiceDetail';
 import InvoiceList from './components/invoices/InvoiceList';
 import CreateInvoiceComponent from './components/invoices/CreateInvoice';
 import { Settings } from './pages/Settings';
+import About from './pages/About';
 import { useAuth } from './hooks/useAuth';
+import { MagnifierProvider, MagnifierFAB } from './components/accessibility';
 
 function App() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -31,15 +33,23 @@ function App() {
   }
 
   return (
-    <Layout>
-      <Routes>
-        <Route path="/" element={<AdvancedDashboard />} />
-        <Route path="/invoices" element={<InvoiceList />} />
-        <Route path="/invoices/:id" element={<AdvancedInvoiceDetail />} />
-        <Route path="/invoices/create" element={<CreateInvoiceComponent />} />
-        <Route path="/settings" element={<Settings />} />
-      </Routes>
-    </Layout>
+    <MagnifierProvider targetSelector="#app-root" zoom={2} radius={120}>
+      <div id="app-root" className="min-h-screen">
+        <Layout>
+          <Routes>
+            <Route path="/" element={<AdvancedDashboard />} />
+            <Route path="/invoices" element={<InvoiceList />} />
+            <Route path="/invoices/:id" element={<AdvancedInvoiceDetail />} />
+            <Route path="/invoices/create" element={<CreateInvoiceComponent />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/about" element={<About />} />
+          </Routes>
+        </Layout>
+
+        {/* Plutajuće FAB dugme za lupu */}
+        <MagnifierFAB />
+      </div>
+    </MagnifierProvider>
   );
 }
 

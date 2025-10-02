@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import Footer from './Footer';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -10,6 +11,7 @@ const navigation = [
   { name: 'Sve fakture', href: '/invoices', icon: '📄', shortName: 'Fakture' },
   { name: 'Kreiranje', href: '/invoices/create', icon: '➕', shortName: 'Nova' },
   { name: 'Podešavanja', href: '/settings', icon: '⚙️', shortName: 'Postavke' },
+  { name: 'O aplikaciji', href: '/about', icon: '💻', shortName: 'O nama' },
 ];
 
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
@@ -127,11 +129,12 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
 
       {/* Main content */}
       <div className="lg:pl-64 pt-16">
-        <main className="px-4 py-8 sm:px-6 lg:px-8">
+        <main className="flex-1 px-4 py-8 sm:px-6 lg:px-8">
           <div className="max-w-7xl mx-auto">
             {children}
           </div>
         </main>
+        <Footer />
       </div>
     </div>
   );

@@ -13,6 +13,7 @@ import { requestLogger } from './middleware/requestLogger';
 // import { authMiddleware } from './middleware/auth';
 import prisma from './db/prisma';
 import getQueues from './queue';
+import { setServer, gracefulShutdown } from './utils/shutdown';
 
 // Route imports
 import authRoutes from './routes/auth';
@@ -30,7 +31,7 @@ app.use(requestLogger);
 app.use(helmet());
 app.use(cors({
   origin: (origin, callback) => {
-    const allowed = new Set([config.FRONTEND_URL, 'http://localhost:3000', 'http://localhost:3001']);
+    const allowed = new Set([config.FRONTEND_URL, 'http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002']);
     const isVercel = origin ? /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin) : false;
     if (!origin || allowed.has(origin) || isVercel) return callback(null, true);
     return callback(new Error('Not allowed by CORS'));
@@ -168,22 +169,8 @@ if (process.env.NODE_ENV !== 'test') {
     logger.info(`🔗 Frontend URL: ${config.FRONTEND_URL}`);
   });
 
-  const shutdown = async (signal: string) => {
-    try {
-      logger.info(`Received ${signal}. Shutting down gracefully...`);
-      if (server) {
-        await new Promise<void>((resolve) => server!.close(() => resolve()));
-      }
-      await prisma.$disconnect();
-      process.exit(0);
-    } catch (err) {
-      logger.error('Error during shutdown', err);
-      process.exit(1);
-    }
-  };
-
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('SIGINT', () => shutdown('SIGINT'));
+  // Registruj server za graceful shutdown
+  setServer(server);
 }
 
 export default app;

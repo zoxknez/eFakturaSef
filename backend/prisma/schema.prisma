@@ -21,21 +21,21 @@ model Company {
   phone       String?
   bankAccount String?  @map("bank_account")
   vatNumber   String?  @map("vat_number")
-  
+
   // SEF Configuration
   sefApiKey       String? @map("sef_api_key")
   sefEnvironment  String? @map("sef_environment") // demo or production
   isActive        Boolean @default(true) @map("is_active")
-  
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
-  
+
   // Relations
   users               User[]
   invoices            Invoice[]
   suppliedInvoices    Invoice[] @relation("SupplierInvoices")
   purchasedInvoices   Invoice[] @relation("BuyerInvoices")
-  
+
   @@map("companies")
 }
 
@@ -48,13 +48,13 @@ model User {
   role      String   // UserRole enum: ADMIN, ACCOUNTANT, AUDITOR, OPERATOR
   isActive  Boolean  @default(true) @map("is_active")
   companyId String   @map("company_id")
-  
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
-  
+
   // Relations
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  
+
   @@map("users")
 }
 
@@ -67,34 +67,34 @@ model Invoice {
   direction     String            // InvoiceDirection: OUTGOING, INCOMING
   status        String            @default("DRAFT") // InvoiceStatus: DRAFT, SENT, DELIVERED, ACCEPTED, REJECTED, CANCELLED, STORNO, EXPIRED
   documentType  String            @map("document_type") @default("INVOICE") // UBLDocumentType: INVOICE, CREDIT_NOTE, DEBIT_NOTE
-  
+
   // Supplier/Buyer
   supplierId String @map("supplier_id")
   buyerId    String @map("buyer_id")
-  
+
   // Amounts
   subtotal     Float
   totalVat     Float @map("total_vat")
   totalAmount  Float @map("total_amount")
   currency     String  @default("RSD")
-  
+
   // UBL XML
   ublXml String? @map("ubl_xml")
-  
+
   // Timestamps
   createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")  
+  updatedAt DateTime  @updatedAt @map("updated_at")
   sentAt    DateTime? @map("sent_at")
-  
+
   // Notes
   note String?
-  
+
   // Reference documents
   referenceInvoiceId String? @map("reference_invoice_id")
-  
+
   // Company relation
   companyId String @map("company_id")
-  
+
   // Relations
   company           Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
   supplier          Company        @relation("SupplierInvoices", fields: [supplierId], references: [id])
@@ -103,7 +103,7 @@ model Invoice {
   referencedBy      Invoice[]      @relation("InvoiceReferences")
   lines             InvoiceLine[]
   auditLogs         AuditLog[]
-  
+
   @@map("invoices")
 }
 
@@ -121,10 +121,10 @@ model InvoiceLine {
   lineTotal        Float      @map("line_total")
   vatAmount        Float      @map("vat_amount")
   lineTotalWithVat Float      @map("line_total_with_vat")
-  
+
   // Relations
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  
+
   @@map("invoice_lines")
 }
 
@@ -133,17 +133,17 @@ model AuditLog {
   entityType String  @map("entity_type") // invoice, user, company, etc.
   entityId   String  @map("entity_id")
   action     String  // created, updated, deleted, sent, cancelled, etc.
-  oldData    String? @map("old_data") // JSON as string for SQLite  
+  oldData    String? @map("old_data") // JSON as string for SQLite
   newData    String? @map("new_data") // JSON as string for SQLite
   userId     String? @map("user_id")
   ipAddress  String? @map("ip_address")
   userAgent  String? @map("user_agent")
-  
+
   createdAt DateTime @default(now()) @map("created_at")
-  
+
   // Relations
   invoice Invoice? @relation(fields: [entityId], references: [id], onDelete: Cascade)
-  
+
   @@map("audit_logs")
 }
 
@@ -155,9 +155,9 @@ model SEFWebhookLog {
   signature String
   processed Boolean  @default(false)
   error     String?
-  
+
   createdAt DateTime @default(now()) @map("created_at")
-  
+
   @@map("sef_webhook_logs")
 }
 
@@ -170,18 +170,18 @@ model JobQueue {
   maxAttempts Int       @default(3) @map("max_attempts")
   error       String?
   scheduledAt DateTime? @map("scheduled_at")
-  
+
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   processedAt DateTime? @map("processed_at")
-  
+
   @@map("job_queue")
 }
 
 // Enums converted to String types for SQLite compatibility
 // UserRole: ADMIN, ACCOUNTANT, AUDITOR, OPERATOR
 // InvoiceStatus: DRAFT, SENT, DELIVERED, ACCEPTED, REJECTED, CANCELLED, STORNO, EXPIRED
-// InvoiceDirection: OUTGOING, INCOMING  
+// InvoiceDirection: OUTGOING, INCOMING
 // UBLDocumentType: INVOICE, CREDIT_NOTE, DEBIT_NOTE
 // VATCategory: STANDARD (S), ZERO_RATED (Z), EXEMPT (E), REVERSE_CHARGE (AE), NOT_SUBJECT (O)
 // JobStatus: PENDING, PROCESSING, COMPLETED, FAILED, CANCELLED

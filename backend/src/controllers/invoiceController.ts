@@ -7,6 +7,7 @@ import { AuthRequest } from '../middleware/auth';
 import { z } from 'zod';
 import logger from '../utils/logger';
 import { createSEFService } from '../services/sefService';
+import * as xml2js from 'xml2js';
 
 // Extend AuthRequest to include file upload
 interface AuthRequestWithFile extends AuthRequest {
@@ -560,31 +561,119 @@ export const importUBL = async (req: AuthRequestWithFile, res: Response): Promis
       return;
     }
 
-    // TODO: Implement proper UBL XML parsing using xml2js or similar
-    // For now, create a mock invoice from UBL data
-    const mockInvoice = {
-      invoiceNumber: `UBL-${Date.now()}`,
-      invoiceDate: new Date().toISOString().split('T')[0],
-      buyerPib: '12345678',
-      buyerName: 'UBL Import',
-      buyerAddress: 'UBL Address',
-      buyerCity: 'Belgrade',
-      buyerCountry: 'Serbia',
-      totalAmount: 100.00,
-      taxAmount: 20.00,
-      totalWithTax: 120.00,
-      currency: 'RSD',
-      paymentMethod: 'CASH',
-      items: [
-        {
-          name: 'UBL Imported Item',
-          quantity: 1,
-          unitPrice: 100.00,
-          totalPrice: 100.00,
-          taxRate: 20
-        }
-      ]
+    // Parse UBL XML using xml2js
+    const parser = new xml2js.Parser();
+    let parsedXML: any;
+
+    try {
+      parsedXML = await parser.parseStringPromise(ublContent);
+    } catch (parseError) {
+      logger.error('Error parsing UBL XML:', parseError);
+      res.status(400).json({
+        success: false,
+        message: 'Greška pri parsiranju UBL XML fajla'
+      });
+      return;
+    }
+
+    // Extract invoice data from UBL structure
+    const invoice = parsedXML.Invoice || parsedXML['ubl:Invoice'] || {};
+    const invoiceData = {
+      invoiceNumber:
+        invoice.ID?.[0] ||
+        invoice['cbc:ID']?.[0] ||
+        `UBL-${Date.now()}`,
+
+      invoiceDate:
+        invoice.IssueDate?.[0] ||
+        invoice['cbc:IssueDate']?.[0] ||
+        new Date().toISOString().split('T')[0],
+
+      buyerPib:
+        invoice.AccountingCustomerParty?.[0]?.Party?.[0]?.PartyTaxScheme?.[0]?.CompanyID?.[0] ||
+        invoice['cac:AccountingCustomerParty']?.[0]?.['cac:Party']?.[0]?.['cac:PartyTaxScheme']?.[0]?.['cbc:CompanyID']?.[0] ||
+        '12345678',
+
+      buyerName:
+        invoice.AccountingCustomerParty?.[0]?.Party?.[0]?.PartyName?.[0]?.Name?.[0] ||
+        invoice['cac:AccountingCustomerParty']?.[0]?.['cac:Party']?.[0]?.['cac:PartyName']?.[0]?.['cbc:Name']?.[0] ||
+        'UBL Import Company',
+
+      buyerAddress:
+        invoice.AccountingCustomerParty?.[0]?.Party?.[0]?.PostalAddress?.[0]?.StreetName?.[0] ||
+        invoice['cac:AccountingCustomerParty']?.[0]?.['cac:Party']?.[0]?.['cac:PostalAddress']?.[0]?.['cbc:StreetName']?.[0] ||
+        'UBL Address',
+
+      buyerCity:
+        invoice.AccountingCustomerParty?.[0]?.Party?.[0]?.PostalAddress?.[0]?.CityName?.[0] ||
+        invoice['cac:AccountingCustomerParty']?.[0]?.['cac:Party']?.[0]?.['cac:PostalAddress']?.[0]?.['cbc:CityName']?.[0] ||
+        'Beograd',
+
+      totalAmount: parseFloat(
+        invoice.LegalMonetaryTotal?.[0]?.LineExtensionAmount?.[0]?._ ||
+        invoice.LegalMonetaryTotal?.[0]?.LineExtensionAmount?.[0] ||
+        invoice['cac:LegalMonetaryTotal']?.[0]?.['cbc:LineExtensionAmount']?.[0]?._ ||
+        invoice['cac:LegalMonetaryTotal']?.[0]?.['cbc:LineExtensionAmount']?.[0] ||
+        '100.00'
+      ),
+
+      taxAmount: parseFloat(
+        invoice.TaxTotal?.[0]?.TaxAmount?.[0]?._ ||
+        invoice.TaxTotal?.[0]?.TaxAmount?.[0] ||
+        invoice['cac:TaxTotal']?.[0]?.['cbc:TaxAmount']?.[0]?._ ||
+        invoice['cac:TaxTotal']?.[0]?.['cbc:TaxAmount']?.[0] ||
+        '20.00'
+      ),
+
+      currency:
+        invoice.DocumentCurrencyCode?.[0] ||
+        invoice['cbc:DocumentCurrencyCode']?.[0] ||
+        'RSD',
+
+      // Extract invoice lines
+      items: (invoice.InvoiceLine || invoice['cac:InvoiceLine'] || []).map((line: any, index: number) => ({
+        name:
+          line.Item?.[0]?.Name?.[0] ||
+          line['cac:Item']?.[0]?.['cbc:Name']?.[0] ||
+          `UBL stavka ${index + 1}`,
+
+        quantity: parseFloat(
+          line.InvoicedQuantity?.[0]?._ ||
+          line.InvoicedQuantity?.[0] ||
+          line['cbc:InvoicedQuantity']?.[0]?._ ||
+          line['cbc:InvoicedQuantity']?.[0] ||
+          '1'
+        ),
+
+        unitPrice: parseFloat(
+          line.Price?.[0]?.PriceAmount?.[0]?._ ||
+          line.Price?.[0]?.PriceAmount?.[0] ||
+          line['cac:Price']?.[0]?.['cbc:PriceAmount']?.[0]?._ ||
+          line['cac:Price']?.[0]?.['cbc:PriceAmount']?.[0] ||
+          '100.00'
+        ),
+
+        taxRate: parseFloat(
+          line.TaxTotal?.[0]?.TaxSubtotal?.[0]?.TaxCategory?.[0]?.Percent?.[0] ||
+          line['cac:TaxTotal']?.[0]?.['cac:TaxSubtotal']?.[0]?.['cac:TaxCategory']?.[0]?.['cbc:Percent']?.[0] ||
+          '20'
+        ),
+
+        totalPrice: parseFloat(
+          line.LineExtensionAmount?.[0]?._ ||
+          line.LineExtensionAmount?.[0] ||
+          line['cbc:LineExtensionAmount']?.[0]?._ ||
+          line['cbc:LineExtensionAmount']?.[0] ||
+          '100.00'
+        )
+      }))
     };
+
+    logger.info('UBL XML uspešno parsiran:', {
+      invoiceNumber: invoiceData.invoiceNumber,
+      buyerName: invoiceData.buyerName,
+      itemCount: invoiceData.items.length
+    });
 
     // For now, just return success without creating invoice
     // TODO: Implement proper UBL parsing and Company/Invoice creation
@@ -594,19 +683,21 @@ export const importUBL = async (req: AuthRequestWithFile, res: Response): Promis
       fileSize: req.file?.size || 0
     });
 
-    // Mock response
-    const mockInvoiceResponse = {
+    // Create response from parsed UBL data
+    const ublInvoiceResponse = {
       id: 'ubl-' + Date.now(),
-      invoiceNumber: mockInvoice.invoiceNumber,
-      issueDate: mockInvoice.invoiceDate,
-      totalAmount: mockInvoice.totalWithTax,
-      status: 'DRAFT'
+      invoiceNumber: invoiceData.invoiceNumber,
+      issueDate: invoiceData.invoiceDate,
+      totalAmount: invoiceData.totalAmount + invoiceData.taxAmount,
+      buyerName: invoiceData.buyerName,
+      itemCount: invoiceData.items.length,
+      status: 'IMPORTED'
     };
 
     res.json({
       success: true,
       message: 'UBL fajl je uspešno uvezen',
-      data: mockInvoiceResponse
+      data: ublInvoiceResponse
     });  } catch (error) {
     logger.error('Error importing UBL:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });

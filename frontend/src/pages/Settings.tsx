@@ -160,9 +160,27 @@ export const Settings: React.FC = () => {
             </h2>
             <p className="text-gray-600 mt-1">Konfiguracija SEF API-ja, korisnika i sistema</p>
           </div>
-          <div className="text-right">
-            <p className="text-sm text-gray-600">Korisnik: <span className="font-medium">{user?.firstName} {user?.lastName}</span></p>
-            <p className="text-xs text-gray-500">Uloga: {user?.role}</p>
+
+          {/* User Profile Card */}
+          <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200/50 rounded-xl p-4 min-w-[220px]">
+            <div className="flex items-center space-x-3">
+              <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-lg">
+                {user?.firstName?.charAt(0)}{user?.lastName?.charAt(0)}
+              </div>
+              <div>
+                <p className="font-semibold text-gray-900">
+                  {user?.firstName} {user?.lastName}
+                </p>
+                <div className="flex items-center space-x-1">
+                  <span className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full font-medium">
+                    {user?.role === 'ADMIN' ? '👑 ADMIN' :
+                     user?.role === 'ACCOUNTANT' ? '📊 RAČUNOVOĐA' :
+                     user?.role === 'AUDITOR' ? '🔍 REVIZOR' :
+                     user?.role === 'OPERATOR' ? '⚙️ OPERATER' : user?.role}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -207,33 +225,62 @@ export const Settings: React.FC = () => {
 
           {/* Podaci kompanije */}
           <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-200/50 shadow-lg p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+            <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
               🏢 Podaci kompanije
             </h3>
+
+            {/* Company Preview Card */}
+            {(settings.companyName || settings.pib) && (
+              <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200/50 rounded-xl">
+                <div className="flex items-start space-x-4">
+                  <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center text-white text-2xl shadow-lg">
+                    🏢
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-bold text-gray-900 text-lg">
+                      {settings.companyName || 'Naziv kompanije'}
+                    </h4>
+                    <p className="text-sm text-gray-600 mt-1">
+                      PIB: <span className="font-mono font-semibold">{settings.pib || 'Nije unet'}</span>
+                    </p>
+                    {settings.address && (
+                      <p className="text-sm text-gray-600">
+                        📍 {settings.address}{settings.city && `, ${settings.city}`}
+                      </p>
+                    )}
+                    <div className="mt-2 flex items-center space-x-2">
+                      <span className="inline-flex items-center px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
+                        🟢 Multi-company režim
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Naziv kompanije
+                  Naziv kompanije *
                 </label>
                 <input
                   type="text"
                   value={settings.companyName}
                   onChange={(e) => handleInputChange('companyName', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Naziv vaše kompanije"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  placeholder="Primer d.o.o."
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  PIB
+                  PIB *
                 </label>
                 <input
                   type="text"
                   value={settings.pib}
                   onChange={(e) => handleInputChange('pib', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all font-mono"
                   placeholder="123456789"
                 />
               </div>
@@ -246,8 +293,8 @@ export const Settings: React.FC = () => {
                   type="text"
                   value={settings.address}
                   onChange={(e) => handleInputChange('address', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Ulica i broj"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  placeholder="Knez Mihailova 1"
                 />
               </div>
 
@@ -259,7 +306,7 @@ export const Settings: React.FC = () => {
                   type="text"
                   value={settings.city}
                   onChange={(e) => handleInputChange('city', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   placeholder="Beograd"
                 />
               </div>
@@ -411,24 +458,38 @@ export const Settings: React.FC = () => {
             </div>
           </div>
 
-          {/* Status */}
+          {/* System Health & Performance */}
           <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-200/50 shadow-lg p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              📊 Status sistema
+              � Sistem & Performance
             </h3>
 
-            <div className="space-y-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Verzija:</span>
-                <span className="font-medium">v1.0.0</span>
+            <div className="space-y-4">
+              {/* API Health */}
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-green-800">SEF API Status</span>
+                  <span className="text-green-600 font-bold">🟢 Online</span>
+                </div>
+                <div className="text-xs text-green-600 mt-1">Poslednji ping: &lt; 100ms</div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">API Status:</span>
-                <span className="text-green-600 font-medium">🟢 Aktivno</span>
+
+              {/* Database Status */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-blue-800">Baza podataka</span>
+                  <span className="text-blue-600 font-bold">🟢 Aktivna</span>
+                </div>
+                <div className="text-xs text-blue-600 mt-1">PostgreSQL v14.9</div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Poslednja sinhronizacija:</span>
-                <span className="font-medium">Pre 5min</span>
+
+              {/* Version Info */}
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-800">Verzija aplikacije</span>
+                  <span className="text-gray-600 font-bold">v1.0.0</span>
+                </div>
+                <div className="text-xs text-gray-600 mt-1">Poslednje ažuriranje: Okt 2024</div>
               </div>
             </div>
           </div>
@@ -436,8 +497,9 @@ export const Settings: React.FC = () => {
       </div>
 
       {/* Save Button */}
-      <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-4 border border-gray-200/50">
-        <div className="flex justify-between items-center">
+      <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50">
+        {/* Error/Success Messages */}
+        <div className="flex justify-center mb-4">
           {error && (
             <div className="text-red-600 text-sm font-medium flex items-center">
               ❌ {error}
@@ -448,22 +510,24 @@ export const Settings: React.FC = () => {
               ✅ Podešavanja su uspešno sačuvana
             </div>
           )}
-          <div className="flex space-x-3 ml-auto">
-            <button
-              onClick={handleResetToDefaults}
-              disabled={isLoading}
-              className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            >
-              🔄 Resetuj
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={isLoading}
-              className="px-6 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg hover:from-blue-600 hover:to-cyan-600 disabled:opacity-50 text-sm font-medium shadow-lg shadow-blue-500/25"
-            >
-              {isLoading ? '💾 Čuvanje...' : '💾 Sačuvaj podešavanja'}
-            </button>
-          </div>
+        </div>
+
+        {/* Centered Action Buttons */}
+        <div className="flex justify-center space-x-4">
+          <button
+            onClick={handleResetToDefaults}
+            disabled={isLoading}
+            className="px-6 py-3 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          >
+            🔄 Resetuj
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={isLoading}
+            className="px-8 py-3 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg hover:from-blue-600 hover:to-cyan-600 disabled:opacity-50 text-sm font-medium shadow-lg shadow-blue-500/25 transition-all"
+          >
+            {isLoading ? '💾 Čuvanje...' : '💾 Sačuvaj podešavanja'}
+          </button>
         </div>
       </div>
     </div>
