@@ -20,6 +20,7 @@ import invoiceRoutes from './routes/invoices';
 import companyRoutes from './routes/company';
 import webhookRoutes from './routes/webhooks';
 import queueRoutes from './routes/queue';
+import settingsRoutes from './routes/settings';
 
 const app = express();
 app.use(requestId);
@@ -146,6 +147,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/invoices', invoiceRoutes); // Auth handled in routes
 app.use('/api/company', companyRoutes); // Auth handled in routes
 app.use('/api/queue', queueRoutes); // Queue operations (send, metrics)
+app.use('/api/settings', settingsRoutes); // Settings management
 
 // 404 handler (standardized shape)
 app.use('*', (req, res) => {

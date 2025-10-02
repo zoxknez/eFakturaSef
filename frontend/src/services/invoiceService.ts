@@ -31,7 +31,7 @@ export const invoiceService = {
     });
 
     const result = await response.json();
-    
+
     if (!response.ok) {
       throw new Error(result.message || 'Failed to create invoice');
     }
@@ -49,7 +49,7 @@ export const invoiceService = {
     });
 
     const result = await response.json();
-    
+
     if (!response.ok) {
       throw new Error(result.message || 'Failed to fetch invoices');
     }
@@ -67,7 +67,7 @@ export const invoiceService = {
     });
 
     const result = await response.json();
-    
+
     if (!response.ok) {
       throw new Error(result.message || 'Failed to fetch invoice');
     }
@@ -86,7 +86,7 @@ export const invoiceService = {
     });
 
     const result = await response.json();
-    
+
     if (!response.ok) {
       throw new Error(result.message || 'Failed to update invoice status');
     }
@@ -104,9 +104,52 @@ export const invoiceService = {
     });
 
     const result = await response.json();
-    
+
     if (!response.ok) {
       throw new Error(result.message || 'Failed to delete invoice');
+    }
+
+    return result;
+  },
+
+  /**
+   * Send invoice to SEF system
+   */
+  async sendInvoiceToSEF(id: string): Promise<ApiResponse<{ sefId: string; status: string }>> {
+    const response = await fetch(`${API_BASE_URL}/api/invoices/${id}/send-to-sef`, {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || 'Failed to send invoice to SEF');
+    }
+
+    return result;
+  },
+
+  /**
+   * Import UBL file
+   */
+  async importUBL(file: File): Promise<ApiResponse<Invoice>> {
+    const formData = new FormData();
+    formData.append('ublFile', file);
+
+    const response = await fetch(`${API_BASE_URL}/api/invoices/import-ubl`, {
+      method: 'POST',
+      headers: {
+        ...getAuthHeaders(),
+        // Remove Content-Type header to let browser set it with boundary
+      },
+      body: formData
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || 'Failed to import UBL file');
     }
 
     return result;

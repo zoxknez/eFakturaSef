@@ -1,42 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
-
-interface SettingsData {
-  // SEF API Configuration
-  environment: 'demo' | 'production';
-  apiKey: string;
-
-  // Company Information
-  companyName: string;
-  pib: string;
-  address: string;
-  city: string;
-  postalCode: string;
-
-  // Notifications
-  emailNotifications: boolean;
-  smsNotifications: boolean;
-  desktopNotifications: boolean;
-
-  // Advanced Settings
-  autoSend: boolean;
-  retryAttempts: number;
-  retryDelay: number;
-}
+import { settingsService, SettingsData } from '../services/settingsService';
 
 export const Settings: React.FC = () => {
   const { user, logout } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const [settings, setSettings] = useState<SettingsData>({
-    environment: 'demo',
     apiKey: '',
-    companyName: 'Demo Company d.o.o.',
-    pib: '123456789',
-    address: 'Knez Mihailova 42',
-    city: 'Beograd',
-    postalCode: '11000',
+    companyName: '',
+    pib: '',
+    address: '',
+    city: '',
+    postalCode: '',
     emailNotifications: true,
     smsNotifications: false,
     desktopNotifications: true,
@@ -44,6 +22,25 @@ export const Settings: React.FC = () => {
     retryAttempts: 3,
     retryDelay: 5
   });
+
+  // Load settings on component mount
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const loadSettings = async () => {
+    try {
+      setIsLoading(true);
+      const response = await settingsService.getSettings();
+      if (response.success && response.data) {
+        setSettings(response.data);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Greška pri učitavanju postavki');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleInputChange = (field: keyof SettingsData, value: any) => {
     setSettings(prev => ({
@@ -55,13 +52,17 @@ export const Settings: React.FC = () => {
 
   const handleSave = async () => {
     setIsLoading(true);
+    setError(null);
     try {
-      // Simuliramo API poziv
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } catch (error) {
-      console.error('Failed to save settings:', error);
+      const response = await settingsService.updateSettings(settings);
+      if (response.success) {
+        setSaved(true);
+        setTimeout(() => setSaved(false), 3000);
+        // Reload settings to get updated data
+        await loadSettings();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Greška pri čuvanju postavki');
     } finally {
       setIsLoading(false);
     }
@@ -69,13 +70,82 @@ export const Settings: React.FC = () => {
 
   const handleTestConnection = async () => {
     setIsLoading(true);
+    setError(null);
     try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      alert('Konekcija sa SEF API-jem je uspešna!');
-    } catch (error) {
-      alert('Greška u konekciji sa SEF API-jem!');
+      const response = await settingsService.testSEFConnection();
+      if (response.success) {
+        alert('✅ Konekcija sa SEF API-jem je uspešna!');
+      } else {
+        alert('❌ ' + (response.message || 'Greška u konekciji sa SEF API-jem'));
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Greška u konekciji sa SEF API-jem';
+      alert('❌ ' + errorMessage);
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleExportSettings = async () => {
+    try {
+      setIsLoading(true);
+      await settingsService.exportSettings();
+      alert('✅ Konfiguracija je uspešno izvezena!');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Greška pri izvozu konfiguracije';
+      alert('❌ ' + errorMessage);
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleImportSettings = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      try {
+        setIsLoading(true);
+        const text = await file.text();
+        const config = JSON.parse(text);
+
+        const response = await settingsService.importSettings(config);
+        if (response.success) {
+          alert('✅ Konfiguracija je uspešno uvezena!');
+          await loadSettings(); // Reload settings
+        }
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Greška pri uvozu konfiguracije';
+        alert('❌ ' + errorMessage);
+        setError(errorMessage);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    input.click();
+  };
+
+  const handleResetToDefaults = () => {
+    if (confirm('Da li ste sigurni da želite da resetujete sve postavke na fabričke vrednosti?')) {
+      setSettings({
+        apiKey: '',
+        companyName: '',
+        pib: '',
+        address: '',
+        city: '',
+        postalCode: '',
+        emailNotifications: true,
+        smsNotifications: false,
+        desktopNotifications: true,
+        autoSend: false,
+        retryAttempts: 3,
+        retryDelay: 5
+      });
     }
   };
 
@@ -106,31 +176,21 @@ export const Settings: React.FC = () => {
               🔧 SEF API Konfiguracija
             </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Okruženje
-                </label>
-                <select
-                  value={settings.environment}
-                  onChange={(e) => handleInputChange('environment', e.target.value as 'demo' | 'production')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="demo">🧪 Demo okruženje</option>
-                  <option value="production">🏭 Produkcija</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  API ključ
+                  SEF API ključ (produkcijski)
                 </label>
                 <input
                   type="password"
                   value={settings.apiKey}
                   onChange={(e) => handleInputChange('apiKey', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Unesite API ključ"
+                  placeholder="Unesite produkcijski API ključ"
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  🔒 Ključ za pristup produkcijskom SEF API sistemu
+                </p>
               </div>
             </div>
 
@@ -320,18 +380,31 @@ export const Settings: React.FC = () => {
             </h3>
 
             <div className="space-y-3">
-              <button className="w-full px-4 py-2 bg-blue-100 text-blue-800 rounded-lg hover:bg-blue-200 text-sm font-medium text-left">
+              <button
+                onClick={handleExportSettings}
+                disabled={isLoading}
+                className="w-full px-4 py-2 bg-blue-100 text-blue-800 rounded-lg hover:bg-blue-200 disabled:opacity-50 text-sm font-medium text-left"
+              >
                 📥 Izvezi konfiguraciju
               </button>
-              <button className="w-full px-4 py-2 bg-green-100 text-green-800 rounded-lg hover:bg-green-200 text-sm font-medium text-left">
+              <button
+                onClick={handleImportSettings}
+                disabled={isLoading}
+                className="w-full px-4 py-2 bg-green-100 text-green-800 rounded-lg hover:bg-green-200 disabled:opacity-50 text-sm font-medium text-left"
+              >
                 📤 Uvezi konfiguraciju
               </button>
-              <button className="w-full px-4 py-2 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 text-sm font-medium text-left">
+              <button
+                onClick={handleResetToDefaults}
+                disabled={isLoading}
+                className="w-full px-4 py-2 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 disabled:opacity-50 text-sm font-medium text-left"
+              >
                 🔄 Resetuj na fabričke
               </button>
               <button
                 onClick={logout}
-                className="w-full px-4 py-2 bg-red-100 text-red-800 rounded-lg hover:bg-red-200 text-sm font-medium text-left"
+                disabled={isLoading}
+                className="w-full px-4 py-2 bg-red-100 text-red-800 rounded-lg hover:bg-red-200 disabled:opacity-50 text-sm font-medium text-left"
               >
                 🚪 Odjavi se
               </button>
@@ -365,29 +438,21 @@ export const Settings: React.FC = () => {
       {/* Save Button */}
       <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-4 border border-gray-200/50">
         <div className="flex justify-between items-center">
-          {saved && (
+          {error && (
+            <div className="text-red-600 text-sm font-medium flex items-center">
+              ❌ {error}
+            </div>
+          )}
+          {saved && !error && (
             <div className="text-green-600 text-sm font-medium flex items-center">
               ✅ Podešavanja su uspešno sačuvana
             </div>
           )}
           <div className="flex space-x-3 ml-auto">
             <button
-              onClick={() => setSettings({
-                environment: 'demo',
-                apiKey: '',
-                companyName: 'Demo Company d.o.o.',
-                pib: '123456789',
-                address: 'Knez Mihailova 42',
-                city: 'Beograd',
-                postalCode: '11000',
-                emailNotifications: true,
-                smsNotifications: false,
-                desktopNotifications: true,
-                autoSend: false,
-                retryAttempts: 3,
-                retryDelay: 5
-              })}
-              className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+              onClick={handleResetToDefaults}
+              disabled={isLoading}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
             >
               🔄 Resetuj
             </button>

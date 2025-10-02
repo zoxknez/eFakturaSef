@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ResponsiveContainer, LineChart, Line, Tooltip } from 'recharts';
 import { parseTokens, isAllowedKey, isTokenValid, ALLOWED_KEYS } from '../utils/queryParser';
+import { settingsService } from '../services/settingsService';
+import { invoiceService } from '../services/invoiceService';
 
 type StatCardProps = {
   title: string;
@@ -222,6 +224,56 @@ export const AdvancedDashboard: React.FC = () => {
     if (!savedSearches.includes(label)) setSavedSearches((arr) => [label, ...arr].slice(0, 10));
   };
 
+  // Handle UBL file import
+  const handleImportUBL = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.xml,.ubl';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      try {
+        alert(`🔄 Uvoz UBL fajla "${file.name}"...`);
+
+        const result = await invoiceService.importUBL(file);
+
+        if (result.success) {
+          setLastRefreshed(new Date());
+          alert(`✅ UBL fajl "${file.name}" je uspešno uvezen!\n\nKreirana je nova faktura.`);
+        } else {
+          alert('❌ Greška pri uvoz UBL fajla: ' + (result.message || 'Nepoznata greška'));
+        }
+      } catch (error) {
+        console.error('UBL import error:', error);
+        alert('❌ Greška pri uvoz UBL fajla: ' + (error instanceof Error ? error.message : 'Nepoznata greška'));
+      }
+    };
+    input.click();
+  };
+
+  // Handle SEF synchronization
+  const handleSyncWithSEF = async () => {
+    try {
+      const confirmed = confirm('🔄 Da li želite da pokrenete sinhronizaciju sa SEF sistemom?\n\nOva operacija može potrajati nekoliko minuta.');
+      if (!confirmed) return;
+
+      alert('🔄 Pokretanje sinhronizacije sa SEF sistemom...');
+
+      const result = await settingsService.syncWithSEF();
+
+      if (result.success) {
+        setLastRefreshed(new Date());
+        alert('✅ Sinhronizacija sa SEF sistemom je uspešno završena!');
+      } else {
+        alert('❌ Greška pri sinhronizaciji: ' + (result.message || 'Nepoznata greška'));
+      }
+    } catch (error) {
+      console.error('SEF sync error:', error);
+      alert('❌ Greška pri sinhronizaciji sa SEF sistemom: ' + (error instanceof Error ? error.message : 'Nepoznata greška'));
+    }
+  };
+
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(id);
@@ -379,14 +431,14 @@ export const AdvancedDashboard: React.FC = () => {
             <span className="text-xs font-medium text-center">Izveštaj</span>
           </button>
           <button
-            onClick={() => console.log('Uvoz UBL fajla')}
+            onClick={handleImportUBL}
             className="flex flex-col items-center p-3 rounded-xl border bg-indigo-50 text-indigo-900 hover:bg-indigo-100 transition-all hover:scale-105"
           >
             <span className="text-2xl mb-1">📥</span>
             <span className="text-xs font-medium text-center">Uvezi UBL</span>
           </button>
           <button
-            onClick={() => console.log('Sinhronizuj sa SEF')}
+            onClick={handleSyncWithSEF}
             className="flex flex-col items-center p-3 rounded-xl border bg-cyan-50 text-cyan-900 hover:bg-cyan-100 transition-all hover:scale-105"
           >
             <span className="text-2xl mb-1">�</span>

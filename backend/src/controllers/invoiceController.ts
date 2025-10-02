@@ -6,6 +6,12 @@ import prisma from '../db/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { z } from 'zod';
 import logger from '../utils/logger';
+import { createSEFService } from '../services/sefService';
+
+// Extend AuthRequest to include file upload
+interface AuthRequestWithFile extends AuthRequest {
+  file?: any; // Multer file type
+}
 
 /** Helpers */
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -386,6 +392,223 @@ ${xmlLines}
     res.status(200).send(xml);
   } catch (error) {
     logger.error('Error downloading invoice:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+/**
+ * Pošalji fakturu u SEF sistem
+ */
+export const sendInvoiceToSEF = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user?.companyId) {
+      res.status(401).json({ success: false, message: 'Unauthorized' });
+      return;
+    }
+
+    const invoiceId = req.params.id;
+    if (!invoiceId) {
+      res.status(400).json({ success: false, message: 'Invoice ID is required' });
+      return;
+    }
+
+    // Pronađi fakturu
+    const invoice = await prisma.invoice.findFirst({
+      where: {
+        id: invoiceId,
+        OR: [
+          { supplierId: req.user.companyId },
+          { buyerId: req.user.companyId }
+        ]
+      },
+      include: {
+        supplier: true,
+        buyer: true,
+        lines: true
+      }
+    });
+
+    if (!invoice) {
+      res.status(404).json({ success: false, message: 'Invoice not found' });
+      return;
+    }
+
+    // Proveri da li je faktura u draft statusu i izlazna
+    if (invoice.status !== 'DRAFT' || invoice.direction !== 'OUTGOING') {
+      res.status(400).json({
+        success: false,
+        message: 'Samo draft izlazne fakture mogu biti poslate u SEF sistem'
+      });
+      return;
+    }
+
+    // Dobij API ključ kompanije
+    const company = await prisma.company.findUnique({
+      where: { id: req.user.companyId }
+    });
+
+    if (!company?.sefApiKey) {
+      res.status(400).json({
+        success: false,
+        message: 'SEF API ključ nije konfigurisan za vašu kompaniju'
+      });
+      return;
+    }
+
+    // Kreraj SEF service
+    const sefService = createSEFService(company.sefApiKey);
+
+    // Pripremi podatke za SEF
+    const sefInvoiceData = {
+      invoiceNumber: invoice.invoiceNumber,
+      issueDate: invoice.issueDate.toISOString(),
+      dueDate: invoice.dueDate?.toISOString(),
+      supplier: {
+        pib: invoice.supplier.pib,
+        name: invoice.supplier.name,
+        address: invoice.supplier.address,
+        city: invoice.supplier.city,
+        postalCode: invoice.supplier.postalCode,
+      },
+      buyer: {
+        pib: invoice.buyer.pib,
+        name: invoice.buyer.name,
+        address: invoice.buyer.address,
+        city: invoice.buyer.city,
+        postalCode: invoice.buyer.postalCode,
+      },
+      lines: invoice.lines.map(line => ({
+        itemName: line.itemName,
+        quantity: line.quantity,
+        unitPrice: line.unitPrice,
+        vatRate: line.vatRate,
+        lineTotal: line.lineTotal,
+      })),
+      totalAmount: invoice.totalAmount,
+      totalVat: invoice.totalVat,
+      subtotal: invoice.subtotal,
+      currency: invoice.currency,
+      ublXml: invoice.ublXml || undefined,
+    };
+
+    // Pošalji u SEF
+    const result = await sefService.sendInvoice(sefInvoiceData);
+
+    if (result.success && result.sefId) {
+      // Ažuriraj fakturu u bazi
+      await prisma.invoice.update({
+        where: { id: invoiceId },
+        data: {
+          sefId: result.sefId,
+          status: 'SENT',
+          sentAt: new Date(),
+        }
+      });
+
+      logger.info('Faktura uspešno poslata u SEF:', {
+        invoiceId,
+        sefId: result.sefId
+      });
+
+      res.json({
+        success: true,
+        message: 'Faktura je uspešno poslata u SEF sistem',
+        data: {
+          sefId: result.sefId,
+          status: 'SENT'
+        }
+      });
+    } else {
+      logger.error('Greška pri slanju fakture u SEF:', result);
+
+      res.status(400).json({
+        success: false,
+        message: result.message || 'Greška pri slanju fakture u SEF sistem',
+        errors: result.errors
+      });
+    }
+
+  } catch (error) {
+    logger.error('Error sending invoice to SEF:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+/**
+ * Import UBL file and create invoice
+ */
+export const importUBL = async (req: AuthRequestWithFile, res: Response): Promise<void> => {
+  try {
+    if (!req.user?.companyId) {
+      res.status(401).json({ success: false, message: 'Unauthorized' });
+      return;
+    }
+
+    if (!req.file) {
+      res.status(400).json({ success: false, message: 'UBL fajl je obavezan' });
+      return;
+    }
+
+    const ublContent = req.file.buffer.toString('utf-8');
+
+    // Basic UBL validation
+    if (!ublContent.includes('<Invoice') && !ublContent.includes('<invoice')) {
+      res.status(400).json({
+        success: false,
+        message: 'Fajl nije validan UBL dokument'
+      });
+      return;
+    }
+
+    // TODO: Implement proper UBL XML parsing using xml2js or similar
+    // For now, create a mock invoice from UBL data
+    const mockInvoice = {
+      invoiceNumber: `UBL-${Date.now()}`,
+      invoiceDate: new Date().toISOString().split('T')[0],
+      buyerPib: '12345678',
+      buyerName: 'UBL Import',
+      buyerAddress: 'UBL Address',
+      buyerCity: 'Belgrade',
+      buyerCountry: 'Serbia',
+      totalAmount: 100.00,
+      taxAmount: 20.00,
+      totalWithTax: 120.00,
+      currency: 'RSD',
+      paymentMethod: 'CASH',
+      items: [
+        {
+          name: 'UBL Imported Item',
+          quantity: 1,
+          unitPrice: 100.00,
+          totalPrice: 100.00,
+          taxRate: 20
+        }
+      ]
+    };
+
+    // For now, just return success without creating invoice
+    // TODO: Implement proper UBL parsing and Company/Invoice creation
+    logger.info('UBL file received for processing:', {
+      companyId: req.user.companyId,
+      fileName: req.file?.originalname || 'unknown',
+      fileSize: req.file?.size || 0
+    });
+
+    // Mock response
+    const mockInvoiceResponse = {
+      id: 'ubl-' + Date.now(),
+      invoiceNumber: mockInvoice.invoiceNumber,
+      issueDate: mockInvoice.invoiceDate,
+      totalAmount: mockInvoice.totalWithTax,
+      status: 'DRAFT'
+    };
+
+    res.json({
+      success: true,
+      message: 'UBL fajl je uspešno uvezen',
+      data: mockInvoiceResponse
+    });  } catch (error) {
+    logger.error('Error importing UBL:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };

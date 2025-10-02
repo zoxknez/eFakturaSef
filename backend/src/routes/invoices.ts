@@ -1,6 +1,7 @@
 // src/routes/invoices.ts
 
 import { Router } from 'express';
+import multer from 'multer';
 import { authMiddleware, requireRole } from '../middleware/auth';
 import {
   createInvoice,
@@ -9,9 +10,24 @@ import {
   updateInvoiceStatus,
   deleteInvoice,
   downloadInvoice,
+  sendInvoiceToSEF,
+  importUBL,
 } from '../controllers/invoiceController';
 
 const router = Router();
+
+// Configure multer for file uploads
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'text/xml' || file.mimetype === 'application/xml' || file.originalname.endsWith('.xml') || file.originalname.endsWith('.ubl')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only XML/UBL files are allowed'));
+    }
+  }
+});
 
 // Require authentication for all invoice routes
 router.use(authMiddleware);
@@ -209,5 +225,74 @@ router.delete('/:id', requireRole(['ADMIN']), deleteInvoice);
  *         description: Not found
  */
 router.get('/:id/download', downloadInvoice);
+
+/**
+ * @openapi
+ * /api/invoices/{id}/send-to-sef:
+ *   post:
+ *     summary: Pošalji fakturu u SEF sistem
+ *     tags: [Invoices]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Faktura uspešno poslata
+ *       400:
+ *         description: Greška u validaciji ili SEF komunikaciji
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Faktura nije pronađena
+ */
+router.post('/:id/send-to-sef', requireRole(['ADMIN', 'RAČUNOVOĐA']), sendInvoiceToSEF);
+
+/**
+ * @openapi
+ * /api/invoices/import-ubl:
+ *   post:
+ *     summary: Import UBL file
+ *     description: Uvoz UBL XML fajla i kreiranje fakture
+ *     tags: [Invoices]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               ublFile:
+ *                 type: string
+ *                 format: binary
+ *                 description: UBL XML fajl za uvoz
+ *     responses:
+ *       200:
+ *         description: UBL fajl uspešno uvezen
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *       400:
+ *         description: Neispravna UBL datoteka
+ *       401:
+ *         description: Unauthorized
+ *       413:
+ *         description: Fajl je previše veliki (maksimalno 10MB)
+ */
+router.post('/import-ubl', upload.single('ublFile'), importUBL);
 
 export default router;

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, FileText, Eye, Trash2, Send, Download } from 'lucide-react';
+import { Plus, FileText, Eye, Trash2, Send, Download, FileDown, FileX } from 'lucide-react';
 import { Invoice } from '../../types/invoice';
 import { invoiceService } from '../../services/invoiceService';
+import { DropdownMenu, DropdownMenuItem } from '../ui/DropdownMenu';
 
 const InvoiceList: React.FC = () => {
   const navigate = useNavigate();
@@ -31,7 +32,7 @@ const InvoiceList: React.FC = () => {
   };
 
   const handleDeleteInvoice = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this invoice?')) {
+    if (!confirm('Da li ste sigurni da želite da obrišete ovu fakturu?')) {
       return;
     }
 
@@ -39,7 +40,27 @@ const InvoiceList: React.FC = () => {
       await invoiceService.deleteInvoice(id);
       await loadInvoices(); // Reload the list
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete invoice');
+      setError(err instanceof Error ? err.message : 'Greška pri brisanju fakture');
+    }
+  };
+
+  const handleSendToSEF = async (id: string) => {
+    if (!confirm('Da li želite da pošaljete ovu fakturu u SEF sistem?')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const response = await invoiceService.sendInvoiceToSEF(id);
+
+      if (response.success) {
+        alert('Faktura je uspešno poslata u SEF sistem!');
+        await loadInvoices(); // Reload to show updated status
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Greška pri slanju fakture u SEF sistem');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -79,7 +100,7 @@ const InvoiceList: React.FC = () => {
       a.remove();
       URL.revokeObjectURL(url);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Download failed');
+      setError(err instanceof Error ? err.message : 'Greška pri preuzimanju');
     }
   };
 
@@ -102,6 +123,29 @@ const InvoiceList: React.FC = () => {
     }
   };
 
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'DRAFT':
+        return 'Nacrt';
+      case 'SENT':
+        return 'Poslato';
+      case 'DELIVERED':
+        return 'Dostavljeno';
+      case 'ACCEPTED':
+        return 'Prihvaćeno';
+      case 'REJECTED':
+        return 'Odbačeno';
+      case 'CANCELLED':
+        return 'Otkazano';
+      case 'STORNO':
+        return 'Stornirana';
+      case 'EXPIRED':
+        return 'Istekla';
+      default:
+        return status;
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -115,7 +159,7 @@ const InvoiceList: React.FC = () => {
       <div className="bg-red-50 border border-red-200 rounded-lg p-4">
         <div className="flex">
           <div className="ml-3">
-            <h3 className="text-sm font-medium text-red-800">Error</h3>
+            <h3 className="text-sm font-medium text-red-800">Greška</h3>
             <div className="mt-2 text-sm text-red-700">{error}</div>
           </div>
         </div>
@@ -238,7 +282,7 @@ const InvoiceList: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(invoice.status)}`}>
-                        {invoice.status}
+                        {getStatusLabel(invoice.status)}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -259,26 +303,38 @@ const InvoiceList: React.FC = () => {
                         >
                           <Eye className="w-4 h-4" />
                         </button>
-                        <button
-                          onClick={() => downloadInvoice(invoice.id, 'xml')}
-                          className="text-gray-700 hover:text-gray-900 p-1"
-                          title="Preuzmi (XML)"
+
+                        <DropdownMenu
+                          trigger={
+                            <button
+                              className="text-gray-700 hover:text-gray-900 p-1"
+                              title="Preuzmi"
+                            >
+                              <Download className="w-4 h-4" />
+                            </button>
+                          }
                         >
-                          <Download className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => downloadInvoice(invoice.id, 'pdf')}
-                          className="text-gray-700 hover:text-gray-900 p-1"
-                          title="Preuzmi (PDF)"
-                        >
-                          <Download className="w-4 h-4" />
-                        </button>
+                          <DropdownMenuItem
+                            onClick={() => downloadInvoice(invoice.id, 'pdf')}
+                            icon={<FileDown className="w-4 h-4 text-red-500" />}
+                          >
+                            Preuzmi PDF
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => downloadInvoice(invoice.id, 'xml')}
+                            icon={<FileX className="w-4 h-4 text-green-500" />}
+                          >
+                            Preuzmi XML
+                          </DropdownMenuItem>
+                        </DropdownMenu>
+
                         {invoice.status === 'DRAFT' && invoice.direction === 'OUTGOING' && (
                           <>
                             <button
-                              onClick={() => {/* TODO: Send to SEF */}}
+                              onClick={() => handleSendToSEF(invoice.id)}
                               className="text-green-600 hover:text-green-900 p-1"
                               title="Pošalji u SEF"
+                              disabled={loading}
                             >
                               <Send className="w-4 h-4" />
                             </button>
@@ -286,6 +342,7 @@ const InvoiceList: React.FC = () => {
                               onClick={() => handleDeleteInvoice(invoice.id)}
                               className="text-red-600 hover:text-red-900 p-1"
                               title="Obriši"
+                              disabled={loading}
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
