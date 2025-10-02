@@ -61,73 +61,71 @@ const StatCard = React.memo(({ title, value, subtitle, icon, gradient, trend, on
 });
 
 const SEFHealthCard = () => (
-  <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50">
-    <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
-      💚 SEF Health Status
+  <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-gray-200/50">
+    <h3 className="text-base font-bold text-gray-900 mb-3 flex items-center">
+      💚 SEF Status
     </h3>
 
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-sm text-gray-600">Poslednji ping</span>
+        <span className="text-xs text-gray-600">Konekcija</span>
         <div className="flex items-center">
           <div className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></div>
-          <span className="text-sm font-medium">Pre 30s</span>
+          <span className="text-xs font-medium text-green-600">Aktivna</span>
         </div>
       </div>
 
       <div className="flex items-center justify-between">
-        <span className="text-sm text-gray-600">Greške (24h)</span>
-        <span className="text-sm font-medium text-red-600">2</span>
+        <span className="text-xs text-gray-600">Greške (24h)</span>
+        <span className="text-xs font-medium text-red-600">2</span>
       </div>
 
       <div className="flex items-center justify-between">
-        <span className="text-sm text-gray-600">Queue veličina</span>
-        <span className="text-sm font-medium">5 dokumenata</span>
+        <span className="text-xs text-gray-600">Queue</span>
+        <span className="text-xs font-medium">5 dokumenata</span>
       </div>
 
       <div className="flex items-center justify-between">
-        <span className="text-sm text-gray-600">Retry trend</span>
-        <span className="text-sm font-medium text-green-600">↘ -15%</span>
+        <span className="text-xs text-gray-600">Retry trend</span>
+        <span className="text-xs font-medium text-green-600">↘ -15%</span>
       </div>
 
-      <div className="pt-2 border-t border-gray-100">
-        <button className="w-full px-4 py-2 bg-green-50 text-green-700 rounded-lg text-sm font-medium hover:bg-green-100">
-          🔍 Detaljni status
-        </button>
-      </div>
+      <button className="w-full px-3 py-2 bg-green-50 text-green-700 rounded-lg text-xs font-medium hover:bg-green-100">
+        🔍 Detaljni status
+      </button>
     </div>
   </div>
 );
 
 const DeadlinesCard = () => (
-  <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50">
-    <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
-      ⏰ Rokovi za odluku
+  <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-gray-200/50">
+    <h3 className="text-base font-bold text-gray-900 mb-3 flex items-center">
+      ⏰ Rokovi
     </h3>
 
-    <div className="space-y-3">
-      <div className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
+    <div className="space-y-2">
+      <div className="flex items-center justify-between p-2 bg-red-50 rounded-lg border border-red-200">
         <div>
-          <p className="text-sm font-medium text-red-900">Kritični (1-2 dana)</p>
-          <p className="text-xs text-red-600">Ulazne fakture</p>
+          <p className="text-xs font-medium text-red-900">Kritični</p>
+          <p className="text-xs text-red-600">1-2 dana</p>
         </div>
-        <span className="text-2xl font-bold text-red-600">3</span>
+        <span className="text-lg font-bold text-red-600">3</span>
       </div>
 
-  <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+      <div className="flex items-center justify-between p-2 bg-amber-50 rounded-lg border border-amber-200">
         <div>
-          <p className="text-sm font-medium text-blue-900">Oprez (3-5 dana)</p>
-          <p className="text-xs text-blue-600">Ulazne fakture</p>
+          <p className="text-xs font-medium text-amber-900">Oprez</p>
+          <p className="text-xs text-amber-600">3-5 dana</p>
         </div>
-  <span className="text-2xl font-bold text-blue-600">7</span>
+        <span className="text-lg font-bold text-amber-600">7</span>
       </div>
 
-  <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+      <div className="flex items-center justify-between p-2 bg-blue-50 rounded-lg border border-blue-200">
         <div>
-          <p className="text-sm font-medium text-blue-900">Aging poslate</p>
-          <p className="text-xs text-blue-600">Bez finalnog statusa</p>
+          <p className="text-xs font-medium text-blue-900">Aging</p>
+          <p className="text-xs text-blue-600">Bez statusa</p>
         </div>
-  <span className="text-2xl font-bold text-blue-600">12</span>
+        <span className="text-lg font-bold text-blue-600">12</span>
       </div>
     </div>
   </div>
@@ -142,24 +140,24 @@ const ErrorsFeedCard = () => {
   ];
 
   return (
-    <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50">
-      <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
-        🚨 Greške i upozorenja
+    <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-gray-200/50">
+      <h3 className="text-base font-bold text-gray-900 mb-3 flex items-center">
+        🚨 Aktivnost sistema
       </h3>
 
-      <div className="space-y-2 max-h-64 overflow-y-auto">
+      <div className="space-y-1 max-h-48 overflow-y-auto">
         {errors.map((error) => (
-          <div key={error.id} className="flex items-start p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
-            <span className="text-lg mr-3 mt-0.5">{error.icon}</span>
+          <div key={error.id} className="flex items-start p-2 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
+            <span className="text-sm mr-2 mt-0.5">{error.icon}</span>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">{error.message}</p>
+              <p className="text-xs font-medium text-gray-900 truncate">{error.message}</p>
               <p className="text-xs text-gray-500">{error.time}</p>
             </div>
           </div>
         ))}
       </div>
 
-      <button className="w-full mt-4 px-4 py-2 bg-gray-50 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-100">
+      <button className="w-full mt-3 px-3 py-2 bg-gray-50 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-100">
         📋 Svi događaji
       </button>
     </div>
@@ -236,32 +234,37 @@ export const AdvancedDashboard: React.FC = () => {
   }, [lastRefreshed, now]);
 
   return (
-    <div className="space-y-8 animate-fade-in">
-      {/* Company & Environment Header */}
+    <div className="space-y-6 animate-fade-in">
+      {/* Company & Environment Header - Optimized Layout */}
       {(() => {
         const meta = getCompanyMeta(selectedCompany);
         const parsed = parseCompanyLabel(selectedCompany);
         return (
-          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-gray-200/50">
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50">
             <div className="flex items-center justify-between">
+              {/* Left side - Company Info */}
               <div className="flex items-center gap-4">
-                <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${meta.gradient} flex items-center justify-center text-white font-bold text-lg shadow`}>{meta.initials}</div>
-                <div className="leading-tight">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <div className="text-xl font-bold text-gray-900 tracking-tight">{parsed.name}</div>
+                <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${meta.gradient} flex items-center justify-center text-white font-bold text-xl shadow-lg`}>
+                  {meta.initials}
+                </div>
+                <div>
+                  <div className="flex items-center gap-3 mb-1">
+                    <h2 className="text-2xl font-bold text-gray-900 tracking-tight">{parsed.name}</h2>
                     {parsed.pib && (
-                      <span className="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-700 border">PIB: {parsed.pib}</span>
+                      <span className="px-3 py-1 text-sm rounded-full bg-blue-100 text-blue-800 border border-blue-200 font-medium">
+                        PIB: {parsed.pib}
+                      </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-gray-600 mt-1">
-                    <span className="hidden sm:inline flex items-center gap-1">
-                      🏢 <span className="text-gray-700">Multi-company režim</span>
+                  <div className="flex items-center gap-3 text-sm text-gray-600">
+                    <span className="flex items-center gap-1">
+                      🏢 <span className="text-gray-700 font-medium">Multi-company režim</span>
                     </span>
                     <span className="text-gray-300">•</span>
                     <select
                       value={selectedCompany}
                       onChange={(e) => setSelectedCompany(e.target.value)}
-                      className="bg-gray-50 border border-gray-200 rounded-md px-2 py-1 text-sm text-gray-700 hover:bg-gray-100"
+                      className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1 text-sm text-gray-700 hover:bg-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                     >
                       {COMPANIES.map((c) => {
                         const p = parseCompanyLabel(c.label);
@@ -273,13 +276,46 @@ export const AdvancedDashboard: React.FC = () => {
                   </div>
                 </div>
               </div>
-              <div />
+
+              {/* Right side - Quick Stats & Actions */}
+              <div className="flex items-center gap-6">
+                {/* Quick Stats */}
+                <div className="hidden md:flex items-center gap-6">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">98%</div>
+                    <div className="text-xs text-gray-500">Uspešnost</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-600">127</div>
+                    <div className="text-xs text-gray-500">Ovaj mesec</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-amber-600">15</div>
+                    <div className="text-xs text-gray-500">Na čekanju</div>
+                  </div>
+                </div>
+
+                {/* Quick Actions */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => navigate('/invoices/create')}
+                    className="px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg hover:from-blue-600 hover:to-cyan-600 transition-all shadow-lg shadow-blue-500/25 text-sm font-medium"
+                  >
+                    ➕ Nova faktura
+                  </button>
+                  <button className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         );
       })()}
-      {/* KPI Cards directly under company header */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* KPI Cards - kompaktniji nakon poboljšanog header-a */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Poslate fakture"
           value="127"
@@ -292,9 +328,9 @@ export const AdvancedDashboard: React.FC = () => {
         />
 
         <StatCard
-          title="Prihvaćene fakture"
+          title="Prihvaćene"
           value="98"
-          subtitle="77% stopa prihvatanja"
+          subtitle="77% uspešnost"
           icon="✅"
           gradient="bg-gradient-to-r from-green-500 to-emerald-500"
           trend={{ value: "+8%", positive: true }}
@@ -302,17 +338,17 @@ export const AdvancedDashboard: React.FC = () => {
         />
 
         <StatCard
-          title="Na čekanju"
+          title="Čeka odluku"
           value="15"
-          subtitle="Čeka odluku"
+          subtitle="Ulazne fakture"
           icon="⏳"
-          gradient="bg-gradient-to-r from-sky-500 to-blue-500"
+          gradient="bg-gradient-to-r from-amber-500 to-orange-500"
           trend={{ value: "-3%", positive: false }}
           onClick={() => navigate('/invoices')}
         />
 
         <StatCard
-          title="Ukupan promet"
+          title="Promet"
           value="2.4M"
           subtitle="RSD ovaj mesec"
           icon="💰"
@@ -322,51 +358,53 @@ export const AdvancedDashboard: React.FC = () => {
         />
       </div>
 
-      {/* ⚡ Quick Actions (larger, grid) */}
-      <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-gray-200/50">
-        <div className="mb-3 text-base font-semibold text-gray-900">⚡ Brze akcije</div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      {/* ⚡ Quick Actions - Kompaktnije */}
+      <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 border border-gray-200/50">
+        <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center">
+          ⚡ Brze akcije
+        </h3>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <button
             onClick={() => navigate('/invoices/create')}
-            className="flex items-center justify-between p-4 rounded-xl border bg-blue-50 text-blue-900 hover:bg-blue-100 transition-colors"
+            className="flex flex-col items-center p-3 rounded-xl border bg-blue-50 text-blue-900 hover:bg-blue-100 transition-all hover:scale-105"
           >
-            <span className="font-medium">🆕 Kreiraj fakturu</span>
-            <span className="text-blue-600">→</span>
+            <span className="text-2xl mb-1">🆕</span>
+            <span className="text-xs font-medium text-center">Kreiraj</span>
           </button>
           <button
             onClick={() => navigate('/invoices')}
-            className="flex items-center justify-between p-4 rounded-xl border bg-green-50 text-green-900 hover:bg-green-100 transition-colors"
+            className="flex flex-col items-center p-3 rounded-xl border bg-green-50 text-green-900 hover:bg-green-100 transition-all hover:scale-105"
           >
-            <span className="font-medium">📊 Generiši izveštaj</span>
-            <span className="text-green-600">→</span>
-          </button>
-          <button
-            onClick={() => navigate('/settings')}
-            className="flex items-center justify-between p-4 rounded-xl border bg-purple-50 text-purple-900 hover:bg-purple-100 transition-colors"
-          >
-            <span className="font-medium">⚙️ Podešavanja</span>
-            <span className="text-purple-600">→</span>
+            <span className="text-2xl mb-1">📊</span>
+            <span className="text-xs font-medium text-center">Izveštaj</span>
           </button>
           <button
             onClick={() => console.log('Uvoz UBL fajla')}
-            className="flex items-center justify-between p-4 rounded-xl border bg-indigo-50 text-indigo-900 hover:bg-indigo-100 transition-colors"
+            className="flex flex-col items-center p-3 rounded-xl border bg-indigo-50 text-indigo-900 hover:bg-indigo-100 transition-all hover:scale-105"
           >
-            <span className="font-medium">📥 Uvezi UBL</span>
-            <span className="text-indigo-600">→</span>
+            <span className="text-2xl mb-1">📥</span>
+            <span className="text-xs font-medium text-center">Uvezi UBL</span>
           </button>
           <button
             onClick={() => console.log('Sinhronizuj sa SEF')}
-            className="flex items-center justify-between p-4 rounded-xl border bg-blue-50 text-blue-900 hover:bg-blue-100 transition-colors"
+            className="flex flex-col items-center p-3 rounded-xl border bg-cyan-50 text-cyan-900 hover:bg-cyan-100 transition-all hover:scale-105"
           >
-            <span className="font-medium">🔁 Sinhronizuj SEF</span>
-            <span className="text-blue-600">→</span>
+            <span className="text-2xl mb-1">�</span>
+            <span className="text-xs font-medium text-center">Sinhronizuj</span>
           </button>
           <button
             onClick={() => navigate('/invoices')}
-            className="flex items-center justify-between p-4 rounded-xl border bg-teal-50 text-teal-900 hover:bg-teal-100 transition-colors"
+            className="flex flex-col items-center p-3 rounded-xl border bg-teal-50 text-teal-900 hover:bg-teal-100 transition-all hover:scale-105"
           >
-            <span className="font-medium">🧾 Ulazne fakture</span>
-            <span className="text-teal-600">→</span>
+            <span className="text-2xl mb-1">🧾</span>
+            <span className="text-xs font-medium text-center">Ulazne</span>
+          </button>
+          <button
+            onClick={() => navigate('/settings')}
+            className="flex flex-col items-center p-3 rounded-xl border bg-purple-50 text-purple-900 hover:bg-purple-100 transition-all hover:scale-105"
+          >
+            <span className="text-2xl mb-1">⚙️</span>
+            <span className="text-xs font-medium text-center">Postavke</span>
           </button>
         </div>
       </div>
@@ -534,58 +572,52 @@ export const AdvancedDashboard: React.FC = () => {
       </div>
 
 
-      {/* Dashboard Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column */}
-        <div className="lg:col-span-2 space-y-6">
-          <SEFHealthCard />
+      {/* Dashboard Grid - Kompaktniji layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        {/* Glavni sadržaj - 3 kolone */}
+        <div className="lg:col-span-3 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <SEFHealthCard />
+            <DeadlinesCard />
+          </div>
           <ErrorsFeedCard />
         </div>
 
-        {/* Right Column */}
-        <div className="space-y-6">
-          <DeadlinesCard />
-
-          {/* 📌 Zadaci danas */}
-          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">📌 Zadaci danas</h3>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 rounded-xl border bg-gray-50">
-                <div>
-                  <p className="text-sm font-medium text-gray-900">Potvrdi ulazne fakture</p>
-                  <p className="text-xs text-gray-600">7 faktura čeka odluku</p>
-                </div>
-                <button onClick={() => navigate('/invoices')} className="px-3 py-1.5 rounded-lg bg-green-100 text-green-800 text-sm hover:bg-green-200">Otvori</button>
+        {/* Sidebar - 1 kolona */}
+        <div className="space-y-4">
+          {/* 📌 Zadaci danas - kompaktniji */}
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-gray-200/50">
+            <h3 className="text-base font-bold text-gray-900 mb-3 flex items-center">
+              📌 Zadaci danas
+            </h3>
+            <div className="space-y-2">
+              <div className="p-2 rounded-lg bg-green-50 border border-green-200">
+                <p className="text-xs font-medium text-green-900">Potvrdi ulazne</p>
+                <p className="text-xs text-green-600">7 čeka odluku</p>
               </div>
-              <div className="flex items-center justify-between p-3 rounded-xl border bg-gray-50">
-                <div>
-                  <p className="text-sm font-medium text-gray-900">Pošalji fakture u draftu</p>
-                  <p className="text-xs text-gray-600">3 spremne za slanje</p>
-                </div>
-                <button onClick={() => navigate('/invoices')} className="px-3 py-1.5 rounded-lg bg-blue-100 text-blue-800 text-sm hover:bg-blue-200">Pošalji</button>
+              <div className="p-2 rounded-lg bg-blue-50 border border-blue-200">
+                <p className="text-xs font-medium text-blue-900">Pošalji drafts</p>
+                <p className="text-xs text-blue-600">3 spremne</p>
               </div>
-              <div className="flex items-center justify-between p-3 rounded-xl border bg-gray-50">
-                <div>
-                  <p className="text-sm font-medium text-gray-900">Pregledaj greške u obradi</p>
-                  <p className="text-xs text-gray-600">2 nova incidenta</p>
-                </div>
-                <button onClick={() => navigate('/invoices')} className="px-3 py-1.5 rounded-lg bg-red-100 text-red-800 text-sm hover:bg-red-200">Pregled</button>
+              <div className="p-2 rounded-lg bg-red-50 border border-red-200">
+                <p className="text-xs font-medium text-red-900">Greške u obradi</p>
+                <p className="text-xs text-red-600">2 incidenta</p>
               </div>
-              <div className="flex items-center justify-between p-3 rounded-xl border bg-gray-50">
-                <div>
-                  <p className="text-sm font-medium text-gray-900">Validiraj nove partnere</p>
-                  <p className="text-xs text-gray-600">2 nova zahteva</p>
-                </div>
-                <button onClick={() => navigate('/settings')} className="px-3 py-1.5 rounded-lg bg-amber-100 text-amber-900 text-sm hover:bg-amber-200">Otvori</button>
+              <div className="p-2 rounded-lg bg-amber-50 border border-amber-200">
+                <p className="text-xs font-medium text-amber-900">Novi partneri</p>
+                <p className="text-xs text-amber-600">2 zahteva</p>
               </div>
-              <div className="flex items-center justify-between p-3 rounded-xl border bg-gray-50">
-                <div>
-                  <p className="text-sm font-medium text-gray-900">Exportuj PDV evidenciju</p>
-                  <p className="text-xs text-gray-600">Za prethodni mesec</p>
-                </div>
-                <button onClick={() => console.log('Export PDV')} className="px-3 py-1.5 rounded-lg bg-purple-100 text-purple-900 text-sm hover:bg-purple-200">Export</button>
+              <div className="p-2 rounded-lg bg-purple-50 border border-purple-200">
+                <p className="text-xs font-medium text-purple-900">PDV evidencija</p>
+                <p className="text-xs text-purple-600">Prethodni mesec</p>
               </div>
             </div>
+            <button
+              onClick={() => navigate('/invoices')}
+              className="w-full mt-3 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-xs hover:bg-gray-200 transition-colors"
+            >
+              🔍 Sve zadatke
+            </button>
           </div>
         </div>
       </div>

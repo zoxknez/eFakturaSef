@@ -15,14 +15,15 @@
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
     "db:generate": "prisma generate",
-  "db:seed": "ts-node prisma/seed.ts",
-  "db:seed:js": "node prisma/seed.js",
+    "db:seed": "ts-node prisma/seed.ts",
+    "db:seed:js": "node prisma/seed.js",
     "postinstall": "prisma generate",
     "kill-port": "powershell -NoProfile -Command \"$p=Get-NetTCPConnection -LocalPort 3003 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess; if($p){ Stop-Process -Id $p -Force; Write-Host 'Freed port 3003 (PID' $p ')'; } else { Write-Host 'Port 3003 free'; }\""
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
     "@sef-app/shared": "file:../shared",
+    "@types/pdfkit": "^0.17.3",
     "bcryptjs": "^2.4.3",
     "bull": "^4.12.2",
     "compression": "^1.7.4",
@@ -32,11 +33,11 @@
     "express-rate-limit": "^7.1.5",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
+    "pdfkit": "^0.15.2",
     "prisma": "^5.22.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "winston": "^3.11.0",
-    "pdfkit": "^0.15.0",
     "zod": "^4.1.11"
   },
   "devDependencies": {

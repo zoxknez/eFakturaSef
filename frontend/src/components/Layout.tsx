@@ -6,10 +6,10 @@ interface LayoutProps {
 }
 
 const navigation = [
-  { name: 'Komandna tabla', href: '/', icon: '📊' },
-  { name: 'Fakture', href: '/invoices', icon: '📄' },
-  { name: 'Nova faktura', href: '/invoices/create', icon: '➕' },
-  { name: 'Podešavanja', href: '/settings', icon: '⚙️' },
+  { name: 'Pregled sistema', href: '/', icon: '📊', shortName: 'Pregled' },
+  { name: 'Sve fakture', href: '/invoices', icon: '📄', shortName: 'Fakture' },
+  { name: 'Kreiranje', href: '/invoices/create', icon: '➕', shortName: 'Nova' },
+  { name: 'Podešavanja', href: '/settings', icon: '⚙️', shortName: 'Postavke' },
 ];
 
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
@@ -95,9 +95,14 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
                 </svg>
               </button>
-              <h1 className="ml-4 text-2xl font-bold text-gray-900 lg:ml-0">
-                {navigation.find(item => item.href === location.pathname)?.name || 'SEF Portal'}
-              </h1>
+              <div className="ml-4 lg:ml-0">
+                <h1 className="text-xl font-bold text-gray-900">
+                  {navigation.find(item => item.href === location.pathname)?.shortName || 'SEF Portal'}
+                </h1>
+                <p className="text-sm text-gray-500">
+                  {navigation.find(item => item.href === location.pathname)?.name || 'Elektronske fakture'}
+                </p>
+              </div>
             </div>
 
             <div className="flex items-center space-x-4">

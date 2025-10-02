@@ -126,67 +126,97 @@ const InvoiceList: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Fakture</h1>
-          <p className="text-gray-600">Pregled, pretraga i upravljanje fakturama</p>
+      <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50">
+        <div className="flex justify-between items-center">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900 flex items-center">
+              📄 Pregled svih faktura
+            </h2>
+            <p className="text-gray-600 mt-1">Upravljanje, pretraga i praćenje statusa</p>
+          </div>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={loadInvoices}
+              className="inline-flex items-center px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"
+            >
+              🔄 Osveži
+            </button>
+            <button
+              onClick={() => navigate('/invoices/create')}
+              className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg hover:from-blue-600 hover:to-cyan-600 transition-all shadow-lg shadow-blue-500/25"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Kreiraj novu
+            </button>
+          </div>
         </div>
-        <button
-          onClick={() => navigate('/invoices/create')}
-          className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Nova faktura
-        </button>
       </div>
 
       {/* Invoice List */}
-      <div className="bg-white/20 backdrop-blur-md rounded-xl border border-white/30 shadow-lg">
+      <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-200/50 shadow-lg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full">
-            <thead className="bg-white/10">
+            <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                  Broj fakture
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  📄 Broj fakture
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                  Datum
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  📅 Datum izdavanja
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                  Kupac / Dobavljač
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  🏢 Partner
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                  Iznos
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  💰 Iznos
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                  Status
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  📊 Status
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                  Smer
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  ↔️ Tip
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">
-                  Akcije
+                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  ⚡ Akcije
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/10">
+            <tbody className="divide-y divide-gray-100 bg-white">
               {invoices.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center">
-                    <FileText className="mx-auto h-12 w-12 text-gray-400" />
-                    <h3 className="mt-2 text-sm font-medium text-gray-900">Nema faktura</h3>
-                    <p className="mt-1 text-sm text-gray-500">Kreirajte vašu prvu fakturu.</p>
+                  <td colSpan={7} className="px-6 py-16 text-center">
+                    <div className="flex flex-col items-center space-y-4">
+                      <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center">
+                        <FileText className="h-8 w-8 text-gray-400" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-medium text-gray-900">Nema kreiranih faktura</h3>
+                        <p className="mt-1 text-sm text-gray-500">Početna strana - kreirajte vašu prvu fakturu</p>
+                      </div>
+                      <button
+                        onClick={() => navigate('/invoices/create')}
+                        className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Kreiraj prvu fakturu
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ) : (
                 invoices.map((invoice) => (
-                  <tr key={invoice.id} className="hover:bg-white/5">
+                  <tr key={invoice.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        <FileText className="flex-shrink-0 h-5 w-5 text-gray-400 mr-3" />
-                        <span className="text-sm font-medium text-gray-900">
-                          {invoice.invoiceNumber}
-                        </span>
+                        <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center mr-3">
+                          <FileText className="h-4 w-4 text-blue-600" />
+                        </div>
+                        <div>
+                          <span className="text-sm font-semibold text-gray-900">
+                            {invoice.invoiceNumber}
+                          </span>
+                          <p className="text-xs text-gray-500">ID: {invoice.id.slice(0, 8)}...</p>
+                        </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">

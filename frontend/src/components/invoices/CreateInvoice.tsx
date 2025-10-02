@@ -121,16 +121,25 @@ const CreateInvoice: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center space-x-4">
-        <button
-          onClick={() => navigate('/invoices')}
-          className="p-2 text-gray-600 hover:text-gray-900 transition-colors"
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Nova faktura</h1>
-          <p className="text-gray-600">Kreiranje nove izlazne fakture</p>
+      <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50">
+        <div className="flex items-center space-x-4">
+          <button
+            onClick={() => navigate('/invoices')}
+            className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200 hover:text-gray-900 transition-all"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div>
+            <h1 className="text-xl font-bold text-gray-900 flex items-center">
+              ➕ Kreiranje nove fakture
+            </h1>
+            <p className="text-gray-600 mt-1">Izlazna faktura za SEF sistem</p>
+          </div>
+          <div className="flex-1"></div>
+          <div className="text-right">
+            <p className="text-sm text-gray-500">Korak 1 od 2</p>
+            <p className="text-xs text-gray-400">Unos osnovnih podataka</p>
+          </div>
         </div>
       </div>
 
@@ -143,8 +152,10 @@ const CreateInvoice: React.FC = () => {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Information */}
-        <div className="bg-white/20 backdrop-blur-md rounded-xl border border-white/30 shadow-lg p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Osnovne informacije</h2>
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-200/50 shadow-lg p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
+            📋 Osnovne informacije o fakturi
+          </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">

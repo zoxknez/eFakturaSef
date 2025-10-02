@@ -14,8 +14,14 @@ function App() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-pulse text-lg">Učitavanje...</div>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-r from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/25 mx-auto mb-4 animate-pulse">
+            <span className="text-white font-bold text-2xl">S</span>
+          </div>
+          <div className="text-lg font-medium text-gray-700 animate-pulse">Učitavanje...</div>
+          <div className="text-sm text-gray-500 mt-1">SEF eFakture Portal</div>
+        </div>
       </div>
     );
   }

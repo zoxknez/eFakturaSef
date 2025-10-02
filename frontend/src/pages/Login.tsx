@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
 export const Login: React.FC = () => {
-  const navigate = useNavigate();
   const [email, setEmail] = useState('admin@democompany.rs');
   const [password, setPassword] = useState('demo123');
   const [error, setError] = useState<string | null>(null);
@@ -15,9 +13,8 @@ export const Login: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-  await login(email, password);
-  // Nakon uspešnog logina idi na komandnu tablu (dashboard)
-  navigate('/', { replace: true });
+      await login(email, password);
+      // App component će automatski preusmeriti na dashboard kada se isAuthenticated promeni
     } catch (e: any) {
       setError(e?.message || 'Neuspešna prijava');
     }
