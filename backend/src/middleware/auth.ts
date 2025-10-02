@@ -2,16 +2,17 @@ import { Request, Response, NextFunction } from 'express';
 import * as jwt from 'jsonwebtoken';
 import { config } from '../config';
 
-interface AuthenticatedRequest extends Request {
+export interface AuthRequest extends Request {
   user?: {
-    id: string;
+    userId: string;
     email: string;
     role: string;
+    companyId: string;
   };
 }
 
 export const authMiddleware = (
-  req: AuthenticatedRequest,
+  req: AuthRequest,
   res: Response,
   next: NextFunction
 ) => {
@@ -26,7 +27,12 @@ export const authMiddleware = (
     }
 
     const decoded = jwt.verify(token, config.JWT_SECRET) as any;
-    req.user = decoded;
+    req.user = {
+      userId: decoded.userId || decoded.id,
+      email: decoded.email,
+      role: decoded.role,
+      companyId: decoded.companyId
+    };
     next();
   } catch (error) {
     res.status(401).json({
@@ -37,7 +43,7 @@ export const authMiddleware = (
 };
 
 export const requireRole = (roles: string[]) => {
-  return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  return (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user || !roles.includes(req.user.role)) {
       return res.status(403).json({
         success: false,

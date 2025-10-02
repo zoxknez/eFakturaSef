@@ -11,9 +11,8 @@ import { authMiddleware } from './middleware/auth';
 // Route imports
 import authRoutes from './routes/auth';
 import invoiceRoutes from './routes/invoices';
-import companyRoutes from './routes/companies';
-import userRoutes from './routes/users';
-import sefRoutes from './routes/sef';
+import companyRoutes from './routes/company';
+import webhookRoutes from './routes/webhooks';
 
 const app = express();
 
@@ -48,10 +47,9 @@ app.get('/health', (req, res) => {
 
 // API routes
 app.use('/api/auth', authRoutes);
-app.use('/api/invoices', authMiddleware, invoiceRoutes);
-app.use('/api/companies', authMiddleware, companyRoutes);
-app.use('/api/users', authMiddleware, userRoutes);
-app.use('/api/sef', sefRoutes); // SEF webhooks don't require auth
+app.use('/api/invoices', invoiceRoutes); // Auth handled in routes
+app.use('/api/company', companyRoutes); // Auth handled in routes  
+app.use('/api/webhooks', webhookRoutes); // SEF webhooks and management
 
 // 404 handler
 app.use('*', (req, res) => {
