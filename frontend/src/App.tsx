@@ -1,55 +1,63 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { Layout } from './components/Layout';
-import { AdvancedDashboard } from './pages/AdvancedDashboard';
 import { Login } from './pages/Login';
-import { AdvancedInvoiceDetail } from './pages/AdvancedInvoiceDetail';
-import InvoiceList from './components/invoices/InvoiceList';
-import CreateInvoiceComponent from './components/invoices/CreateInvoice';
-import { Settings } from './pages/Settings';
-import About from './pages/About';
 import { useAuth } from './hooks/useAuth';
-import { MagnifierProvider, MagnifierFAB } from './components/accessibility';
+import ErrorBoundary from './components/ErrorBoundary';
+import { ErrorProvider } from './contexts/ErrorContext';
+import { Toaster } from './components/Toaster';
+import { LoadingSpinner } from './components/LoadingSpinner';
+
+// Lazy load heavy pages for better initial load performance
+const AdvancedDashboard = lazy(() => import('./pages/AdvancedDashboard').then(m => ({ default: m.AdvancedDashboard })));
+const AdvancedInvoiceList = lazy(() => import('./pages/AdvancedInvoiceList').then(m => ({ default: m.AdvancedInvoiceList })));
+const AdvancedInvoiceDetail = lazy(() => import('./pages/AdvancedInvoiceDetail').then(m => ({ default: m.AdvancedInvoiceDetail })));
+const CreateInvoice = lazy(() => import('./pages/CreateInvoice').then(m => ({ default: m.CreateInvoice })));
+const Settings = lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
+const Partners = lazy(() => import('./pages/Partners'));
+const Products = lazy(() => import('./pages/Products'));
 
 function App() {
   const { isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-r from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/25 mx-auto mb-4 animate-pulse">
-            <span className="text-white font-bold text-2xl">S</span>
-          </div>
-          <div className="text-lg font-medium text-gray-700 animate-pulse">Učitavanje...</div>
-          <div className="text-sm text-gray-500 mt-1">SEF eFakture Portal</div>
-        </div>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-pulse text-lg">Učitavanje...</div>
       </div>
     );
   }
 
   if (!isAuthenticated) {
-    return <Login />;
+    return (
+      <ErrorProvider>
+        <ErrorBoundary>
+          <Login />
+          <Toaster />
+        </ErrorBoundary>
+      </ErrorProvider>
+    );
   }
 
   return (
-    <MagnifierProvider targetSelector="#app-root" zoom={2} radius={120}>
-      <div id="app-root" className="min-h-screen">
+    <ErrorProvider>
+      <ErrorBoundary>
         <Layout>
-          <Routes>
-            <Route path="/" element={<AdvancedDashboard />} />
-            <Route path="/invoices" element={<InvoiceList />} />
-            <Route path="/invoices/:id" element={<AdvancedInvoiceDetail />} />
-            <Route path="/invoices/create" element={<CreateInvoiceComponent />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/about" element={<About />} />
-          </Routes>
+          <Suspense fallback={<LoadingSpinner />}>
+            <Routes>
+              <Route path="/" element={<AdvancedDashboard />} />
+              <Route path="/invoices" element={<AdvancedInvoiceList />} />
+              <Route path="/invoices/:id" element={<AdvancedInvoiceDetail />} />
+              <Route path="/invoices/new" element={<CreateInvoice />} />
+              <Route path="/partners" element={<Partners />} />
+              <Route path="/products" element={<Products />} />
+              <Route path="/settings" element={<Settings />} />
+            </Routes>
+          </Suspense>
         </Layout>
-
-        {/* Plutajuće FAB dugme za lupu */}
-        <MagnifierFAB />
-      </div>
-    </MagnifierProvider>
+        <Toaster />
+      </ErrorBoundary>
+    </ErrorProvider>
   );
 }
 

@@ -1,0 +1,89 @@
+# Alertmanager configuration
+global:
+  resolve_timeout: 5m
+  # SMTP configuration (for email alerts)
+  smtp_smarthost: 'smtp.gmail.com:587'
+  smtp_from: 'alerts@sef-efakture.com'
+  smtp_auth_username: '${SMTP_USER}'
+  smtp_auth_password: '${SMTP_PASS}'
+  smtp_require_tls: true
+
+# Templates
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# Route alerts to receivers
+route:
+  receiver: 'default-receiver'
+  group_by: ['alertname', 'severity']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 12h
+  
+  routes:
+    # Critical alerts - immediate notification
+    - match:
+        severity: critical
+      receiver: 'critical-alerts'
+      group_wait: 0s
+      repeat_interval: 5m
+
+    # Warning alerts - grouped
+    - match:
+        severity: warning
+      receiver: 'warning-alerts'
+      group_wait: 30s
+      repeat_interval: 1h
+
+    # Info alerts - daily summary
+    - match:
+        severity: info
+      receiver: 'info-alerts'
+      group_wait: 5m
+      repeat_interval: 24h
+
+# Receivers (notification channels)
+receivers:
+  # Default receiver
+  - name: 'default-receiver'
+    email_configs:
+      - to: 'team@sef-efakture.com'
+        headers:
+          Subject: '[SEF Alert] {{ .GroupLabels.alertname }}'
+
+  # Critical alerts - multiple channels
+  - name: 'critical-alerts'
+    email_configs:
+      - to: 'oncall@sef-efakture.com'
+        headers:
+          Subject: '[CRITICAL] {{ .GroupLabels.alertname }}'
+    # Uncomment to add Slack integration
+    # slack_configs:
+    #   - api_url: '${SLACK_WEBHOOK_URL}'
+    #     channel: '#alerts-critical'
+    #     title: 'Critical Alert: {{ .GroupLabels.alertname }}'
+    #     text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+
+  # Warning alerts
+  - name: 'warning-alerts'
+    email_configs:
+      - to: 'team@sef-efakture.com'
+        headers:
+          Subject: '[Warning] {{ .GroupLabels.alertname }}'
+
+  # Info alerts
+  - name: 'info-alerts'
+    email_configs:
+      - to: 'team@sef-efakture.com'
+        headers:
+          Subject: '[Info] Daily Alert Summary'
+
+# Inhibition rules (suppress alerts)
+inhibit_rules:
+  # Suppress warning if critical alert is firing
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname']
+

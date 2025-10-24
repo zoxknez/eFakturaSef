@@ -1,36 +1,17 @@
-import Queue from 'bull';
-import { config } from '../config';
+// Queue exports and initialization
+export { invoiceQueue, queueInvoice, closeInvoiceQueue } from './invoiceQueue';
+export { webhookQueue, queueWebhook, closeWebhookQueue } from './webhookQueue';
+export type { InvoiceJobData } from './invoiceQueue';
+export type { WebhookJobData } from './webhookQueue';
 
-export type QueueBundle = {
-  enabled: boolean;
-  sendInvoiceQueue?: Queue.Queue<any>;
-  pollStatusQueue?: Queue.Queue<any>;
+// Graceful shutdown handler
+export const closeAllQueues = async (): Promise<void> => {
+  const { closeInvoiceQueue } = await import('./invoiceQueue');
+  const { closeWebhookQueue } = await import('./webhookQueue');
+  
+  await Promise.all([
+    closeInvoiceQueue(),
+    closeWebhookQueue(),
+  ]);
 };
 
-let queues: QueueBundle = { enabled: false };
-
-function initQueues(): QueueBundle {
-  if (queues.enabled) return queues;
-
-  if (process.env.NODE_ENV === 'test' || !config.REDIS_URL) {
-    queues = { enabled: false };
-    return queues;
-  }
-
-  try {
-    const opts = { redis: config.REDIS_URL } as any;
-    const sendInvoiceQueue = new Queue('send-invoice', opts);
-    const pollStatusQueue = new Queue('poll-status', opts);
-    queues = { enabled: true, sendInvoiceQueue, pollStatusQueue };
-  } catch {
-    queues = { enabled: false };
-  }
-
-  return queues;
-}
-
-export function getQueues(): QueueBundle {
-  return initQueues();
-}
-
-export default getQueues;

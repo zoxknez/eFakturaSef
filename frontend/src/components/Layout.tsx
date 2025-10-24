@@ -1,18 +1,40 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import Footer from './Footer';
 
 interface LayoutProps {
   children: React.ReactNode;
 }
 
 const navigation = [
-  { name: 'Pregled sistema', href: '/', icon: '📊', shortName: 'Pregled' },
-  { name: 'Sve fakture', href: '/invoices', icon: '📄', shortName: 'Fakture' },
-  { name: 'Kreiranje', href: '/invoices/create', icon: '➕', shortName: 'Nova' },
-  { name: 'Podešavanja', href: '/settings', icon: '⚙️', shortName: 'Postavke' },
-  { name: 'O aplikaciji', href: '/about', icon: '💻', shortName: 'O nama' },
+  { name: 'Komandna tabla', href: '/', icon: '📊' },
+  { name: 'Fakture', href: '/invoices', icon: '📄' },
+  { name: 'Nova faktura', href: '/invoices/new', icon: '➕' },
+  { name: 'Partneri', href: '/partners', icon: '👥' },
+  { name: 'Proizvodi', href: '/products', icon: '📦' },
+  { name: 'Podešavanja', href: '/settings', icon: '⚙️' },
 ];
+
+// Memoize navigation items to prevent re-renders
+const NavigationItem = React.memo<{ item: typeof navigation[0]; isActive: boolean }>(
+  ({ item, isActive }) => (
+    <Link
+      to={item.href}
+      className={`flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200 group ${
+        isActive
+          ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-500/25'
+          : 'text-gray-700 hover:bg-gray-100/70 hover:text-gray-900'
+      }`}
+    >
+      <span className="text-lg mr-3">{item.icon}</span>
+      {item.name}
+      {isActive && (
+        <div className="ml-auto w-2 h-2 rounded-full bg-white/80" />
+      )}
+    </Link>
+  )
+);
+
+NavigationItem.displayName = 'NavigationItem';
 
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -22,7 +44,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50">
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
-        <div
+        <div 
           className="fixed inset-0 z-30 bg-gray-600 bg-opacity-75 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
@@ -49,21 +71,11 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
           {/* Navigation */}
           <nav className="flex-1 px-4 py-6 space-y-2">
             {navigation.map((item) => (
-              <Link
+              <NavigationItem
                 key={item.name}
-                to={item.href}
-                className={`flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200 group ${
-                  location.pathname === item.href
-                    ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-500/25'
-                    : 'text-gray-700 hover:bg-gray-100/70 hover:text-gray-900'
-                }`}
-              >
-                <span className="text-lg mr-3">{item.icon}</span>
-                {item.name}
-                {location.pathname === item.href && (
-                  <div className="ml-auto w-2 h-2 rounded-full bg-white/80" />
-                )}
-              </Link>
+                item={item}
+                isActive={location.pathname === item.href}
+              />
             ))}
           </nav>
 
@@ -97,17 +109,18 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
                 </svg>
               </button>
-              <div className="ml-4 lg:ml-0">
-                <h1 className="text-xl font-bold text-gray-900">
-                  {navigation.find(item => item.href === location.pathname)?.shortName || 'SEF Portal'}
-                </h1>
-                <p className="text-sm text-gray-500">
-                  {navigation.find(item => item.href === location.pathname)?.name || 'Elektronske fakture'}
-                </p>
-              </div>
+              <h1 className="ml-4 text-2xl font-bold text-gray-900 lg:ml-0">
+                {navigation.find(item => item.href === location.pathname)?.name || 'SEF Portal'}
+              </h1>
             </div>
-
+            
             <div className="flex items-center space-x-4">
+              {/* Environment indicator */}
+              <div className="px-3 py-1 bg-gradient-to-r from-green-400 to-emerald-500 text-white text-xs font-medium rounded-full">
+                <span className="inline-block w-2 h-2 bg-white rounded-full mr-2 animate-pulse"></span>
+                Demo okruženje
+              </div>
+              
               {/* Notifications */}
               <button className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100/70 rounded-lg relative">
                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
@@ -129,12 +142,11 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
 
       {/* Main content */}
       <div className="lg:pl-64 pt-16">
-        <main className="flex-1 px-4 py-8 sm:px-6 lg:px-8">
+        <main className="px-4 py-8 sm:px-6 lg:px-8">
           <div className="max-w-7xl mx-auto">
             {children}
           </div>
         </main>
-        <Footer />
       </div>
     </div>
   );

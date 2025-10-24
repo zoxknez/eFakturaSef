@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "type-check": "tsc --noEmit",
     "lint": "eslint src/**/*.{ts,tsx}",
-    "test": "vitest run",
+    "test": "vitest",
     "test:ui": "vitest --ui"
   },
   "dependencies": {
@@ -17,7 +17,9 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.21.1",
-    "react-query": "^3.39.3",
+    "@tanstack/react-query": "^5.17.19",
+    "@tanstack/react-query-devtools": "^5.17.19",
+    "zustand": "^4.4.7",
     "react-hook-form": "^7.48.2",
     "react-hot-toast": "^2.4.1",
     "axios": "^1.6.7",
@@ -42,7 +44,9 @@
     "@radix-ui/react-toast": "^1.1.5",
     "@hookform/resolvers": "^3.3.2",
     "zod": "^3.22.4",
-    "recharts": "^2.10.3"
+    "recharts": "^2.10.3",
+    "@sentry/react": "^7.99.0",
+    "@sentry/tracing": "^7.99.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.43",

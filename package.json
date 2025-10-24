@@ -1,69 +1,96 @@
 {
   "name": "sef-efakture-app",
   "version": "1.0.0",
-  "description": "Profesionalna full-stack TypeScript aplikacija za srpski SEF (Sistem Elektronskih Faktura) - enterprise solution",
-  "author": {
-    "name": "zoxknez",
-    "email": "zoxknez@hotmail.com",
-    "url": "https://github.com/zoxknez"
-  },
-  "homepage": "https://github.com/zoxknez/eFakturaSef",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/zoxknez/eFakturaSef.git"
-  },
-  "bugs": {
-    "url": "https://github.com/zoxknez/eFakturaSef/issues"
-  },
-  "keywords": [
-    "sef",
-    "efakture",
-    "serbia",
-    "typescript",
-    "react",
-    "nodejs",
-    "prisma",
-    "ubl",
-    "invoice",
-    "elektronske-fakture"
-  ],
+  "description": "Full-stack TypeScript aplikacija za SEF (Sistem Elektronskih Faktura) integraciju",
   "private": true,
   "workspaces": [
     "frontend",
-    "backend",
+    "backend", 
     "shared"
   ],
   "scripts": {
-    "dev": "concurrently --kill-others-on-fail --prefix-colors \"bgBlue.bold,bgMagenta.bold\" \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "dev:safe": "powershell -ExecutionPolicy Bypass -File scripts/dev-separate.ps1",
-    "dev:clean": "powershell -ExecutionPolicy Bypass -File scripts/cleanup.ps1 && npm run dev",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:frontend": "npm run dev --workspace=frontend",
     "dev:backend": "npm run dev --workspace=backend",
-    "db:setup": "powershell -ExecutionPolicy Bypass -File scripts/db-setup.ps1",
-    "build": "npm run build --workspaces",
+    "dev:shared": "npm run dev --workspace=shared",
+    "build": "npm run build:shared && npm run build:backend && npm run build:frontend",
+    "build:shared": "npm run build --workspace=shared",
     "build:frontend": "npm run build --workspace=frontend",
     "build:backend": "npm run build --workspace=backend",
-    "test": "npm test --workspaces",
+    "test": "npm run test:shared && npm run test:backend && npm run test:frontend",
+    "test:shared": "npm run test --workspace=shared",
+    "test:backend": "npm run test --workspace=backend",
+    "test:frontend": "npm run test --workspace=frontend",
+    "test:watch": "npm run test:watch --workspaces",
+    "test:coverage": "npm run test:coverage --workspaces",
     "lint": "npm run lint --workspaces",
+    "lint:fix": "npm run lint:fix --workspaces",
     "type-check": "npm run type-check --workspaces",
     "clean": "npm run clean --workspaces",
+    "clean:all": "rm -rf node_modules dist build && npm run clean --workspaces",
     "install:all": "npm install && npm install --workspaces",
-    "kill-port": "npm run kill-port --workspace=backend",
-    "prune": "npm prune --workspaces",
-    "db:up": "docker compose up -d",
-    "db:down": "docker compose down",
-    "db:migrate": "npm run migrate:dev --workspace=backend",
-    "db:seed": "npm run db:seed --workspace=backend"
+    "docker:build": "docker build -t sef-efakture .",
+    "docker:dev": "docker-compose -f docker-compose.dev.yml up --build",
+    "docker:prod": "docker-compose up --build",
+    "docker:down": "docker-compose down",
+    "docker:clean": "docker system prune -f",
+    "db:migrate": "cd backend && npx prisma migrate dev",
+    "db:migrate:deploy": "cd backend && npx prisma migrate deploy",
+    "db:generate": "cd backend && npx prisma generate",
+    "db:seed": "cd backend && npm run db:seed",
+    "db:studio": "cd backend && npx prisma studio",
+    "db:reset": "cd backend && npx prisma migrate reset",
+    "security:audit": "npm audit --audit-level=moderate",
+    "security:fix": "npm audit fix",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "prepare": "husky install",
+    "precommit": "lint-staged",
+    "release": "standard-version",
+    "release:minor": "standard-version --release-as minor",
+    "release:major": "standard-version --release-as major"
   },
   "devDependencies": {
+    "concurrently": "^8.2.2",
+    "typescript": "^5.3.3",
     "@types/node": "^20.10.5",
-    "concurrently": "^9.2.1",
-    "typescript": "^5.3.3"
+    "prettier": "^3.1.0",
+    "husky": "^8.0.3",
+    "lint-staged": "^15.2.0",
+    "standard-version": "^9.5.0",
+    "@commitlint/cli": "^18.4.3",
+    "@commitlint/config-conventional": "^18.4.3"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{js,jsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md}": [
+      "prettier --write"
+    ]
+  },
+  "commitlint": {
+    "extends": ["@commitlint/config-conventional"]
   },
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=9.0.0"
   },
-
+  "keywords": [
+    "sef",
+    "efakture",
+    "serbia",
+    "ubl",
+    "e-invoicing",
+    "typescript",
+    "react",
+    "nodejs"
+  ],
+  "author": "Your Name",
   "license": "MIT"
 }

@@ -1,0 +1,56 @@
+# Prometheus configuration for SEF eFakture monitoring
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'sef-efakture-monitor'
+    environment: 'production'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - 'alertmanager:9093'
+
+# Load alerting rules
+rule_files:
+  - 'prometheus-alert-rules.yml'
+
+# Scrape configurations
+scrape_configs:
+  # SEF eFakture API
+  - job_name: 'sef-efakture'
+    static_configs:
+      - targets: ['backend:3001']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # Health checks
+  - job_name: 'sef-efakture-health'
+    static_configs:
+      - targets: ['backend:3001']
+    metrics_path: '/health'
+    scrape_interval: 30s
+
+  # Node exporter (for system metrics)
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  # PostgreSQL exporter
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+
+  # Redis exporter
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+

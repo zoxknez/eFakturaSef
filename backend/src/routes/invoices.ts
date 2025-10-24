@@ -1,280 +1,47 @@
-// src/routes/invoices.ts
+import express from 'express';
+import { InvoiceController } from '../controllers/invoiceController';
+import { idempotency } from '../middleware/idempotency';
 
-import { Router } from 'express';
-import multer from 'multer';
-import { authMiddleware, requireRole } from '../middleware/auth';
-import {
-  createInvoice,
-  getInvoices,
-  getInvoiceById,
-  updateInvoiceStatus,
-  deleteInvoice,
-  downloadInvoice,
-  sendInvoiceToSEF,
-  importUBL,
-} from '../controllers/invoiceController';
-
-const router = Router();
-
-// Configure multer for file uploads
-const upload = multer({ 
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype === 'text/xml' || file.mimetype === 'application/xml' || file.originalname.endsWith('.xml') || file.originalname.endsWith('.ubl')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only XML/UBL files are allowed'));
-    }
-  }
-});
-
-// Require authentication for all invoice routes
-router.use(authMiddleware);
+const router = express.Router();
 
 /**
  * @openapi
  * /api/invoices:
  *   get:
- *     summary: List invoices for current company
- *     tags: [Invoices]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: List of invoices
- *       401:
- *         description: Unauthorized
- *   post:
- *     summary: Create a new invoice
- *     tags: [Invoices]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - invoiceNumber
- *               - invoiceDate
- *               - buyerPib
- *               - buyerName
- *               - buyerAddress
- *               - buyerCity
- *               - buyerPostalCode
- *               - lines
- *             properties:
- *               invoiceNumber:
- *                 type: string
- *                 example: "INV-2025-001"
- *               invoiceDate:
- *                 type: string
- *                 format: date
- *                 example: "2025-10-02"
- *               buyerPib:
- *                 type: string
- *                 minLength: 8
- *                 example: "12345678"
- *               buyerName:
- *                 type: string
- *                 example: "Kupac DOO"
- *               buyerAddress:
- *                 type: string
- *                 example: "Ulica 1"
- *               buyerCity:
- *                 type: string
- *                 example: "Beograd"
- *               buyerPostalCode:
- *                 type: string
- *                 example: "11000"
- *               lines:
- *                 type: array
- *                 minItems: 1
- *                 items:
- *                   type: object
- *                   required: [itemName, quantity, unitPrice, vatRate]
- *                   properties:
- *                     itemName: { type: string, example: "USB kabl" }
- *                     quantity: { type: number, example: 2 }
- *                     unitPrice: { type: number, example: 1200 }
- *                     vatRate: { type: number, minimum: 0, maximum: 100, example: 20 }
- *     responses:
- *       201:
- *         description: Invoice created
- *       400:
- *         description: Validation error
- *       401:
- *         description: Unauthorized
- */
-router.post('/', requireRole(['ADMIN', 'ACCOUNTANT']), createInvoice);
-router.get('/', getInvoices);
-
-/**
- * @openapi
- * /api/invoices/{id}:
- *   get:
- *     summary: Get invoice by ID
- *     tags: [Invoices]
+ *     summary: Get all invoices
+ *     description: Retrieve a paginated list of invoices for the authenticated company
+ *     tags:
+ *       - Invoices
  *     security:
  *       - bearerAuth: []
  *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Invoice
- *       401:
- *         description: Unauthorized
- *       404:
- *         description: Not found
- */
-router.get('/:id', getInvoiceById);
-
-/**
- * @openapi
- * /api/invoices/{id}/status:
- *   put:
- *     summary: Update invoice status
- *     tags: [Invoices]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [status]
- *             properties:
- *               status:
- *                 type: string
- *                 example: "SENT"
- *     responses:
- *       200:
- *         description: Updated
- *       400:
- *         description: Missing status
- *       401:
- *         description: Unauthorized
- *       404:
- *         description: Not found
- */
-router.put('/:id/status', requireRole(['ADMIN', 'ACCOUNTANT']), updateInvoiceStatus);
-
-/**
- * @openapi
- * /api/invoices/{id}:
- *   delete:
- *     summary: Delete invoice
- *     tags: [Invoices]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Deleted
- *       401:
- *         description: Unauthorized
- *       404:
- *         description: Not found
- */
-router.delete('/:id', requireRole(['ADMIN']), deleteInvoice);
-
-/**
- * @openapi
- * /api/invoices/{id}/download:
- *   get:
- *     summary: Download invoice as XML, JSON ili PDF
- *     tags: [Invoices]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
  *       - in: query
- *         name: format
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Number of items per page
+ *       - in: query
+ *         name: status
  *         schema:
  *           type: string
- *           enum: [xml, json, pdf]
- *         description: Format fajla (podrazumevano xml)
- *     responses:
- *       200:
- *         description: File stream
- *       401:
- *         description: Unauthorized
- *       404:
- *         description: Not found
- */
-router.get('/:id/download', downloadInvoice);
-
-/**
- * @openapi
- * /api/invoices/{id}/send-to-sef:
- *   post:
- *     summary: Pošalji fakturu u SEF sistem
- *     tags: [Invoices]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
+ *           enum: [DRAFT, SENT, APPROVED, REJECTED]
+ *         description: Filter by invoice status
+ *       - in: query
+ *         name: type
  *         schema:
  *           type: string
+ *           enum: [OUTGOING, INCOMING]
+ *         description: Filter by invoice type
  *     responses:
  *       200:
- *         description: Faktura uspešno poslata
- *       400:
- *         description: Greška u validaciji ili SEF komunikaciji
- *       401:
- *         description: Unauthorized
- *       404:
- *         description: Faktura nije pronađena
- */
-router.post('/:id/send-to-sef', requireRole(['ADMIN', 'RAČUNOVOĐA']), sendInvoiceToSEF);
-
-/**
- * @openapi
- * /api/invoices/import-ubl:
- *   post:
- *     summary: Import UBL file
- *     description: Uvoz UBL XML fajla i kreiranje fakture
- *     tags: [Invoices]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         multipart/form-data:
- *           schema:
- *             type: object
- *             properties:
- *               ublFile:
- *                 type: string
- *                 format: binary
- *                 description: UBL XML fajl za uvoz
- *     responses:
- *       200:
- *         description: UBL fajl uspešno uvezen
+ *         description: List of invoices retrieved successfully
  *         content:
  *           application/json:
  *             schema:
@@ -282,17 +49,304 @@ router.post('/:id/send-to-sef', requireRole(['ADMIN', 'RAČUNOVOĐA']), sendInvo
  *               properties:
  *                 success:
  *                   type: boolean
- *                 message:
- *                   type: string
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Invoice'
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     page:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     total:
+ *                       type: integer
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+router.get('/', InvoiceController.getAll);
+
+/**
+ * @openapi
+ * /api/invoices/{id}:
+ *   get:
+ *     summary: Get invoice by ID
+ *     description: Retrieve a single invoice with all details including line items
+ *     tags:
+ *       - Invoices
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Invoice ID
+ *     responses:
+ *       200:
+ *         description: Invoice retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   $ref: '#/components/schemas/Invoice'
+ *       404:
+ *         $ref: '#/components/responses/NotFoundError'
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ */
+router.get('/:id', InvoiceController.getById);
+
+/**
+ * @openapi
+ * /api/invoices:
+ *   post:
+ *     summary: Create new invoice
+ *     description: Create a new invoice in DRAFT status
+ *     tags:
+ *       - Invoices
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/InvoiceCreate'
+ *     responses:
+ *       201:
+ *         description: Invoice created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   $ref: '#/components/schemas/Invoice'
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ */
+router.post('/', InvoiceController.create);
+
+/**
+ * @openapi
+ * /api/invoices/{id}:
+ *   put:
+ *     summary: Update invoice
+ *     description: Update an existing invoice (only DRAFT invoices can be updated)
+ *     tags:
+ *       - Invoices
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/InvoiceUpdate'
+ *     responses:
+ *       200:
+ *         description: Invoice updated successfully
+ *       400:
+ *         description: Cannot update non-DRAFT invoice
+ *       404:
+ *         $ref: '#/components/responses/NotFoundError'
+ */
+router.put('/:id', InvoiceController.update);
+
+/**
+ * @openapi
+ * /api/invoices/{id}:
+ *   delete:
+ *     summary: Delete invoice
+ *     description: Delete an invoice (only DRAFT invoices can be deleted)
+ *     tags:
+ *       - Invoices
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       204:
+ *         description: Invoice deleted successfully
+ *       400:
+ *         description: Cannot delete non-DRAFT invoice
+ *       404:
+ *         $ref: '#/components/responses/NotFoundError'
+ */
+router.delete('/:id', InvoiceController.delete);
+
+/**
+ * @openapi
+ * /api/invoices/{id}/send:
+ *   post:
+ *     summary: Send invoice to SEF
+ *     description: |
+ *       Submit invoice to Serbian SEF (Sistem Elektronskih Faktura) API.
+ *       This operation is idempotent with 24-hour cache.
+ *     tags:
+ *       - Invoices
+ *       - SEF Integration
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - in: header
+ *         name: Idempotency-Key
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Unique key to prevent duplicate submissions (cached for 24 hours)
+ *     responses:
+ *       200:
+ *         description: Invoice sent to SEF successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
  *                 data:
  *                   type: object
+ *                   properties:
+ *                     sefId:
+ *                       type: string
+ *                       description: SEF system invoice ID
+ *                     status:
+ *                       type: string
+ *                       description: Current status in SEF
+ *                     jobId:
+ *                       type: string
+ *                       description: Queue job ID for tracking
  *       400:
- *         description: Neispravna UBL datoteka
- *       401:
- *         description: Unauthorized
- *       413:
- *         description: Fajl je previše veliki (maksimalno 10MB)
+ *         description: Validation error or invoice already sent
+ *       404:
+ *         $ref: '#/components/responses/NotFoundError'
+ *       429:
+ *         $ref: '#/components/responses/RateLimitError'
  */
-router.post('/import-ubl', upload.single('ublFile'), importUBL);
+router.post('/:id/send', idempotency({ ttl: 86400, required: true }), InvoiceController.sendToSEF);
+
+/**
+ * @openapi
+ * /api/invoices/{id}/status:
+ *   get:
+ *     summary: Get invoice status from SEF
+ *     description: Check current status of invoice in SEF system
+ *     tags:
+ *       - Invoices
+ *       - SEF Integration
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Status retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     sefStatus:
+ *                       type: string
+ *                     lastChecked:
+ *                       type: string
+ *                       format: date-time
+ *       404:
+ *         description: Invoice not found or not sent to SEF
+ */
+router.get('/:id/status', InvoiceController.getStatus);
+
+/**
+ * @openapi
+ * /api/invoices/{id}/cancel:
+ *   post:
+ *     summary: Cancel invoice in SEF
+ *     description: |
+ *       Cancel an invoice in SEF system.
+ *       This operation is idempotent with 1-hour cache.
+ *     tags:
+ *       - Invoices
+ *       - SEF Integration
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - in: header
+ *         name: Idempotency-Key
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 description: Reason for cancellation
+ *     responses:
+ *       200:
+ *         description: Invoice cancelled successfully
+ *       400:
+ *         description: Cannot cancel invoice in current state
+ *       404:
+ *         $ref: '#/components/responses/NotFoundError'
+ */
+router.post('/:id/cancel', idempotency({ ttl: 3600, required: true }), InvoiceController.cancel);
 
 export default router;

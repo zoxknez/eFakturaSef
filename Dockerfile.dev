@@ -1,0 +1,39 @@
+# Development Dockerfile
+FROM node:18-alpine
+
+# Install dumb-init for proper signal handling
+RUN apk add --no-cache dumb-init
+
+# Create app user
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nextjs -u 1001
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+COPY backend/package*.json ./backend/
+COPY frontend/package*.json ./frontend/
+COPY shared/package*.json ./shared/
+
+# Install dependencies
+RUN npm install
+RUN cd backend && npm install
+RUN cd frontend && npm install
+RUN cd shared && npm install
+
+# Copy source code
+COPY . .
+
+# Create logs directory
+RUN mkdir -p /app/logs && chown nextjs:nodejs /app/logs
+
+# Switch to non-root user
+USER nextjs
+
+# Expose ports
+EXPOSE 3001 3000
+
+# Start development server
+CMD ["dumb-init", "npm", "run", "dev"]

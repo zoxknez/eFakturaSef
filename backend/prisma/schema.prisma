@@ -10,33 +10,179 @@ datasource db {
 }
 
 model Company {
-  id          String   @id @default(uuid())
-  pib         String   @unique
+  id          String  @id @default(uuid())
+  pib         String  @unique @db.VarChar(9)
   name        String
   address     String
   city        String
-  postalCode  String   @map("postal_code")
-  country     String   @default("RS")
+  postalCode  String  @map("postal_code")
+  country     String  @default("RS")
   email       String?
   phone       String?
-  bankAccount String?  @map("bank_account")
-  vatNumber   String?  @map("vat_number")
+  bankAccount String? @map("bank_account")
+  vatNumber   String? @map("vat_number")
 
   // SEF Configuration
-  sefApiKey       String? @map("sef_api_key")
-  sefEnvironment  String? @map("sef_environment") // demo or production
-  isActive        Boolean @default(true) @map("is_active")
+  sefApiKey      String? @map("sef_api_key")
+  sefEnvironment String? @map("sef_environment") // demo or production
+
+  // Stock Management Settings
+  autoStockDeduction Boolean @default(false) @map("auto_stock_deduction")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
-  users               User[]
-  invoices            Invoice[]
-  suppliedInvoices    Invoice[] @relation("SupplierInvoices")
-  purchasedInvoices   Invoice[] @relation("BuyerInvoices")
+  users    User[]
+  invoices Invoice[]
+  partners Partner[]
+  products Product[]
 
   @@map("companies")
+}
+
+// ========================================
+// PARTNER ŠIFARNIK (Dobavljači i Kupci)
+// ========================================
+model Partner {
+  id   String      @id @default(uuid())
+  type PartnerType
+
+  // Osnovni podaci
+  pib       String  @db.VarChar(9)
+  name      String
+  shortName String? @map("short_name")
+
+  // Adresa
+  address    String
+  city       String
+  postalCode String @map("postal_code")
+  country    String @default("RS")
+
+  // Kontakt informacije
+  email         String?
+  phone         String?
+  fax           String?
+  website       String?
+  contactPerson String? @map("contact_person") @db.Text
+
+  // PDV status
+  vatPayer  Boolean @default(true) @map("vat_payer")
+  vatNumber String? @map("vat_number")
+
+  // Platni uslovi
+  defaultPaymentTerms Int      @default(15) @map("default_payment_terms") // Dana
+  creditLimit         Decimal? @map("credit_limit") @db.Decimal(15, 2)
+  discount            Decimal? @default(0) @db.Decimal(5, 2) // Procenat popusta
+
+  // Bankovni računi (JSON array)
+  bankAccounts Json? @map("bank_accounts")
+
+  // Status
+  isActive Boolean @default(true) @map("is_active")
+
+  // Napomene
+  note String? @db.Text
+
+  // Company relation
+  companyId String  @map("company_id")
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  invoices Invoice[] @relation("PartnerInvoices")
+
+  // Indexes
+  @@unique([companyId, pib], name: "unique_partner_pib_per_company")
+  @@index([companyId])
+  @@index([type])
+  @@index([pib])
+  @@index([isActive])
+  @@index([companyId, type])
+  @@index([companyId, isActive])
+  @@map("partners")
+}
+
+// ========================================
+// PRODUCT ŠIFARNIK (Proizvodi i Usluge)
+// ========================================
+model Product {
+  id String @id @default(uuid())
+
+  // Identifikacija
+  code        String // Šifra artikla (SKU)
+  barcode     String? // Barkod
+  name        String
+  description String? @db.Text
+
+  // Kategorija
+  category    String?
+  subcategory String?
+
+  // Cene
+  unitPrice Decimal  @map("unit_price") @db.Decimal(15, 2)
+  costPrice Decimal? @map("cost_price") @db.Decimal(15, 2) // Nabavna cena
+  currency  String   @default("RSD")
+
+  // PDV
+  vatRate Decimal @map("vat_rate") @db.Decimal(5, 2) // 20, 10, 0
+
+  // Jedinica mere
+  unit String @default("kom") // kom, kg, m, l, h, dan, usluga
+
+  // Magacin
+  trackInventory Boolean  @default(false) @map("track_inventory")
+  currentStock   Decimal  @default(0) @map("current_stock") @db.Decimal(15, 3)
+  minStock       Decimal? @map("min_stock") @db.Decimal(15, 3)
+  maxStock       Decimal? @map("max_stock") @db.Decimal(15, 3)
+
+  // Status
+  isActive Boolean @default(true) @map("is_active")
+
+  // Dodatne informacije
+  supplier     String? // Glavni dobavljač
+  manufacturer String? // Proizvođač
+  note         String? @db.Text
+
+  // Company relation
+  companyId String  @map("company_id")
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  invoiceLines InvoiceLine[]
+
+  // Indexes
+  @@unique([companyId, code], name: "unique_product_code_per_company")
+  @@index([companyId])
+  @@index([barcode])
+  @@index([isActive])
+  @@index([category])
+  @@index([companyId, isActive])
+  @@index([companyId, category])
+  @@map("products")
+}
+
+// ========================================
+// ENUMS (definisati PRE modela koji ih koriste)
+// ========================================
+enum PartnerType {
+  BUYER // Samo kupac
+  SUPPLIER // Samo dobavljač
+  BOTH // I kupac i dobavljač
+}
+
+enum InvoicePaymentStatus {
+  UNPAID // Neplaćeno
+  PARTIALLY_PAID // Delimično plaćeno
+  PAID // Plaćeno
+  OVERDUE // Rok istekao
 }
 
 model User {
@@ -45,7 +191,7 @@ model User {
   firstName String   @map("first_name")
   lastName  String   @map("last_name")
   password  String
-  role      String   // UserRole enum: ADMIN, ACCOUNTANT, AUDITOR, OPERATOR
+  role      UserRole
   isActive  Boolean  @default(true) @map("is_active")
   companyId String   @map("company_id")
 
@@ -53,33 +199,74 @@ model User {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  refreshTokens RefreshToken[]
 
+  // Indexes for performance
+  @@index([companyId])
+  @@index([email])
+  @@index([isActive])
+  @@index([companyId, isActive])
   @@map("users")
 }
 
-model Invoice {
-  id            String            @id @default(uuid())
-  sefId         String?           @unique @map("sef_id") // SEF assigned ID
-  invoiceNumber String            @map("invoice_number")
-  issueDate     DateTime          @map("issue_date")
-  dueDate       DateTime?         @map("due_date")
-  direction     String            // InvoiceDirection: OUTGOING, INCOMING
-  status        String            @default("DRAFT") // InvoiceStatus: DRAFT, SENT, DELIVERED, ACCEPTED, REJECTED, CANCELLED, STORNO, EXPIRED
-  documentType  String            @map("document_type") @default("INVOICE") // UBLDocumentType: INVOICE, CREDIT_NOTE, DEBIT_NOTE
+model RefreshToken {
+  id        String    @id @default(uuid())
+  token     String    @unique
+  userId    String    @map("user_id")
+  expiresAt DateTime  @map("expires_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  revoked   Boolean   @default(false)
+  revokedAt DateTime? @map("revoked_at")
 
-  // Supplier/Buyer
-  supplierId String @map("supplier_id")
-  buyerId    String @map("buyer_id")
+  // Device/session info for security
+  userAgent String? @map("user_agent") @db.Text
+  ipAddress String? @map("ip_address")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Indexes for performance
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+  @@index([userId, revoked])
+  @@map("refresh_tokens")
+}
+
+model Invoice {
+  id            String        @id @default(uuid())
+  sefId         String?       @unique @map("sef_id")
+  sefStatus     String?       @map("sef_status")
+  invoiceNumber String        @map("invoice_number")
+  issueDate     DateTime      @map("issue_date")
+  dueDate       DateTime?     @map("due_date")
+  status        InvoiceStatus @default(DRAFT)
+  type          InvoiceType   @default(OUTGOING)
+
+  // Partner relations (NEW - replacing hardcoded buyer fields)
+  partnerId String?  @map("partner_id") // Reference to Partner šifarnik
+  partner   Partner? @relation("PartnerInvoices", fields: [partnerId], references: [id], onDelete: SetNull)
+
+  // Legacy buyer fields (DEPRECATED - keeping for backward compatibility during migration)
+  // TODO: Remove after data migration
+  buyerName       String? @map("buyer_name")
+  buyerPIB        String? @map("buyer_pib")
+  buyerAddress    String? @map("buyer_address")
+  buyerCity       String? @map("buyer_city")
+  buyerPostalCode String? @map("buyer_postal_code")
 
   // Amounts
-  subtotal     Float
-  totalVat     Float @map("total_vat")
-  totalAmount  Float @map("total_amount")
-  currency     String  @default("RSD")
+  totalAmount Decimal @map("total_amount") @db.Decimal(15, 2)
+  taxAmount   Decimal @map("tax_amount") @db.Decimal(15, 2)
+  currency    String  @default("RSD") @db.VarChar(3)
 
-  // UBL XML
-  ublXml String? @map("ubl_xml")
+  // Payment tracking (NEW)
+  paymentStatus InvoicePaymentStatus @default(UNPAID) @map("payment_status")
+  paidAmount    Decimal              @default(0) @map("paid_amount") @db.Decimal(15, 2)
+
+  // Optional UBL XML snapshot
+  ublXml String? @map("ubl_xml") @db.Text
 
   // Timestamps
   createdAt DateTime  @default(now()) @map("created_at")
@@ -87,54 +274,80 @@ model Invoice {
   sentAt    DateTime? @map("sent_at")
 
   // Notes
-  note String?
+  note String? @db.Text
 
-  // Reference documents
-  referenceInvoiceId String? @map("reference_invoice_id")
-
-  // Company relation
-  companyId String @map("company_id")
+  // Company relation (issuer)
+  companyId String  @map("company_id")
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   // Relations
-  company           Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  supplier          Company        @relation("SupplierInvoices", fields: [supplierId], references: [id])
-  buyer             Company        @relation("BuyerInvoices", fields: [buyerId], references: [id])
-  referenceInvoice  Invoice?       @relation("InvoiceReferences", fields: [referenceInvoiceId], references: [id])
-  referencedBy      Invoice[]      @relation("InvoiceReferences")
-  lines             InvoiceLine[]
-  auditLogs         AuditLog[]
+  lines     InvoiceLine[]
+  auditLogs AuditLog[]
+  payments  Payment[]
 
+  // Unique constraint: invoice number must be unique per company
+  @@unique([companyId, invoiceNumber], name: "unique_invoice_number_per_company")
+  // Indexes for performance
+  @@index([companyId])
+  @@index([partnerId])
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([issueDate])
+  @@index([dueDate])
+  @@index([sefId])
+  @@index([invoiceNumber])
+  @@index([companyId, status])
+  @@index([companyId, paymentStatus])
+  @@index([companyId, issueDate])
+  @@index([companyId, status, issueDate])
+  @@index([buyerPIB])
+  @@index([createdAt])
+  @@index([sentAt])
   @@map("invoices")
 }
 
 model InvoiceLine {
-  id               String     @id @default(uuid())
-  invoiceId        String     @map("invoice_id")
-  lineNumber       Int        @map("line_number")
-  itemName         String     @map("item_name")
-  itemDescription  String?    @map("item_description")
-  quantity         Float
-  unitOfMeasure    String     @map("unit_of_measure")
-  unitPrice        Float      @map("unit_price")
-  vatRate          Float      @map("vat_rate")
-  vatCategory      String      @map("vat_category") // VATCategory: STANDARD, ZERO_RATED, EXEMPT, REVERSE_CHARGE, NOT_SUBJECT
-  lineTotal        Float      @map("line_total")
-  vatAmount        Float      @map("vat_amount")
-  lineTotalWithVat Float      @map("line_total_with_vat")
+  id         String @id @default(uuid())
+  invoiceId  String @map("invoice_id")
+  lineNumber Int    @map("line_number")
+
+  // Product relation (NEW - optional for legacy data)
+  productId String?  @map("product_id")
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  // Item details (legacy + current)
+  itemName        String  @map("item_name")
+  itemDescription String? @map("item_description") @db.Text
+
+  // Quantities and prices
+  quantity  Decimal @db.Decimal(10, 3)
+  unit      String  @default("kom")
+  unitPrice Decimal @map("unit_price") @db.Decimal(15, 2)
+
+  // Tax
+  taxRate   Decimal @map("tax_rate") @db.Decimal(5, 2)
+  taxAmount Decimal @map("tax_amount") @db.Decimal(15, 2)
+
+  // Total amount
+  amount Decimal @db.Decimal(15, 2)
 
   // Relations
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
+  // Indexes for performance
+  @@index([invoiceId])
+  @@index([productId])
+  @@index([invoiceId, lineNumber])
   @@map("invoice_lines")
 }
 
 model AuditLog {
-  id        String   @id @default(uuid())
+  id         String  @id @default(uuid())
   entityType String  @map("entity_type") // invoice, user, company, etc.
   entityId   String  @map("entity_id")
-  action     String  // created, updated, deleted, sent, cancelled, etc.
-  oldData    String? @map("old_data") // JSON as string for SQLite
-  newData    String? @map("new_data") // JSON as string for SQLite
+  action     String // created, updated, deleted, sent, cancelled, etc.
+  oldData    Json?   @map("old_data")
+  newData    Json?   @map("new_data")
   userId     String? @map("user_id")
   ipAddress  String? @map("ip_address")
   userAgent  String? @map("user_agent")
@@ -144,44 +357,149 @@ model AuditLog {
   // Relations
   invoice Invoice? @relation(fields: [entityId], references: [id], onDelete: Cascade)
 
+  // Indexes for performance
+  @@index([entityType])
+  @@index([entityId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([entityType, entityId])
+  @@index([entityType, createdAt])
+  @@index([userId, createdAt])
+  @@index([action])
   @@map("audit_logs")
 }
 
 model SEFWebhookLog {
-  id        String   @id @default(uuid())
-  eventType String   @map("event_type")
-  sefId     String   @map("sef_id")
-  payload   String // JSON as string for SQLite
-  signature String
-  processed Boolean  @default(false)
-  error     String?
+  id         String   @id @default(uuid())
+  eventType  String   @map("event_type")
+  sefId      String   @map("sef_id")
+  payload    Json
+  signature  String
+  processed  Boolean  @default(false)
+  error      String?  @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
+  receivedAt DateTime @default(now()) @map("received_at")
 
-  createdAt DateTime @default(now()) @map("created_at")
-
+  // Indexes for performance
+  @@index([sefId])
+  @@index([processed])
+  @@index([eventType])
+  @@index([createdAt])
+  @@index([sefId, processed])
+  @@index([processed, createdAt])
   @@map("sef_webhook_logs")
 }
 
 model JobQueue {
   id          String    @id @default(uuid())
-  type        String    // send_invoice, webhook_process, etc.
-  payload     String // JSON as string for SQLite
-  status      String    @default("PENDING") // JobStatus: PENDING, PROCESSING, COMPLETED, FAILED, CANCELLED
+  type        String // send_invoice, webhook_process, etc.
+  payload     Json
+  status      JobStatus @default(PENDING)
   attempts    Int       @default(0)
   maxAttempts Int       @default(3) @map("max_attempts")
-  error       String?
+  error       String?   @db.Text
   scheduledAt DateTime? @map("scheduled_at")
 
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   processedAt DateTime? @map("processed_at")
 
+  // Indexes for performance
+  @@index([status])
+  @@index([type])
+  @@index([scheduledAt])
+  @@index([createdAt])
+  @@index([status, scheduledAt])
+  @@index([type, status])
   @@map("job_queue")
 }
 
-// Enums converted to String types for SQLite compatibility
-// UserRole: ADMIN, ACCOUNTANT, AUDITOR, OPERATOR
-// InvoiceStatus: DRAFT, SENT, DELIVERED, ACCEPTED, REJECTED, CANCELLED, STORNO, EXPIRED
-// InvoiceDirection: OUTGOING, INCOMING
-// UBLDocumentType: INVOICE, CREDIT_NOTE, DEBIT_NOTE
-// VATCategory: STANDARD (S), ZERO_RATED (Z), EXEMPT (E), REVERSE_CHARGE (AE), NOT_SUBJECT (O)
-// JobStatus: PENDING, PROCESSING, COMPLETED, FAILED, CANCELLED
+// ========================================
+// PAYMENT MODEL (Plaćanja)
+// ========================================
+model Payment {
+  id        String @id @default(uuid())
+  invoiceId String @map("invoice_id")
+
+  // Iznos plaćanja
+  amount   Decimal @db.Decimal(15, 2)
+  currency String  @default("RSD")
+
+  // Datum i metod
+  paymentDate DateTime      @map("payment_date")
+  method      PaymentMethod
+
+  // Bankarski podaci
+  bankAccount String? @map("bank_account")
+  reference   String? // Poziv na broj / referenca plaćanja
+
+  // Status
+  status PaymentStatus @default(PENDING)
+
+  // Detalji
+  description String? @db.Text
+
+  // Audit trail
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([invoiceId])
+  @@index([paymentDate])
+  @@index([status])
+  @@index([createdAt])
+  @@index([invoiceId, status])
+  @@map("payments")
+}
+
+// Enums
+enum PaymentMethod {
+  CASH // Gotovina
+  BANK_TRANSFER // Virman
+  CARD // Kartica
+  CHECK // Ček
+  COMPENSATION // Kompenzacija
+  OTHER // Ostalo
+}
+
+enum PaymentStatus {
+  PENDING // Na čekanju
+  CLEARED // Proknjiženo
+  BOUNCED // Vraćeno (ček)
+  CANCELLED // Otkazano
+}
+
+enum UserRole {
+  ADMIN
+  ACCOUNTANT
+  AUDITOR
+  OPERATOR
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  DELIVERED
+  ACCEPTED
+  REJECTED
+  CANCELLED
+  STORNO
+  EXPIRED
+}
+
+enum InvoiceType {
+  OUTGOING
+  INCOMING
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}

@@ -1,93 +1,202 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { apiClient } from '../services/api';
+import { logger } from '../utils/logger';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3003';
-
-export interface User {
+interface User {
   id: string;
   email: string;
   firstName: string;
   lastName: string;
   role: string;
+  company?: {
+    id: string;
+    name: string;
+    pib: string;
+  };
 }
 
-interface AuthContextShape {
+interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  error: string | null;
 }
 
-const AuthContext = createContext<AuthContextShape | undefined>(undefined);
+export const useAuth = () => {
+  const [authState, setAuthState] = useState<AuthState>({
+    user: null,
+    isAuthenticated: false,
+    isLoading: true,
+    error: null
+  });
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  // On first mount, if we have a token, fetch profile before rendering app to avoid flicker
+  // Check if user is authenticated on app start
   useEffect(() => {
-    const init = async () => {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setIsLoading(false);
-        return;
-      }
+    const checkAuth = async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/api/auth/profile`, {
-          headers: { Authorization: `Bearer ${token}` },
+        const token = localStorage.getItem('accessToken');
+        if (!token) {
+          setAuthState({
+            user: null,
+            isAuthenticated: false,
+            isLoading: false,
+            error: null
+          });
+          return;
+        }
+
+        // Try to get user info or refresh token
+        const refreshToken = localStorage.getItem('refreshToken');
+        if (refreshToken) {
+          const response = await apiClient.refreshToken(refreshToken);
+          if (response.success && response.data) {
+            localStorage.setItem('accessToken', response.data.accessToken);
+            setAuthState({
+              user: response.data.user,
+              isAuthenticated: true,
+              isLoading: false,
+              error: null
+            });
+          } else {
+            // Refresh failed, clear tokens
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('refreshToken');
+            setAuthState({
+              user: null,
+              isAuthenticated: false,
+              isLoading: false,
+              error: null
+            });
+          }
+        } else {
+          // No refresh token, clear everything
+          localStorage.removeItem('accessToken');
+          setAuthState({
+            user: null,
+            isAuthenticated: false,
+            isLoading: false,
+            error: null
+          });
+        }
+      } catch (error) {
+        logger.error('Auth check failed', error);
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
+        setAuthState({
+          user: null,
+          isAuthenticated: false,
+          isLoading: false,
+          error: 'Authentication check failed'
         });
-        if (!res.ok) throw new Error('Unauthorized');
-        const body = await res.json();
-        const u = body?.data as User | undefined;
-        if (!u) throw new Error('Invalid profile payload');
-        setUser(u);
-      } catch {
-        localStorage.removeItem('token');
-        setUser(null);
-      } finally {
-        setIsLoading(false);
       }
     };
-    void init();
+
+    checkAuth();
   }, []);
 
-  const login = async (email: string, password: string) => {
-    const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
-    });
-    const body = await res.json();
-    if (!res.ok) throw new Error(body?.message || 'Login failed');
-    const token = body?.data?.token as string | undefined;
-    const u = body?.data?.user as User | undefined;
-    if (!token || !u) throw new Error('Invalid login payload');
-    localStorage.setItem('token', token);
-    setUser(u);
-  };
+  const login = useCallback(async (email: string, password: string) => {
+    setAuthState(prev => ({ ...prev, isLoading: true, error: null }));
+    
+    try {
+      const response = await apiClient.login(email, password);
+      
+      if (response.success && response.data) {
+        const { accessToken, refreshToken, user } = response.data;
+        
+        localStorage.setItem('accessToken', accessToken);
+        localStorage.setItem('refreshToken', refreshToken);
+        
+        setAuthState({
+          user,
+          isAuthenticated: true,
+          isLoading: false,
+          error: null
+        });
+        
+        return { success: true };
+      } else {
+        setAuthState(prev => ({
+          ...prev,
+          isLoading: false,
+          error: response.error || 'Login failed'
+        }));
+        return { success: false, error: response.error };
+      }
+    } catch (error) {
+      const errorMessage = 'Login failed. Please try again.';
+      setAuthState(prev => ({
+        ...prev,
+        isLoading: false,
+        error: errorMessage
+      }));
+      return { success: false, error: errorMessage };
+    }
+  }, []);
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    setUser(null);
-  };
+  const register = useCallback(async (data: {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+    companyId: string;
+  }) => {
+    setAuthState(prev => ({ ...prev, isLoading: true, error: null }));
+    
+    try {
+      const response = await apiClient.register(data);
+      
+      if (response.success) {
+        setAuthState(prev => ({
+          ...prev,
+          isLoading: false,
+          error: null
+        }));
+        return { success: true };
+      } else {
+        setAuthState(prev => ({
+          ...prev,
+          isLoading: false,
+          error: response.error || 'Registration failed'
+        }));
+        return { success: false, error: response.error };
+      }
+    } catch (error) {
+      const errorMessage = 'Registration failed. Please try again.';
+      setAuthState(prev => ({
+        ...prev,
+        isLoading: false,
+        error: errorMessage
+      }));
+      return { success: false, error: errorMessage };
+    }
+  }, []);
 
-  const value = useMemo<AuthContextShape>(() => ({
-    user,
-    isAuthenticated: !!user,
-    isLoading,
+  const logout = useCallback(async () => {
+    try {
+      await apiClient.logout();
+    } catch (error) {
+      logger.error('Logout error', error);
+    } finally {
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      setAuthState({
+        user: null,
+        isAuthenticated: false,
+        isLoading: false,
+        error: null
+      });
+    }
+  }, []);
+
+  const clearError = useCallback(() => {
+    setAuthState(prev => ({ ...prev, error: null }));
+  }, []);
+
+  return {
+    ...authState,
     login,
+    register,
     logout,
-  }), [user, isLoading]);
-
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
-};
-
-export const useAuth = (): AuthContextShape => {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used within <AuthProvider>');
-  return ctx;
+    clearError
+  };
 };

@@ -1,0 +1,106 @@
+# Prometheus alerting rules for SEF eFakture
+
+groups:
+  - name: sef_app_alerts
+    interval: 30s
+    rules:
+      # High error rate
+      - alert: HighErrorRate
+        expr: rate(sef_http_requests_total{status_code=~"5.."}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value }} errors/sec for the last 5 minutes"
+
+      # High response time
+      - alert: HighResponseTime
+        expr: histogram_quantile(0.95, rate(sef_http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High response time detected"
+          description: "95th percentile response time is {{ $value }}s"
+
+      # Service down
+      - alert: ServiceDown
+        expr: up{job="sef-efakture"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "SEF eFakture service is down"
+          description: "Service has been down for more than 1 minute"
+
+      # High queue size
+      - alert: HighQueueSize
+        expr: sef_queue_size > 100
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Queue size is growing"
+          description: "Queue {{ $labels.queue }} has {{ $value }} jobs pending"
+
+      # Database connection issues
+      - alert: DatabaseConnectionIssues
+        expr: sef_db_connection_pool_size{state="idle"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No idle database connections available"
+          description: "All database connections are in use"
+
+      # High memory usage
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes / 1024 / 1024 > 1024
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is {{ $value }}MB"
+
+      # SEF API failures
+      - alert: SEFAPIFailures
+        expr: rate(sef_api_calls_total{status="error"}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High SEF API failure rate"
+          description: "SEF API failure rate is {{ $value }}/sec"
+
+      # Invoice processing failures
+      - alert: InvoiceProcessingFailures
+        expr: rate(sef_queue_jobs_processed_total{status="failed"}[10m]) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Invoice processing failures detected"
+          description: "{{ $value }} invoice processing failures/sec"
+
+      # Cache hit ratio low
+      - alert: LowCacheHitRatio
+        expr: rate(sef_cache_hits_total[5m]) / (rate(sef_cache_hits_total[5m]) + rate(sef_cache_misses_total[5m])) < 0.5
+        for: 10m
+        labels:
+          severity: info
+        annotations:
+          summary: "Low cache hit ratio"
+          description: "Cache hit ratio is {{ $value | humanizePercentage }}"
+
+      # Redis down
+      - alert: RedisDown
+        expr: redis_up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is down"
+          description: "Redis has been down for more than 1 minute"
+

@@ -2,22 +2,15 @@ import React, { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 
 export const Login: React.FC = () => {
-  const [email, setEmail] = useState('admin@democompany.rs');
-  const [password, setPassword] = useState('demo123');
-  const [error, setError] = useState<string | null>(null);
+  const [email, setEmail] = useState('admin@example.com');
+  const [password, setPassword] = useState('password');
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    setError(null);
-    try {
-      await login(email, password);
-      // App component će automatski preusmeriti na dashboard kada se isAuthenticated promeni
-    } catch (e: any) {
-      setError(e?.message || 'Neuspešna prijava');
-    }
+    await login(email, password);
     setIsLoading(false);
   };
 
@@ -41,13 +34,18 @@ export const Login: React.FC = () => {
             </p>
           </div>
 
-          {/* Informativni panel (opciono) */}
-
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-red-700 text-sm">
-              {error}
+          {/* Demo credentials info */}
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <div className="flex items-center">
+              <svg className="w-5 h-5 text-blue-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              </svg>
+              <div>
+                <p className="text-sm font-medium text-blue-800">Demo podaci</p>
+                <p className="text-xs text-blue-600">Email: admin@example.com | Lozinka: password</p>
+              </div>
             </div>
-          )}
+          </div>
 
           {/* Login Form */}
           <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
@@ -66,7 +64,7 @@ export const Login: React.FC = () => {
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
-
+              
               <div>
                 <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
                   Lozinka
@@ -168,7 +166,7 @@ export const Login: React.FC = () => {
             </div>
           </div>
         </div>
-
+        
         {/* Floating elements */}
         <div className="absolute top-20 right-20 w-20 h-20 bg-white/10 rounded-full floating"></div>
         <div className="absolute bottom-32 left-16 w-16 h-16 bg-white/5 rounded-full floating" style={{animationDelay: '2s'}}></div>

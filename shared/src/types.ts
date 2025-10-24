@@ -21,20 +21,27 @@ export enum UserRole {
 
 // Invoice Status (SEF)
 export enum InvoiceStatus {
-  DRAFT = 'draft',
-  SENT = 'sent',
-  DELIVERED = 'delivered',
-  ACCEPTED = 'accepted',
-  REJECTED = 'rejected',
-  CANCELLED = 'cancelled',
-  STORNO = 'storno',
-  EXPIRED = 'expired'
+  DRAFT = 'DRAFT',
+  SENT = 'SENT',
+  DELIVERED = 'DELIVERED',
+  ACCEPTED = 'ACCEPTED',
+  REJECTED = 'REJECTED',
+  CANCELLED = 'CANCELLED',
+  STORNO = 'STORNO',
+  EXPIRED = 'EXPIRED'
 }
 
-// Invoice Direction
-export enum InvoiceDirection {
-  OUTGOING = 'outgoing', // Izlazne
-  INCOMING = 'incoming'  // Ulazne
+// Invoice Direction / Type
+export enum InvoiceType {
+  OUTGOING = 'OUTGOING',
+  INCOMING = 'INCOMING'
+}
+
+// Partner Types
+export enum PartnerType {
+  BUYER = 'BUYER',
+  SUPPLIER = 'SUPPLIER',
+  BOTH = 'BOTH'
 }
 
 // UBL Document Types
@@ -66,6 +73,44 @@ export const CompanySchema = z.object({
   phone: z.string().optional(),
   bankAccount: z.string().optional(),
   vatNumber: z.string().optional(),
+  sefApiKey: z.string().optional(),
+  sefEnvironment: z.string().optional(),
+  autoStockDeduction: z.boolean().default(false),
+  createdAt: z.date(),
+  updatedAt: z.date()
+});
+
+// Partner Schema
+export const PartnerSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1),
+  pib: z.string().length(9),
+  type: z.nativeEnum(PartnerType),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  postalCode: z.string().optional(),
+  country: z.string().default('RS'),
+  email: z.string().email().optional(),
+  phone: z.string().optional(),
+  bankAccount: z.string().optional(),
+  vatNumber: z.string().optional(),
+  companyId: z.string().uuid(),
+  createdAt: z.date(),
+  updatedAt: z.date()
+});
+
+// Product Schema
+export const ProductSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1),
+  sku: z.string().optional(),
+  description: z.string().optional(),
+  unitPrice: z.number().nonnegative(),
+  taxRate: z.number().nonnegative(),
+  unit: z.string().default('kom'),
+  currentStock: z.number().nonnegative().default(0),
+  trackStock: z.boolean().default(false),
+  companyId: z.string().uuid(),
   createdAt: z.date(),
   updatedAt: z.date()
 });
@@ -75,15 +120,10 @@ export const InvoiceLineSchema = z.object({
   id: z.string().uuid(),
   lineNumber: z.number().min(1),
   itemName: z.string().min(1),
-  itemDescription: z.string().optional(),
   quantity: z.number().positive(),
-  unitOfMeasure: z.string().min(1),
   unitPrice: z.number().nonnegative(),
-  vatRate: z.number().nonnegative(),
-  vatCategory: z.nativeEnum(VATCategory),
-  lineTotal: z.number().nonnegative(),
-  vatAmount: z.number().nonnegative(),
-  lineTotalWithVat: z.number().nonnegative()
+  taxRate: z.number().nonnegative(),
+  amount: z.number().nonnegative()
 });
 
 // Invoice Schema
@@ -93,19 +133,19 @@ export const InvoiceSchema = z.object({
   invoiceNumber: z.string().min(1),
   issueDate: z.date(),
   dueDate: z.date().optional(),
-  direction: z.nativeEnum(InvoiceDirection),
   status: z.nativeEnum(InvoiceStatus),
-  documentType: z.nativeEnum(UBLDocumentType),
+  type: z.nativeEnum(InvoiceType),
   
-  // Supplier/Buyer
-  supplierId: z.string().uuid(),
-  buyerId: z.string().uuid(),
+  buyerName: z.string().min(1),
+  buyerPIB: z.string().length(9),
+  buyerAddress: z.string().optional(),
+  buyerCity: z.string().optional(),
+  buyerPostalCode: z.string().optional(),
   
   // Amounts
-  subtotal: z.number().nonnegative(),
-  totalVat: z.number().nonnegative(),
   totalAmount: z.number().nonnegative(),
   currency: z.string().length(3).default('RSD'),
+  taxAmount: z.number().nonnegative(),
   
   // Line items
   lines: z.array(InvoiceLineSchema),
@@ -119,10 +159,7 @@ export const InvoiceSchema = z.object({
   sentAt: z.date().optional(),
   
   // Notes
-  note: z.string().optional(),
-  
-  // Reference documents
-  referenceInvoiceId: z.string().uuid().optional()
+  note: z.string().optional()
 });
 
 // API Response Schemas
@@ -148,6 +185,8 @@ export const UserSchema = z.object({
 
 // Export all types
 export type Company = z.infer<typeof CompanySchema>;
+export type Partner = z.infer<typeof PartnerSchema>;
+export type Product = z.infer<typeof ProductSchema>;
 export type InvoiceLine = z.infer<typeof InvoiceLineSchema>;
 export type Invoice = z.infer<typeof InvoiceSchema>;
 export type SEFResponse = z.infer<typeof SEFResponseSchema>;

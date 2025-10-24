@@ -1,7 +1,0 @@
-{
-  "name": "@sef-app/frontend",
-  "version": "1.0.0",
-  "scripts": {
-    "dev": "vite"
-  }
-}

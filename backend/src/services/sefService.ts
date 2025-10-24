@@ -1,296 +1,349 @@
-import axios, { AxiosResponse } from 'axios';
-import logger from '../utils/logger';
+import axios, { AxiosInstance, AxiosError } from 'axios';
+import axiosRetry, { isNetworkOrIdempotentRequestError } from 'axios-retry';
+import { config } from '../config';
+import { logger } from '../utils/logger';
+import { recordSefApiCall } from '../utils/businessMetrics';
 
-interface SEFConfig {
+export interface SEFConfig {
   baseUrl: string;
   apiKey: string;
+  timeout?: number;
 }
 
-interface SEFInvoiceResponse {
-  success: boolean;
-  invoiceId?: string;
-  sefId?: string;
-  status?: string;
-  message?: string;
-  errors?: string[];
-}
-
-interface SEFInvoiceData {
+export interface SEFInvoiceData {
+  invoiceId: string;
+  buyerPIB: string;
+  supplierPIB: string;
   invoiceNumber: string;
   issueDate: string;
   dueDate?: string;
-  supplier: {
-    pib: string;
-    name: string;
-    address: string;
-    city: string;
-    postalCode: string;
-  };
-  buyer: {
-    pib: string;
-    name: string;
-    address: string;
-    city: string;
-    postalCode: string;
-  };
+  totalAmount: number;
+  taxAmount: number;
+  currency: string;
   lines: Array<{
-    itemName: string;
+    name: string;
     quantity: number;
     unitPrice: number;
-    vatRate: number;
-    lineTotal: number;
+    taxRate: number;
+    amount: number;
   }>;
-  totalAmount: number;
-  totalVat: number;
-  subtotal: number;
-  currency: string;
-  ublXml?: string;
+}
+
+export interface SEFInvoiceResponse {
+  id: string;
+  status: string;
+  message?: string;
+  invoiceId?: string;
+  errors?: Array<{ field: string; message: string }>;
+}
+
+/**
+ * Custom error classes for SEF operations
+ */
+export class SEFError extends Error {
+  constructor(
+    message: string,
+    public statusCode?: number,
+    public sefResponse?: any
+  ) {
+    super(message);
+    this.name = 'SEFError';
+  }
+}
+
+export class SEFValidationError extends SEFError {
+  constructor(message: string, sefResponse?: any) {
+    super(message, 400, sefResponse);
+    this.name = 'SEFValidationError';
+  }
+}
+
+export class SEFNetworkError extends SEFError {
+  constructor(message: string, originalError?: any) {
+    super(message, undefined, originalError);
+    this.name = 'SEFNetworkError';
+  }
+}
+
+export class SEFRateLimitError extends SEFError {
+  constructor(message: string, public retryAfter?: number) {
+    super(message, 429);
+    this.name = 'SEFRateLimitError';
+  }
+}
+
+export class SEFServerError extends SEFError {
+  constructor(message: string, statusCode: number, sefResponse?: any) {
+    super(message, statusCode, sefResponse);
+    this.name = 'SEFServerError';
+  }
 }
 
 export class SEFService {
+  private client: AxiosInstance;
   private config: SEFConfig;
 
-  constructor(config: SEFConfig) {
-    this.config = config;
+  constructor(customConfig?: Partial<SEFConfig>) {
+    this.config = {
+      baseUrl: config.SEF_BASE_URL || 'https://demoefaktura.mfin.gov.rs',
+      apiKey: config.SEF_API_KEY || '',
+      timeout: 30000,
+      ...customConfig,
+    };
+
+    this.client = axios.create({
+      baseURL: this.config.baseUrl,
+      timeout: this.config.timeout,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.config.apiKey}`,
+      },
+    });
+
+    // Configure axios-retry with exponential backoff
+    axiosRetry(this.client, {
+      retries: 3,
+      retryDelay: (retryCount, error) => {
+        // Exponential backoff: 1s, 2s, 4s
+        const delay = Math.pow(2, retryCount) * 1000;
+        logger.info(`SEF API retry attempt ${retryCount} after ${delay}ms`, {
+          error: error.message,
+          url: error.config?.url,
+        });
+        return delay;
+      },
+      retryCondition: (error: AxiosError) => {
+        // Retry on network errors or idempotent requests
+        if (isNetworkOrIdempotentRequestError(error)) {
+          return true;
+        }
+        
+        // Retry on specific HTTP status codes
+        const status = error.response?.status;
+        if (status === 429) {
+          // Too Many Requests - respect Retry-After header
+          const retryAfter = error.response?.headers['retry-after'];
+          if (retryAfter) {
+            logger.warn(`SEF API rate limited, retry after ${retryAfter}s`);
+          }
+          return true;
+        }
+        
+        // Retry on server errors (5xx)
+        if (status && status >= 500 && status < 600) {
+          logger.warn(`SEF API server error ${status}, will retry`);
+          return true;
+        }
+        
+        // Don't retry on client errors (4xx) except 429
+        return false;
+      },
+      onRetry: (retryCount, error, requestConfig) => {
+        logger.warn(`Retrying SEF API call (attempt ${retryCount})`, {
+          method: requestConfig.method?.toUpperCase(),
+          url: requestConfig.url,
+          error: error.message,
+          status: error.response?.status,
+        });
+      },
+    });
+
+    // Request interceptor for logging and timing
+    this.client.interceptors.request.use(
+      (config) => {
+        // Add request timestamp for performance tracking
+        (config as any).metadata = { startTime: Date.now() };
+        logger.info(`SEF API Request: ${config.method?.toUpperCase()} ${config.url}`);
+        return config;
+      },
+      (error) => {
+        logger.error('SEF API Request Error:', error);
+        return Promise.reject(error);
+      }
+    );
+
+    // Response interceptor for logging and timing
+    this.client.interceptors.response.use(
+      (response) => {
+        const duration = Date.now() - ((response.config as any).metadata?.startTime || Date.now());
+        logger.info(`SEF API Response: ${response.status} ${response.config.url}`, {
+          duration: `${duration}ms`,
+          status: response.status,
+        });
+        return response;
+      },
+      (error) => {
+        const duration = Date.now() - ((error.config as any)?.metadata?.startTime || Date.now());
+        logger.error('SEF API Response Error:', {
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data,
+          url: error.config?.url,
+          duration: `${duration}ms`,
+          code: error.code, // Network error code (ECONNRESET, ETIMEDOUT, etc.)
+        });
+        return Promise.reject(error);
+      }
+    );
   }
 
   /**
-   * Pošalji fakturu u SEF sistem
+   * Send invoice to SEF system
    */
-  async sendInvoice(invoiceData: SEFInvoiceData): Promise<SEFInvoiceResponse> {
+  /**
+   * Send invoice to SEF (Submit UBL XML)
+   */
+  async sendInvoice(ublXml: string, apiKey: string, environment: 'demo' | 'production' = 'demo'): Promise<SEFInvoiceResponse> {
+    const startTime = Date.now();
     try {
-      logger.info('Šalje se faktura u SEF:', { invoiceNumber: invoiceData.invoiceNumber });
-
-      const response: AxiosResponse = await axios.post(
-        `${this.config.baseUrl}/api/v1/invoices`,
-        {
-          invoice: invoiceData,
-          format: 'UBL',
-        },
+      const response = await this.client.post(
+        '/api/publicapi/sales-invoice', 
+        ublXml,
         {
           headers: {
-            'Authorization': `Bearer ${this.config.apiKey}`,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
+            'Content-Type': 'application/xml',
+            'ApiKey': apiKey,
           },
-          timeout: 30000,
         }
       );
-
-      logger.info('SEF odgovor:', { status: response.status, data: response.data });
-
-      return {
-        success: true,
-        sefId: response.data.invoiceId,
-        status: response.data.status || 'SENT',
-        message: 'Faktura je uspešno poslata u SEF sistem',
-      };
-
+      
+      // Record success metric
+      const duration = (Date.now() - startTime) / 1000;
+      recordSefApiCall('/api/publicapi/sales-invoice', 'POST', response.status, environment, duration);
+      
+      return response.data;
     } catch (error: any) {
-      logger.error('Greška pri slanju fakture u SEF:', {
-        error: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-      });
-
-      return {
-        success: false,
-        message: error.response?.data?.message || 'Greška pri komunikaciji sa SEF sistemom',
-        errors: error.response?.data?.errors || [error.message],
-      };
+      // Record error metric
+      const duration = (Date.now() - startTime) / 1000;
+      const statusCode = error.response?.status || 0;
+      recordSefApiCall('/api/publicapi/sales-invoice', 'POST', statusCode, environment, duration);
+      
+      logger.error('Failed to send invoice to SEF:', error);
+      this.handleSEFError(error, 'send invoice');
+      throw error; // TypeScript guard
     }
   }
 
   /**
-   * Proveri status fakture u SEF sistemu
+   * Get invoice status from SEF
    */
   async getInvoiceStatus(sefId: string): Promise<SEFInvoiceResponse> {
     try {
-      const response: AxiosResponse = await axios.get(
-        `${this.config.baseUrl}/api/v1/invoices/${sefId}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${this.config.apiKey}`,
-            'Accept': 'application/json',
-          },
-          timeout: 15000,
-        }
-      );
-
-      return {
-        success: true,
-        sefId,
-        status: response.data.status,
-        message: 'Status uspešno dobijen',
-      };
-
+      const response = await this.client.get(`/api/publicapi/sales-invoice/${sefId}`);
+      return response.data;
     } catch (error: any) {
-      logger.error('Greška pri dobijanju statusa iz SEF-a:', {
-        sefId,
-        error: error.message,
-        response: error.response?.data,
-      });
-
-      return {
-        success: false,
-        message: 'Greška pri dobijanju statusa fakture',
-        errors: [error.message],
-      };
+      logger.error('Failed to get invoice status from SEF:', error);
+      this.handleSEFError(error, 'get invoice status');
     }
   }
 
   /**
-   * Storniraj fakturu u SEF sistemu
+   * Cancel invoice in SEF system
    */
   async cancelInvoice(sefId: string, reason?: string): Promise<SEFInvoiceResponse> {
     try {
-      const response: AxiosResponse = await axios.post(
-        `${this.config.baseUrl}/api/v1/invoices/${sefId}/cancel`,
-        {
-          reason: reason || 'Stornirana na zahtev korisnika',
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${this.config.apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          timeout: 30000,
-        }
-      );
-
-      return {
-        success: true,
-        sefId,
-        status: 'CANCELLED',
-        message: 'Faktura je uspešno stornirana',
-      };
-
-    } catch (error: any) {
-      logger.error('Greška pri stornu fakture u SEF-u:', {
-        sefId,
-        error: error.message,
+      const response = await this.client.post(`/api/publicapi/sales-invoice/${sefId}/cancel`, {
+        reason: reason || 'Cancelled by user',
       });
-
-      return {
-        success: false,
-        message: 'Greška pri stornu fakture',
-        errors: [error.message],
-      };
+      return response.data;
+    } catch (error: any) {
+      logger.error('Failed to cancel invoice in SEF:', error);
+      this.handleSEFError(error, 'cancel invoice');
     }
   }
 
   /**
-   * Testiraj konekciju sa SEF API-jem
+   * Get purchase invoices (incoming)
    */
-  async testConnection(): Promise<SEFInvoiceResponse> {
+  async getPurchaseInvoices(filters?: {
+    dateFrom?: string;
+    dateTo?: string;
+    status?: string;
+  }): Promise<any[]> {
     try {
-      const response: AxiosResponse = await axios.get(
-        `${this.config.baseUrl}/api/v1/health`,
-        {
-          headers: {
-            'Authorization': `Bearer ${this.config.apiKey}`,
-          },
-          timeout: 10000,
-        }
-      );
-
-      return {
-        success: true,
-        message: 'Konekcija sa SEF API-jem je uspešna',
-      };
-
+      const response = await this.client.get('/api/publicapi/purchase-invoice', {
+        params: filters,
+      });
+      return response.data;
     } catch (error: any) {
-      return {
-        success: false,
-        message: 'Greška u konekciji sa SEF API-jem',
-        errors: [error.message],
-      };
+      logger.error('Failed to get purchase invoices from SEF:', error);
+      this.handleSEFError(error, 'get purchase invoices');
     }
   }
 
   /**
-   * Sinhronizuj sve fakture sa SEF sistemom
+   * Health check
    */
-  async syncAllInvoices(): Promise<SEFInvoiceResponse> {
+  async healthCheck(): Promise<boolean> {
     try {
-      logger.info('Pokretanje sinhronizacije sa SEF sistemom');
-
-      const response: AxiosResponse = await axios.get(
-        `${this.config.baseUrl}/api/v1/invoices/sync`,
-        {
-          headers: {
-            'Authorization': `Bearer ${this.config.apiKey}`,
-            'Accept': 'application/json',
-          },
-          timeout: 60000, // 60 seconds for sync
-        }
-      );
-
-      logger.info('SEF sinhronizacija uspešna:', { data: response.data });
-
-      return {
-        success: true,
-        message: 'Sinhronizacija sa SEF sistemom je uspešno završena',
-      };
-
-    } catch (error: any) {
-      logger.error('Greška pri sinhronizaciji sa SEF-om:', {
-        error: error.message,
-        response: error.response?.data,
-      });
-
-      return {
-        success: false,
-        message: 'Greška pri sinhronizaciji sa SEF sistemom',
-        errors: [error.message],
-      };
+      const response = await this.client.get('/api/health');
+      return response.status === 200;
+    } catch (error) {
+      logger.error('SEF health check failed:', error);
+      return false;
     }
   }
 
   /**
-   * Dobij status svih faktura iz SEF sistema
+   * Centralized error handling for SEF API calls
    */
-  async getAllInvoicesStatus(): Promise<SEFInvoiceResponse> {
-    try {
-      const response: AxiosResponse = await axios.get(
-        `${this.config.baseUrl}/api/v1/invoices`,
-        {
-          headers: {
-            'Authorization': `Bearer ${this.config.apiKey}`,
-            'Accept': 'application/json',
-          },
-          timeout: 30000,
-        }
+  private handleSEFError(error: any, operation: string): never {
+    // Network errors (connection refused, timeout, etc.)
+    if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT' || error.code === 'ENOTFOUND') {
+      throw new SEFNetworkError(
+        `Network error during ${operation}: ${error.message}`,
+        error
       );
-
-      return {
-        success: true,
-        message: 'Status faktura uspešno dobijen',
-        // data: response.data
-      };
-
-    } catch (error: any) {
-      logger.error('Greška pri dobijanju statusa faktura:', {
-        error: error.message,
-      });
-
-      return {
-        success: false,
-        message: 'Greška pri dobijanju statusa faktura',
-        errors: [error.message],
-      };
     }
+
+    // HTTP errors
+    if (error.response) {
+      const status = error.response.status;
+      const data = error.response.data;
+
+      // Validation errors (400, 422)
+      if (status === 400 || status === 422) {
+        const errorMessage = data?.message || data?.error || 'Validation error';
+        throw new SEFValidationError(
+          `Validation error during ${operation}: ${errorMessage}`,
+          data
+        );
+      }
+
+      // Rate limiting (429)
+      if (status === 429) {
+        const retryAfter = parseInt(error.response.headers['retry-after'] || '60');
+        throw new SEFRateLimitError(
+          `Rate limit exceeded during ${operation}. Retry after ${retryAfter}s`,
+          retryAfter
+        );
+      }
+
+      // Server errors (5xx)
+      if (status >= 500) {
+        throw new SEFServerError(
+          `SEF server error during ${operation}: ${status} ${error.response.statusText}`,
+          status,
+          data
+        );
+      }
+
+      // Other client errors (401, 403, 404, etc.)
+      throw new SEFError(
+        `SEF API error during ${operation}: ${status} ${data?.message || error.message}`,
+        status,
+        data
+      );
+    }
+
+    // Unknown error
+    throw new SEFError(
+      `Unknown error during ${operation}: ${error.message}`,
+      undefined,
+      error
+    );
   }
 }
 
-// Factory funkcija za kreiranje SEF servisa
-export const createSEFService = (apiKey: string): SEFService => {
-  const config: SEFConfig = {
-    baseUrl: process.env.SEF_API_BASE_URL || 'https://efaktura.mfin.gov.rs',
-    apiKey,
-  };
-
-  return new SEFService(config);
-};
-
-export default SEFService;
+// Singleton instance
+export const sefService = new SEFService();

@@ -17,7 +17,7 @@
     "sourceMap": true,
     "composite": true,
     "incremental": true,
-    "noEmitOnError": false,
+    "noEmitOnError": true,
     "paths": {
       "@shared/*": ["./shared/src/*"],
       "@frontend/*": ["./frontend/src/*"],
@@ -26,18 +26,19 @@
   },
   "include": [
     "shared/**/*",
+    "frontend/**/*",
     "backend/**/*"
   ],
   "exclude": [
     "node_modules",
     "dist",
     "build",
-    "frontend",
     "**/*.test.ts",
     "**/*.spec.ts"
   ],
   "references": [
     { "path": "./shared" },
-    { "path": "./backend" }
+    { "path": "./backend" },
+    { "path": "./frontend" }
   ]
 }
