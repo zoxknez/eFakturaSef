@@ -1,13 +1,44 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import api from '../services/api';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth } from '../contexts/AuthContext';
 import { Autocomplete, AutocompleteOption } from '../components/Autocomplete';
 import { logger } from '../utils/logger';
+import {
+  FileText,
+  User,
+  Package,
+  Calendar,
+  Plus,
+  Trash2,
+  CheckCircle2,
+  XCircle,
+  ChevronRight,
+  ChevronLeft,
+  Building2,
+  CreditCard,
+  MapPin,
+  Mail,
+  Phone,
+  Calculator,
+  Send,
+  Save,
+  ArrowLeft,
+  Sparkles,
+  Clock,
+  Receipt,
+  Hash,
+  Loader2,
+  Info,
+  Copy,
+  FileCheck,
+  Percent,
+  Banknote
+} from 'lucide-react';
 
-// Types (until @sef-app/shared rebuild is recognized)
+// Types
 interface Partner {
   id: string;
   name: string;
@@ -28,6 +59,8 @@ interface Product {
   sku?: string;
   unitPrice: number;
   taxRate: number;
+  currentStock?: number;
+  trackInventory?: boolean;
 }
 
 // Validation schema
@@ -42,11 +75,13 @@ const createInvoiceSchema = z.object({
   buyerPostalCode: z.string().optional(),
   currency: z.string().default('RSD'),
   note: z.string().optional(),
+  paymentMethod: z.string().default('TRANSFER'),
   lines: z.array(z.object({
     name: z.string().min(1, 'Naziv stavke je obavezan'),
     quantity: z.number().positive('Količina mora biti pozitivna'),
     unitPrice: z.number().nonnegative('Cena ne može biti negativna'),
-    taxRate: z.number().min(0).max(100, 'PDV stopa mora biti između 0 i 100')
+    taxRate: z.number().min(0).max(100, 'PDV stopa mora biti između 0 i 100'),
+    discount: z.number().min(0).max(100).optional()
   })).min(1, 'Morate dodati bar jednu stavku')
 });
 
@@ -57,14 +92,26 @@ interface InvoiceLine {
   quantity: number;
   unitPrice: number;
   taxRate: number;
+  discount: number;
+  productId?: string;
 }
+
+// Stepper configuration
+const steps = [
+  { id: 1, title: 'Osnovni podaci', icon: FileText, description: 'Broj i datumi' },
+  { id: 2, title: 'Kupac', icon: User, description: 'Podaci kupca' },
+  { id: 3, title: 'Stavke', icon: Package, description: 'Proizvodi/usluge' },
+  { id: 4, title: 'Pregled', icon: FileCheck, description: 'Finalna provera' },
+];
 
 export const CreateInvoice: React.FC = () => {
   const { user } = useAuth();
+  const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [lines, setLines] = useState<InvoiceLine[]>([
-    { name: '', quantity: 1, unitPrice: 0, taxRate: 20 }
+    { name: '', quantity: 1, unitPrice: 0, taxRate: 20, discount: 0 }
   ]);
   const [selectedPartner, setSelectedPartner] = useState<Partner | null>(null);
   const [selectedProducts, setSelectedProducts] = useState<Map<number, Product>>(new Map());
@@ -74,14 +121,73 @@ export const CreateInvoice: React.FC = () => {
     handleSubmit,
     formState: { errors },
     setValue,
-    watch
+    watch,
+    trigger
   } = useForm<CreateInvoiceForm>({
     resolver: zodResolver(createInvoiceSchema),
     defaultValues: {
       currency: 'RSD',
-      lines: [{ name: '', quantity: 1, unitPrice: 0, taxRate: 20 }]
+      paymentMethod: 'TRANSFER',
+      issueDate: new Date().toISOString().split('T')[0],
+      lines: [{ name: '', quantity: 1, unitPrice: 0, taxRate: 20, discount: 0 }]
     }
   });
+
+  const watchedValues = watch();
+
+  // Calculate totals
+  const totals = useMemo(() => {
+    const subtotal = lines.reduce((sum, line) => {
+      const lineSubtotal = line.quantity * line.unitPrice;
+      const discountAmount = lineSubtotal * (line.discount / 100);
+      return sum + (lineSubtotal - discountAmount);
+    }, 0);
+    
+    const tax = lines.reduce((sum, line) => {
+      const lineSubtotal = line.quantity * line.unitPrice;
+      const discountAmount = lineSubtotal * (line.discount / 100);
+      const taxableAmount = lineSubtotal - discountAmount;
+      return sum + (taxableAmount * (line.taxRate / 100));
+    }, 0);
+    
+    const totalDiscount = lines.reduce((sum, line) => {
+      const lineSubtotal = line.quantity * line.unitPrice;
+      return sum + (lineSubtotal * (line.discount / 100));
+    }, 0);
+    
+    return { subtotal, tax, totalDiscount, total: subtotal + tax };
+  }, [lines]);
+
+  // Generate invoice number on mount
+  useEffect(() => {
+    const generateInvoiceNumber = async () => {
+      try {
+        const year = new Date().getFullYear();
+        const response = await api.getInvoices({ limit: 1, sortBy: 'createdAt', sortOrder: 'desc' });
+        const invoices = response?.data?.data;
+        if (response?.success && invoices && invoices.length > 0) {
+          const lastNumber = parseInt(invoices[0].invoiceNumber?.split('-')[1] || '0');
+          setValue('invoiceNumber', `${year}-${String(lastNumber + 1).padStart(4, '0')}`);
+        } else {
+          setValue('invoiceNumber', `${year}-0001`);
+        }
+      } catch {
+        setValue('invoiceNumber', `${new Date().getFullYear()}-0001`);
+      }
+    };
+    generateInvoiceNumber();
+  }, [setValue]);
+
+  // Auto-dismiss messages
+  useEffect(() => {
+    if (error || success) {
+      const timer = setTimeout(() => {
+        setError(null);
+        setSuccess(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [error, success]);
 
   const searchPartners = async (query: string): Promise<AutocompleteOption[]> => {
     try {
@@ -94,8 +200,8 @@ export const CreateInvoice: React.FC = () => {
           data: partner
         }));
       }
-    } catch (error) {
-      logger.error('Partner search error', error);
+    } catch (err) {
+      logger.error('Partner search error', err);
     }
     return [];
   };
@@ -111,8 +217,8 @@ export const CreateInvoice: React.FC = () => {
           data: product
         }));
       }
-    } catch (error) {
-      logger.error('Product search error', error);
+    } catch (err) {
+      logger.error('Product search error', err);
     }
     return [];
   };
@@ -125,6 +231,13 @@ export const CreateInvoice: React.FC = () => {
       setValue('buyerAddress', option.data.address || '');
       setValue('buyerCity', option.data.city || '');
       setValue('buyerPostalCode', option.data.postalCode || '');
+      
+      // Auto-set due date based on payment terms
+      if (option.data.defaultPaymentTerms) {
+        const dueDate = new Date();
+        dueDate.setDate(dueDate.getDate() + option.data.defaultPaymentTerms);
+        setValue('dueDate', dueDate.toISOString().split('T')[0]);
+      }
     } else {
       setSelectedPartner(null);
       setValue('buyerName', '');
@@ -144,7 +257,7 @@ export const CreateInvoice: React.FC = () => {
       
       updateLine(index, 'name', option.data.name);
       updateLine(index, 'unitPrice', option.data.unitPrice || 0);
-      updateLine(index, 'taxRate', option.data.vatRate || 20);
+      updateLine(index, 'taxRate', option.data.taxRate || 20);
     } else {
       newSelectedProducts.delete(index);
       setSelectedProducts(newSelectedProducts);
@@ -152,7 +265,7 @@ export const CreateInvoice: React.FC = () => {
   };
 
   const addLine = () => {
-    const newLines = [...lines, { name: '', quantity: 1, unitPrice: 0, taxRate: 20 }];
+    const newLines = [...lines, { name: '', quantity: 1, unitPrice: 0, taxRate: 20, discount: 0 }];
     setLines(newLines);
     setValue('lines', newLines);
   };
@@ -162,7 +275,21 @@ export const CreateInvoice: React.FC = () => {
       const newLines = lines.filter((_, i) => i !== index);
       setLines(newLines);
       setValue('lines', newLines);
+      
+      const newSelectedProducts = new Map<number, Product>();
+      selectedProducts.forEach((product, i) => {
+        if (i < index) newSelectedProducts.set(i, product);
+        else if (i > index) newSelectedProducts.set(i - 1, product);
+      });
+      setSelectedProducts(newSelectedProducts);
     }
+  };
+
+  const duplicateLine = (index: number) => {
+    const newLines = [...lines];
+    newLines.splice(index + 1, 0, { ...lines[index] });
+    setLines(newLines);
+    setValue('lines', newLines);
   };
 
   const updateLine = (index: number, field: keyof InvoiceLine, value: string | number) => {
@@ -170,6 +297,33 @@ export const CreateInvoice: React.FC = () => {
     newLines[index] = { ...newLines[index], [field]: value };
     setLines(newLines);
     setValue('lines', newLines);
+  };
+
+  const validateStep = async (step: number): Promise<boolean> => {
+    switch (step) {
+      case 1:
+        return await trigger(['invoiceNumber', 'issueDate']);
+      case 2:
+        return selectedPartner !== null || await trigger(['buyerName', 'buyerPIB']);
+      case 3:
+        return lines.length > 0 && lines.every(l => l.name && l.quantity > 0);
+      default:
+        return true;
+    }
+  };
+
+  const nextStep = async () => {
+    if (await validateStep(currentStep)) {
+      setCurrentStep(prev => Math.min(prev + 1, 4));
+      setError(null);
+    } else {
+      setError('Molimo popunite sva obavezna polja');
+    }
+  };
+
+  const prevStep = () => {
+    setCurrentStep(prev => Math.max(prev - 1, 1));
+    setError(null);
   };
 
   const onSubmit = async (data: CreateInvoiceForm) => {
@@ -182,30 +336,27 @@ export const CreateInvoice: React.FC = () => {
     setError(null);
 
     try {
-      const invoiceData: any = {
+      const invoiceData: Record<string, unknown> = {
         companyId: user.company.id,
         invoiceNumber: data.invoiceNumber,
         issueDate: data.issueDate,
         dueDate: data.dueDate,
         currency: data.currency,
         note: data.note,
-        lines: data.lines.map((line, index) => ({
+        paymentMethod: data.paymentMethod,
+        lines: lines.map((line, index) => ({
           name: line.name,
           quantity: line.quantity,
           unitPrice: line.unitPrice,
           taxRate: line.taxRate,
-          // Include productId if product was selected from autocomplete
-          productId: selectedProducts.has(index) ? selectedProducts.get(index)?.id : null
+          discount: line.discount,
+          productId: selectedProducts.get(index)?.id || null
         }))
       };
 
-      // Partner Integration: Send partnerId if partner was selected from autocomplete
       if (selectedPartner?.id) {
         invoiceData.partnerId = selectedPartner.id;
-        // Partner data will be fetched from database on backend
-        // No need to send legacy fields
       } else {
-        // Legacy: Manual input - send buyer fields
         invoiceData.buyerName = data.buyerName;
         invoiceData.buyerPIB = data.buyerPIB;
         invoiceData.buyerAddress = data.buyerAddress;
@@ -216,414 +367,798 @@ export const CreateInvoice: React.FC = () => {
       const response = await api.createInvoice(invoiceData);
       
       if (response.success) {
-        // Redirect to invoice list or show success message
-        window.location.href = '/invoices';
+        setSuccess('Faktura uspešno kreirana!');
+        setTimeout(() => {
+          window.location.href = '/invoices';
+        }, 1500);
       } else {
         setError(response.error || 'Greška pri kreiranju fakture');
       }
-    } catch (err) {
+    } catch {
       setError('Greška pri kreiranju fakture');
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // Format currency
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('sr-RS', {
+      style: 'currency',
+      currency: watchedValues.currency || 'RSD',
+      minimumFractionDigits: 2
+    }).format(amount);
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="bg-white overflow-hidden shadow rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-6">
-            Kreiraj novu fakturu
-          </h3>
+    <div className="min-h-screen space-y-6 animate-fadeIn">
+      {/* Header */}
+      <div className="relative overflow-hidden bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 rounded-2xl p-8 text-white">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-50" />
+        
+        <div className="relative z-10">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => window.history.back()}
+                className="p-2 bg-white/10 backdrop-blur-sm rounded-xl hover:bg-white/20 transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <div>
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-white/10 backdrop-blur-sm rounded-xl">
+                    <Receipt className="w-8 h-8" />
+                  </div>
+                  <div>
+                    <h1 className="text-3xl font-bold">Nova Faktura</h1>
+                    <p className="text-indigo-200 mt-1">Kreiranje izlazne fakture</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Live Total */}
+            <div className="text-right bg-white/10 backdrop-blur-sm rounded-xl p-4">
+              <p className="text-sm text-indigo-200">Ukupno</p>
+              <p className="text-3xl font-bold">{formatCurrency(totals.total)}</p>
+            </div>
+          </div>
+
+          {/* Stepper */}
+          <div className="mt-8">
+            <div className="flex items-center justify-between">
+              {steps.map((step, index) => {
+                const StepIcon = step.icon;
+                const isActive = currentStep === step.id;
+                const isCompleted = currentStep > step.id;
+                
+                return (
+                  <React.Fragment key={step.id}>
+                    <button
+                      onClick={() => step.id < currentStep && setCurrentStep(step.id)}
+                      className={`flex flex-col items-center gap-2 transition-all duration-300 ${
+                        step.id <= currentStep ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'
+                      }`}
+                      disabled={step.id > currentStep}
+                    >
+                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-300 ${
+                        isCompleted 
+                          ? 'bg-emerald-500 shadow-lg shadow-emerald-500/30' 
+                          : isActive 
+                            ? 'bg-white text-indigo-900 shadow-lg shadow-white/30' 
+                            : 'bg-white/10'
+                      }`}>
+                        {isCompleted ? (
+                          <CheckCircle2 className="w-6 h-6 text-white" />
+                        ) : (
+                          <StepIcon className={`w-6 h-6 ${isActive ? 'text-indigo-900' : 'text-white'}`} />
+                        )}
+                      </div>
+                      <div className="text-center">
+                        <p className={`text-sm font-semibold ${isActive ? 'text-white' : 'text-indigo-200'}`}>
+                          {step.title}
+                        </p>
+                        <p className="text-xs text-indigo-300 hidden sm:block">{step.description}</p>
+                      </div>
+                    </button>
+                    
+                    {index < steps.length - 1 && (
+                      <div className={`flex-1 h-1 mx-4 rounded-full transition-colors duration-300 ${
+                        currentStep > step.id ? 'bg-emerald-500' : 'bg-white/20'
+                      }`} />
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+        
+        {/* Decorative */}
+        <div className="absolute -top-20 -right-20 w-64 h-64 bg-pink-500/20 rounded-full blur-3xl" />
+        <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl" />
+      </div>
+
+      {/* Toast Messages */}
+      {(success || error) && (
+        <div className={`fixed top-4 right-4 z-50 max-w-md p-4 rounded-xl shadow-2xl backdrop-blur-sm animate-slideIn
+                        ${success ? 'bg-emerald-500/90 text-white' : 'bg-red-500/90 text-white'}`}>
+          <div className="flex items-center gap-3">
+            {success ? <CheckCircle2 className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
+            <p className="font-medium">{success || error}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Main Content */}
+      <form onSubmit={handleSubmit(onSubmit)}>
+        <div className="bg-white/70 backdrop-blur-sm rounded-2xl border border-gray-200/50 shadow-xl overflow-hidden">
           
-          {error && (
-            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
-              <p className="text-sm text-red-600">{error}</p>
+          {/* Step 1: Basic Info */}
+          {currentStep === 1 && (
+            <div className="p-8 space-y-8 animate-fadeIn">
+              <div className="flex items-center gap-3 pb-4 border-b border-gray-100">
+                <div className="p-3 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-xl text-white">
+                  <FileText className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">Osnovni podaci fakture</h2>
+                  <p className="text-sm text-gray-500">Unesite broj fakture i datume</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Invoice Number */}
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <Hash className="w-4 h-4 text-gray-400" />
+                    Broj fakture
+                    <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      {...register('invoiceNumber')}
+                      className={`w-full px-4 py-3 bg-white/70 backdrop-blur-sm border rounded-xl shadow-sm 
+                                 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all
+                                 ${errors.invoiceNumber ? 'border-red-300' : 'border-gray-200'}`}
+                      placeholder="2025-0001"
+                    />
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <Sparkles className="w-5 h-5 text-indigo-400" />
+                    </div>
+                  </div>
+                  {errors.invoiceNumber && (
+                    <p className="text-sm text-red-500 flex items-center gap-1">
+                      <XCircle className="w-4 h-4" />
+                      {errors.invoiceNumber.message}
+                    </p>
+                  )}
+                  <p className="text-xs text-gray-500">Automatski generisan, možete promeniti</p>
+                </div>
+
+                {/* Issue Date */}
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <Calendar className="w-4 h-4 text-gray-400" />
+                    Datum izdavanja
+                    <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    {...register('issueDate')}
+                    type="date"
+                    className={`w-full px-4 py-3 bg-white/70 backdrop-blur-sm border rounded-xl shadow-sm 
+                               focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all
+                               ${errors.issueDate ? 'border-red-300' : 'border-gray-200'}`}
+                  />
+                  {errors.issueDate && (
+                    <p className="text-sm text-red-500">{errors.issueDate.message}</p>
+                  )}
+                </div>
+
+                {/* Due Date */}
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <Clock className="w-4 h-4 text-gray-400" />
+                    Datum dospeća
+                  </label>
+                  <input
+                    {...register('dueDate')}
+                    type="date"
+                    className="w-full px-4 py-3 bg-white/70 backdrop-blur-sm border border-gray-200 rounded-xl shadow-sm 
+                               focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                  />
+                </div>
+
+                {/* Currency */}
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <Banknote className="w-4 h-4 text-gray-400" />
+                    Valuta
+                  </label>
+                  <select
+                    {...register('currency')}
+                    className="w-full px-4 py-3 bg-white/70 backdrop-blur-sm border border-gray-200 rounded-xl shadow-sm 
+                               focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                  >
+                    <option value="RSD">RSD - Srpski dinar</option>
+                    <option value="EUR">EUR - Euro</option>
+                    <option value="USD">USD - US Dolar</option>
+                  </select>
+                </div>
+
+                {/* Payment Method */}
+                <div className="space-y-2 md:col-span-2">
+                  <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <CreditCard className="w-4 h-4 text-gray-400" />
+                    Način plaćanja
+                  </label>
+                  <div className="grid grid-cols-3 gap-3">
+                    {[
+                      { value: 'TRANSFER', label: 'Virman', icon: Building2 },
+                      { value: 'CASH', label: 'Gotovina', icon: Banknote },
+                      { value: 'CARD', label: 'Kartica', icon: CreditCard },
+                    ].map((method) => {
+                      const Icon = method.icon;
+                      return (
+                        <label
+                          key={method.value}
+                          className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all
+                                     ${watchedValues.paymentMethod === method.value
+                                       ? 'border-indigo-500 bg-indigo-50/50 ring-2 ring-indigo-500/20'
+                                       : 'border-gray-200 hover:border-gray-300 bg-white/50'
+                                     }`}
+                        >
+                          <input
+                            {...register('paymentMethod')}
+                            type="radio"
+                            value={method.value}
+                            className="sr-only"
+                          />
+                          <Icon className={`w-5 h-5 ${watchedValues.paymentMethod === method.value ? 'text-indigo-600' : 'text-gray-400'}`} />
+                          <span className={`font-medium ${watchedValues.paymentMethod === method.value ? 'text-indigo-900' : 'text-gray-700'}`}>
+                            {method.label}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
-          
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-            {/* Basic Invoice Info */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Broj fakture *
-                </label>
-                <input
-                  {...register('invoiceNumber')}
-                  className={`mt-1 block w-full border rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
-                    errors.invoiceNumber ? 'border-red-300' : 'border-gray-300'
-                  }`}
-                  placeholder="2024-001"
-                />
-                {errors.invoiceNumber && (
-                  <p className="mt-1 text-sm text-red-600">{errors.invoiceNumber.message}</p>
-                )}
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Datum izdavanja *
-                </label>
-                <input
-                  {...register('issueDate')}
-                  type="date"
-                  className={`mt-1 block w-full border rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
-                    errors.issueDate ? 'border-red-300' : 'border-gray-300'
-                  }`}
-                />
-                {errors.issueDate && (
-                  <p className="mt-1 text-sm text-red-600">{errors.issueDate.message}</p>
-                )}
-              </div>
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Datum dospijeća
-                </label>
-                <input
-                  {...register('dueDate')}
-                  type="date"
-                  className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                />
+          {/* Step 2: Buyer Info */}
+          {currentStep === 2 && (
+            <div className="p-8 space-y-8 animate-fadeIn">
+              <div className="flex items-center gap-3 pb-4 border-b border-gray-100">
+                <div className="p-3 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl text-white">
+                  <User className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">Podaci o kupcu</h2>
+                  <p className="text-sm text-gray-500">Izaberite partnera ili unesite ručno</p>
+                </div>
               </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Valuta
-                </label>
-                <select
-                  {...register('currency')}
-                  className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="RSD">RSD</option>
-                  <option value="EUR">EUR</option>
-                  <option value="USD">USD</option>
-                </select>
-              </div>
-            </div>
 
-            {/* Buyer Info */}
-            <div className="border-t pt-6">
-              <div className="flex items-center justify-between mb-4">
-                <h4 className="text-md font-medium text-gray-900">Podaci o kupcu</h4>
-                {selectedPartner && (
-                  <span className="text-sm text-green-600 font-medium">
-                    ✅ Partner iz šifarnika
-                  </span>
-                )}
-              </div>
-              
-              <div className="grid grid-cols-1 gap-6">
+              {/* Partner Autocomplete */}
+              <div className="space-y-4">
                 <Autocomplete
-                  label="Izaberite partnera ili unesite ručno"
+                  label="Pretraga partnera"
                   placeholder="Počnite da kucate naziv ili PIB partnera..."
                   required={true}
-                  value={watch('buyerName') || ''}
+                  value={watchedValues.buyerName || ''}
                   onSelect={handlePartnerSelect}
                   onSearch={searchPartners}
                   error={errors.buyerName?.message}
                   allowCustom={true}
                   minChars={2}
                 />
-              </div>
 
-              {!selectedPartner && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      PIB kupca *
-                    </label>
-                    <input
-                      {...register('buyerPIB')}
-                      className={`mt-1 block w-full border rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
-                        errors.buyerPIB ? 'border-red-300' : 'border-gray-300'
-                      }`}
-                      placeholder="123456789"
-                      maxLength={9}
-                    />
-                    {errors.buyerPIB && (
-                      <p className="mt-1 text-sm text-red-600">{errors.buyerPIB.message}</p>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {selectedPartner && (
-                <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                    <div>
-                      <span className="text-gray-600">PIB:</span>
-                      <span className="ml-2 font-medium">{selectedPartner.pib}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-600">Tip:</span>
-                      <span className="ml-2 font-medium">
-                        {selectedPartner.type === 'BUYER' ? 'Kupac' : 
-                         selectedPartner.type === 'SUPPLIER' ? 'Dobavljač' : 'Kupac/Dobavljač'}
+                {selectedPartner && (
+                  <div className="p-6 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-xl border border-blue-200 animate-fadeIn">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-blue-100 rounded-lg">
+                          <Building2 className="w-5 h-5 text-blue-600" />
+                        </div>
+                        <div>
+                          <h4 className="font-semibold text-gray-900">{selectedPartner.name}</h4>
+                          <p className="text-sm text-gray-500">Partner iz šifarnika</p>
+                        </div>
+                      </div>
+                      <span className="px-3 py-1 bg-emerald-100 text-emerald-700 text-sm font-medium rounded-full flex items-center gap-1">
+                        <CheckCircle2 className="w-4 h-4" />
+                        Izabran
                       </span>
                     </div>
-                    {selectedPartner.address && (
-                      <div className="md:col-span-2">
-                        <span className="text-gray-600">Adresa:</span>
-                        <span className="ml-2">{selectedPartner.address}, {selectedPartner.city} {selectedPartner.postalCode}</span>
+                    
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="flex items-center gap-2 text-sm">
+                        <CreditCard className="w-4 h-4 text-gray-400" />
+                        <span className="text-gray-500">PIB:</span>
+                        <span className="font-medium">{selectedPartner.pib}</span>
                       </div>
-                    )}
-                    {selectedPartner.email && (
-                      <div>
-                        <span className="text-gray-600">Email:</span>
-                        <span className="ml-2">{selectedPartner.email}</span>
-                      </div>
-                    )}
-                    {selectedPartner.phone && (
-                      <div>
-                        <span className="text-gray-600">Telefon:</span>
-                        <span className="ml-2">{selectedPartner.phone}</span>
-                      </div>
-                    )}
+                      {selectedPartner.city && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <MapPin className="w-4 h-4 text-gray-400" />
+                          <span className="text-gray-500">Grad:</span>
+                          <span className="font-medium">{selectedPartner.city}</span>
+                        </div>
+                      )}
+                      {selectedPartner.email && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <Mail className="w-4 h-4 text-gray-400" />
+                          <span className="font-medium">{selectedPartner.email}</span>
+                        </div>
+                      )}
+                      {selectedPartner.phone && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <Phone className="w-4 h-4 text-gray-400" />
+                          <span className="font-medium">{selectedPartner.phone}</span>
+                        </div>
+                      )}
+                    </div>
+
                     {selectedPartner.defaultPaymentTerms && (
-                      <div>
-                        <span className="text-gray-600">Uslovi plaćanja:</span>
-                        <span className="ml-2 font-medium">{selectedPartner.defaultPaymentTerms} dana</span>
-                      </div>
-                    )}
-                    {selectedPartner.vatPayer !== undefined && (
-                      <div>
-                        <span className="text-gray-600">Poreski obveznik:</span>
-                        <span className="ml-2">{selectedPartner.vatPayer ? '✅ Da' : '❌ Ne'}</span>
+                      <div className="mt-4 pt-4 border-t border-blue-200">
+                        <p className="text-sm text-blue-700">
+                          <Info className="w-4 h-4 inline mr-1" />
+                          Automatski postavljeni uslovi plaćanja: <strong>{selectedPartner.defaultPaymentTerms} dana</strong>
+                        </p>
                       </div>
                     )}
                   </div>
-                </div>
-              )}
+                )}
 
-              {!selectedPartner && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      Adresa
-                    </label>
-                    <input
-                      {...register('buyerAddress')}
-                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Adresa"
-                    />
+                {!selectedPartner && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6 p-6 bg-gray-50/50 rounded-xl border border-gray-200">
+                    <div className="md:col-span-2">
+                      <p className="text-sm text-gray-500 mb-4 flex items-center gap-2">
+                        <Info className="w-4 h-4" />
+                        Ili unesite podatke ručno:
+                      </p>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-700">
+                        PIB kupca <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        {...register('buyerPIB')}
+                        className={`w-full px-4 py-3 bg-white border rounded-xl shadow-sm 
+                                   focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all
+                                   ${errors.buyerPIB ? 'border-red-300' : 'border-gray-200'}`}
+                        placeholder="123456789"
+                        maxLength={9}
+                      />
+                      {errors.buyerPIB && (
+                        <p className="text-sm text-red-500">{errors.buyerPIB.message}</p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-700">Adresa</label>
+                      <input
+                        {...register('buyerAddress')}
+                        className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl shadow-sm 
+                                   focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                        placeholder="Ulica i broj"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-700">Grad</label>
+                      <input
+                        {...register('buyerCity')}
+                        className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl shadow-sm 
+                                   focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                        placeholder="Beograd"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-700">Poštanski broj</label>
+                      <input
+                        {...register('buyerPostalCode')}
+                        className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl shadow-sm 
+                                   focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                        placeholder="11000"
+                      />
+                    </div>
                   </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      Grad
-                    </label>
-                    <input
-                      {...register('buyerCity')}
-                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Grad"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      Poštanski broj
-                    </label>
-                    <input
-                      {...register('buyerPostalCode')}
-                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="11000"
-                    />
-                  </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
+          )}
 
-            {/* Invoice Lines */}
-            <div className="border-t pt-6">
-              <div className="flex justify-between items-center mb-4">
-                <h4 className="text-md font-medium text-gray-900">Stavke fakture</h4>
+          {/* Step 3: Invoice Lines */}
+          {currentStep === 3 && (
+            <div className="p-8 space-y-6 animate-fadeIn">
+              <div className="flex items-center justify-between pb-4 border-b border-gray-100">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-xl text-white">
+                    <Package className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900">Stavke fakture</h2>
+                    <p className="text-sm text-gray-500">{lines.length} stavk{lines.length === 1 ? 'a' : 'i'}</p>
+                  </div>
+                </div>
                 <button
                   type="button"
                   onClick={addLine}
-                  className="px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
+                  className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-medium 
+                             rounded-xl shadow-lg shadow-emerald-500/25 hover:shadow-xl transition-all
+                             flex items-center gap-2"
                 >
-                  + Dodaj stavku
+                  <Plus className="w-5 h-5" />
+                  Dodaj stavku
                 </button>
               </div>
-              
-              {lines.map((line, index) => (
-                <div key={index} className="mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
-                  <div className="grid grid-cols-1 gap-4 mb-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-700">
-                        Stavka #{index + 1}
+
+              <div className="space-y-4">
+                {lines.map((line, index) => (
+                  <div 
+                    key={index} 
+                    className="p-6 bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200 shadow-sm 
+                               hover:shadow-md transition-shadow animate-fadeIn"
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <span className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-500 
+                                        rounded-lg flex items-center justify-center text-white font-bold text-sm">
+                          {index + 1}
+                        </span>
+                        <span className="font-medium text-gray-900">
+                          {line.name || 'Nova stavka'}
+                        </span>
                         {selectedProducts.has(index) && (
-                          <span className="ml-2 text-xs text-green-600">✅ Iz šifarnika</span>
+                          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-medium rounded-full">
+                            Iz šifarnika
+                          </span>
                         )}
-                      </span>
-                      {lines.length > 1 && (
+                      </div>
+                      <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => removeLine(index)}
-                          className="px-3 py-1 bg-red-600 text-white text-xs rounded-md hover:bg-red-700"
+                          onClick={() => duplicateLine(index)}
+                          className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                          title="Dupliciraj"
                         >
-                          🗑️ Ukloni
+                          <Copy className="w-4 h-4" />
                         </button>
+                        {lines.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeLine(index)}
+                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Ukloni"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <Autocomplete
+                        label="Proizvod/usluga"
+                        placeholder="Pretražite proizvode ili unesite ručno..."
+                        required={true}
+                        value={line.name}
+                        onSelect={(option) => handleProductSelect(index, option)}
+                        onSearch={searchProducts}
+                        allowCustom={true}
+                        minChars={2}
+                      />
+
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-gray-700">Količina</label>
+                          <input
+                            type="number"
+                            value={line.quantity}
+                            onChange={(e) => updateLine(index, 'quantity', parseFloat(e.target.value) || 0)}
+                            className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg 
+                                       focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                            min="0"
+                            step="0.01"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-gray-700">Jed. cena</label>
+                          <input
+                            type="number"
+                            value={line.unitPrice}
+                            onChange={(e) => updateLine(index, 'unitPrice', parseFloat(e.target.value) || 0)}
+                            className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg 
+                                       focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                            min="0"
+                            step="0.01"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                            <Percent className="w-3 h-3" /> Popust
+                          </label>
+                          <input
+                            type="number"
+                            value={line.discount}
+                            onChange={(e) => updateLine(index, 'discount', parseFloat(e.target.value) || 0)}
+                            className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg 
+                                       focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                            min="0"
+                            max="100"
+                            step="0.5"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-gray-700">PDV %</label>
+                          <select
+                            value={line.taxRate}
+                            onChange={(e) => updateLine(index, 'taxRate', parseFloat(e.target.value))}
+                            className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg 
+                                       focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                          >
+                            <option value="0">0%</option>
+                            <option value="10">10%</option>
+                            <option value="20">20%</option>
+                          </select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-gray-700">Iznos</label>
+                          <div className="px-3 py-2 bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 
+                                          rounded-lg font-bold text-indigo-700 text-center">
+                            {formatCurrency(
+                              (line.quantity * line.unitPrice * (1 - line.discount / 100)) * (1 + line.taxRate / 100)
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Quick Totals */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+                <div className="p-4 bg-gray-50 rounded-xl">
+                  <p className="text-sm text-gray-500">Osnovica</p>
+                  <p className="text-lg font-bold text-gray-900">{formatCurrency(totals.subtotal)}</p>
+                </div>
+                <div className="p-4 bg-amber-50 rounded-xl">
+                  <p className="text-sm text-amber-600">Popust</p>
+                  <p className="text-lg font-bold text-amber-700">-{formatCurrency(totals.totalDiscount)}</p>
+                </div>
+                <div className="p-4 bg-blue-50 rounded-xl">
+                  <p className="text-sm text-blue-600">PDV</p>
+                  <p className="text-lg font-bold text-blue-700">{formatCurrency(totals.tax)}</p>
+                </div>
+                <div className="p-4 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-xl text-white">
+                  <p className="text-sm text-indigo-100">Ukupno</p>
+                  <p className="text-lg font-bold">{formatCurrency(totals.total)}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Step 4: Review */}
+          {currentStep === 4 && (
+            <div className="p-8 space-y-6 animate-fadeIn">
+              <div className="flex items-center gap-3 pb-4 border-b border-gray-100">
+                <div className="p-3 bg-gradient-to-br from-amber-500 to-orange-500 rounded-xl text-white">
+                  <FileCheck className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">Pregled fakture</h2>
+                  <p className="text-sm text-gray-500">Proverite podatke pre kreiranja</p>
+                </div>
+              </div>
+
+              {/* Invoice Preview */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Left - Details */}
+                <div className="space-y-6">
+                  {/* Basic Info */}
+                  <div className="p-6 bg-gray-50 rounded-xl">
+                    <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                      <FileText className="w-5 h-5 text-gray-400" />
+                      Podaci fakture
+                    </h4>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-gray-500">Broj fakture</p>
+                        <p className="font-semibold text-gray-900">{watchedValues.invoiceNumber}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-500">Datum izdavanja</p>
+                        <p className="font-semibold text-gray-900">
+                          {watchedValues.issueDate && new Date(watchedValues.issueDate).toLocaleDateString('sr-RS')}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-gray-500">Datum dospeća</p>
+                        <p className="font-semibold text-gray-900">
+                          {watchedValues.dueDate 
+                            ? new Date(watchedValues.dueDate).toLocaleDateString('sr-RS')
+                            : '-'
+                          }
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-gray-500">Način plaćanja</p>
+                        <p className="font-semibold text-gray-900">
+                          {watchedValues.paymentMethod === 'TRANSFER' ? 'Virman' :
+                           watchedValues.paymentMethod === 'CASH' ? 'Gotovina' : 'Kartica'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Buyer Info */}
+                  <div className="p-6 bg-blue-50 rounded-xl">
+                    <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                      <User className="w-5 h-5 text-blue-500" />
+                      Kupac
+                    </h4>
+                    <div className="space-y-2 text-sm">
+                      <p className="font-semibold text-gray-900 text-lg">{watchedValues.buyerName}</p>
+                      <p className="text-gray-600">PIB: {watchedValues.buyerPIB}</p>
+                      {(watchedValues.buyerAddress || selectedPartner?.address) && (
+                        <p className="text-gray-600">
+                          {watchedValues.buyerAddress || selectedPartner?.address}, {' '}
+                          {watchedValues.buyerCity || selectedPartner?.city} {' '}
+                          {watchedValues.buyerPostalCode || selectedPartner?.postalCode}
+                        </p>
                       )}
                     </div>
-                    
-                    <Autocomplete
-                      label="Proizvod/usluga"
-                      placeholder="Počnite da kucate naziv, šifru ili barkod..."
-                      required={true}
-                      value={line.name}
-                      onSelect={(option) => handleProductSelect(index, option)}
-                      onSearch={searchProducts}
-                      allowCustom={true}
-                      minChars={2}
+                  </div>
+
+                  {/* Notes */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-700">Napomena</label>
+                    <textarea
+                      {...register('note')}
+                      rows={3}
+                      className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl shadow-sm 
+                                 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                      placeholder="Dodatne napomene za fakturu..."
                     />
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      Količina *
-                    </label>
-                    <input
-                      type="number"
-                      value={line.quantity}
-                      onChange={(e) => updateLine(index, 'quantity', parseFloat(e.target.value) || 0)}
-                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="1"
-                      min="0"
-                      step="0.01"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      Jedinična cena *
-                    </label>
-                    <input
-                      type="number"
-                      value={line.unitPrice}
-                      onChange={(e) => updateLine(index, 'unitPrice', parseFloat(e.target.value) || 0)}
-                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="0.00"
-                      min="0"
-                      step="0.01"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      PDV stopa *
-                    </label>
-                    <select
-                      value={line.taxRate}
-                      onChange={(e) => updateLine(index, 'taxRate', parseFloat(e.target.value))}
-                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="0">0%</option>
-                      <option value="10">10%</option>
-                      <option value="20">20%</option>
-                    </select>
-                  </div>
-                  
-                  <div className="flex items-center">
-                    <div className="text-sm">
-                      <span className="text-gray-600">Iznos:</span>
-                      <span className="ml-2 font-bold text-gray-900">
-                        {(line.quantity * line.unitPrice).toFixed(2)} RSD
-                      </span>
-                    </div>
-                  </div>
                   </div>
                 </div>
-              ))}
-            </div>
 
-            {/* Notes */}
-            <div className="border-t pt-6">
-              <label className="block text-sm font-medium text-gray-700">
-                Napomena
-              </label>
-              <textarea
-                {...register('note')}
-                rows={3}
-                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Dodatne informacije o fakturi..."
-              />
-            </div>
+                {/* Right - Summary */}
+                <div className="space-y-6">
+                  {/* Items Summary */}
+                  <div className="p-6 bg-white rounded-xl border border-gray-200 shadow-sm">
+                    <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                      <Package className="w-5 h-5 text-gray-400" />
+                      Stavke ({lines.length})
+                    </h4>
+                    <div className="space-y-3 max-h-64 overflow-y-auto">
+                      {lines.map((line, index) => {
+                        const lineTotal = (line.quantity * line.unitPrice * (1 - line.discount / 100)) * (1 + line.taxRate / 100);
+                        return (
+                          <div key={index} className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0">
+                            <div>
+                              <p className="font-medium text-gray-900">{line.name || `Stavka ${index + 1}`}</p>
+                              <p className="text-xs text-gray-500">
+                                {line.quantity} × {formatCurrency(line.unitPrice)}
+                                {line.discount > 0 && ` (-${line.discount}%)`}
+                                {` + PDV ${line.taxRate}%`}
+                              </p>
+                            </div>
+                            <p className="font-semibold text-gray-900">{formatCurrency(lineTotal)}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
 
-            {/* Invoice Summary */}
-            <div className="border-t pt-6">
-              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-6 border border-blue-200">
-                <h4 className="text-md font-medium text-gray-900 mb-4">Rekapitulacija</h4>
-                <div className="space-y-2">
-                  {lines.map((line, index) => {
-                    const subtotal = line.quantity * line.unitPrice;
-                    const taxAmount = subtotal * (line.taxRate / 100);
-                    return (
-                      <div key={index} className="flex justify-between text-sm">
-                        <span className="text-gray-600">
-                          {line.name || `Stavka ${index + 1}`} ({line.quantity} × {line.unitPrice.toFixed(2)})
-                        </span>
-                        <span className="font-medium">{subtotal.toFixed(2)} RSD</span>
+                  {/* Final Totals */}
+                  <div className="p-6 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 rounded-xl border border-indigo-200">
+                    <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                      <Calculator className="w-5 h-5 text-indigo-500" />
+                      Rekapitulacija
+                    </h4>
+                    <div className="space-y-3">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Osnovica</span>
+                        <span className="font-medium">{formatCurrency(totals.subtotal)}</span>
                       </div>
-                    );
-                  })}
-                  
-                  <div className="border-t border-blue-200 pt-2 mt-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Osnovica:</span>
-                      <span className="font-medium">
-                        {lines.reduce((sum, line) => sum + (line.quantity * line.unitPrice), 0).toFixed(2)} RSD
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-sm mt-1">
-                      <span className="text-gray-600">PDV:</span>
-                      <span className="font-medium">
-                        {lines.reduce((sum, line) => {
-                          const subtotal = line.quantity * line.unitPrice;
-                          return sum + (subtotal * (line.taxRate / 100));
-                        }, 0).toFixed(2)} RSD
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-lg font-bold mt-2">
-                      <span className="text-gray-900">Ukupno za plaćanje:</span>
-                      <span className="text-blue-600">
-                        {lines.reduce((sum, line) => {
-                          const subtotal = line.quantity * line.unitPrice;
-                          const taxAmount = subtotal * (line.taxRate / 100);
-                          return sum + subtotal + taxAmount;
-                        }, 0).toFixed(2)} RSD
-                      </span>
+                      {totals.totalDiscount > 0 && (
+                        <div className="flex justify-between text-sm text-amber-600">
+                          <span>Popust</span>
+                          <span className="font-medium">-{formatCurrency(totals.totalDiscount)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">PDV</span>
+                        <span className="font-medium">{formatCurrency(totals.tax)}</span>
+                      </div>
+                      <div className="pt-3 border-t border-indigo-200">
+                        <div className="flex justify-between">
+                          <span className="text-lg font-bold text-gray-900">Ukupno</span>
+                          <span className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                            {formatCurrency(totals.total)}
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
+          )}
 
-            <div className="flex justify-end space-x-3">
+          {/* Footer Navigation */}
+          <div className="p-6 bg-gray-50 border-t border-gray-200">
+            <div className="flex items-center justify-between">
               <button
                 type="button"
-                className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-                onClick={() => window.history.back()}
+                onClick={currentStep === 1 ? () => window.history.back() : prevStep}
+                className="px-6 py-3 text-gray-700 font-medium rounded-xl hover:bg-gray-100 
+                           transition-colors flex items-center gap-2"
               >
-                Otkaži
+                <ChevronLeft className="w-5 h-5" />
+                {currentStep === 1 ? 'Otkaži' : 'Nazad'}
               </button>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isSubmitting ? 'Kreira se...' : 'Kreiraj fakturu'}
-              </button>
+
+              <div className="flex items-center gap-3">
+                {currentStep === 4 && (
+                  <button
+                    type="button"
+                    className="px-6 py-3 border-2 border-gray-300 text-gray-700 font-medium rounded-xl 
+                               hover:bg-gray-100 transition-all flex items-center gap-2"
+                  >
+                    <Save className="w-5 h-5" />
+                    Sačuvaj nacrt
+                  </button>
+                )}
+
+                {currentStep < 4 ? (
+                  <button
+                    type="button"
+                    onClick={nextStep}
+                    className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold 
+                               rounded-xl shadow-lg shadow-indigo-500/25 hover:shadow-xl hover:shadow-indigo-500/30 
+                               transform hover:-translate-y-0.5 transition-all flex items-center gap-2"
+                  >
+                    Dalje
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="px-8 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-semibold 
+                               rounded-xl shadow-lg shadow-emerald-500/25 hover:shadow-xl hover:shadow-emerald-500/30 
+                               transform hover:-translate-y-0.5 transition-all flex items-center gap-2
+                               disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Kreiranje...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-5 h-5" />
+                        Kreiraj fakturu
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
-          </form>
+          </div>
         </div>
-      </div>
+      </form>
     </div>
   );
 };

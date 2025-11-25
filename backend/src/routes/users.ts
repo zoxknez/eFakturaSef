@@ -5,7 +5,7 @@ const router = express.Router();
 // @route   GET /api/users
 // @desc    Get all users
 // @access  Private
-router.get('/', (req, res) => {
+router.get('/', (_req, res) => {
   const mockUsers = [
     {
       id: '1',

@@ -6,6 +6,7 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import App from './App';
 import './index.css';
 import { initSentry } from './utils/sentry';
+import { AuthProvider } from './contexts/AuthContext';
 
 // Initialize Sentry
 initSentry();
@@ -24,7 +25,7 @@ const queryClient = new QueryClient({
 
 // Loading fallback
 const LoadingFallback = () => (
-  <div className="min-h-screen flex items-center justify-center bg-gray-50">
+  <div className="min-h-screen flex items-center justify-center bg-white">
     <div className="text-center">
       <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
       <p className="mt-4 text-gray-600">Učitavanje...</p>
@@ -36,12 +37,14 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <Suspense fallback={<LoadingFallback />}>
-          <App />
-        </Suspense>
+        <AuthProvider>
+          <Suspense fallback={<LoadingFallback />}>
+            <App />
+          </Suspense>
+        </AuthProvider>
       </BrowserRouter>
-      {/* React Query DevTools - only in development */}
-      {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
+      {/* React Query DevTools - disabled for now */}
+      {/* {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />} */}
     </QueryClientProvider>
   </React.StrictMode>
 );

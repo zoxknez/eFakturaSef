@@ -359,88 +359,97 @@ export const AdvancedInvoiceDetail: React.FC = () => {
   const payBadge = paymentBadge(invoice.paymentStatus);
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <Link to="/invoices" className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg">
-              ← Nazad
-            </Link>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                Faktura {invoice.invoiceNumber}
-                <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusBadgeClass(invoice.status)}`}>
+    <div className="space-y-6 animate-fadeIn">
+      {/* Hero Section */}
+      <div className="relative bg-gradient-to-br from-indigo-600 via-blue-600 to-cyan-600 rounded-[2rem] p-8 lg:p-10 text-white overflow-hidden">
+        {/* Animated background elements */}
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute -top-24 -right-24 w-96 h-96 bg-white/10 rounded-full blur-3xl animate-pulse"></div>
+          <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-blue-400/20 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
+          
+          {/* Floating elements */}
+          <div className="absolute top-10 right-20 w-20 h-20 bg-white/5 rounded-2xl rotate-12 floating"></div>
+          <div className="absolute bottom-10 right-40 w-14 h-14 bg-white/5 rounded-xl -rotate-12 floating" style={{ animationDelay: '2s' }}></div>
+        </div>
+        
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+          <div className="space-y-4">
+            <div className="flex items-center gap-4">
+              <Link to="/invoices" className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-colors">
+                ← Nazad
+              </Link>
+              <div className="flex items-center gap-2">
+                <span className={`px-3 py-1 rounded-full text-sm font-bold ${statusBadgeClass(invoice.status)}`}>
                   {srStatusLabel[invoice.status]}
                 </span>
-                <span className={`px-3 py-1 rounded-full text-sm font-semibold ${payBadge.cls}`}>{payBadge.text}</span>
-              </h1>
-              <p className="text-gray-600 flex items-center gap-2">
-                SEF ID: {invoice.sefId ? <span className="font-mono">{invoice.sefId}</span> : '—'}
-                {invoice.sefId && (
-                  <button onClick={copySEF} className="text-blue-600 hover:text-blue-800 text-sm underline">
-                    kopiraj
-                  </button>
-                )}
-              </p>
+                <span className={`px-3 py-1 rounded-full text-sm font-bold ${payBadge.cls}`}>{payBadge.text}</span>
+              </div>
             </div>
+            <h1 className="text-4xl lg:text-5xl font-black tracking-tight">
+              Faktura {invoice.invoiceNumber}
+            </h1>
+            <p className="text-xl text-blue-100 flex items-center gap-2">
+              SEF ID: {invoice.sefId ? <span className="font-mono bg-white/10 px-2 py-1 rounded">{invoice.sefId}</span> : '—'}
+              {invoice.sefId && (
+                <button onClick={copySEF} className="text-white hover:text-cyan-200 text-sm underline">
+                  kopiraj
+                </button>
+              )}
+            </p>
           </div>
-
+          
           <div className="flex flex-wrap gap-3">
             {invoice.paymentStatus !== 'PAID' && (
-              <button onClick={() => setShowPaymentModal(true)} className="btn-primary bg-green-500 hover:bg-green-600 flex items-center gap-2 px-3 py-2 rounded-lg text-white">
-                💰 Evidentiraj Plaćanje
+              <button onClick={() => setShowPaymentModal(true)} className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-500 text-white rounded-xl font-medium hover:bg-emerald-400 transition-all">
+                💰 Plaćanje
               </button>
             )}
-            <button onClick={openPDF} className="btn-primary bg-blue-500 hover:bg-blue-600 flex items-center gap-2 px-3 py-2 rounded-lg text-white">
+            <button onClick={openPDF} className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/10 backdrop-blur-sm border border-white/20 text-white rounded-xl font-medium hover:bg-white/20 transition-all">
               📄 PDF
             </button>
-            <button onClick={downloadXML} className="btn-primary bg-emerald-600 hover:bg-emerald-700 flex items-center gap-2 px-3 py-2 rounded-lg text-white">
-              📋 XML/UBL
+            <button onClick={downloadXML} className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/10 backdrop-blur-sm border border-white/20 text-white rounded-xl font-medium hover:bg-white/20 transition-all">
+              📋 XML
             </button>
-            <button className="btn-primary bg-red-500/90 hover:bg-red-600 flex items-center gap-2 px-3 py-2 rounded-lg text-white">
+            <button className="inline-flex items-center gap-2 px-4 py-2.5 bg-red-500/80 text-white rounded-xl font-medium hover:bg-red-500 transition-all">
               🚫 Storno
-            </button>
-            <button className="btn-primary bg-gray-500 hover:bg-gray-600 flex items-center gap-2 px-3 py-2 rounded-lg text-white">
-              ⚙️ Više
             </button>
           </div>
         </div>
+      </div>
 
-        {/* Status Bar */}
-        <div className="mt-6 p-4 bg-gradient-to-r from-green-50 to-blue-50 rounded-xl border border-green-200">
-          <div className="flex items-center space-x-6">
-            {/* Kreirana */}
-            <div className="text-center">
-              <div className={`w-8 h-8 ${stepDone('created') ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-700'} rounded-full flex items-center justify-center text-sm font-bold mx-auto mb-1`}>
-                {stepDone('created') ? '✓' : '•'}
-              </div>
-              <span className="text-xs text-gray-600">Kreirana</span>
+      {/* Status Bar */}
+      <div className="p-4 bg-gradient-to-r from-green-50 to-blue-50 rounded-2xl border border-green-200">
+        <div className="flex items-center space-x-6">
+          {/* Kreirana */}
+          <div className="text-center">
+            <div className={`w-8 h-8 ${stepDone('created') ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-700'} rounded-full flex items-center justify-center text-sm font-bold mx-auto mb-1`}>
+              {stepDone('created') ? '✓' : '•'}
             </div>
-            <div className={`flex-1 h-0.5 ${stepDone('sent') ? 'bg-green-300' : 'bg-gray-200'}`} />
-            {/* Poslata */}
-            <div className="text-center">
-              <div className={`w-8 h-8 ${stepDone('sent') ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-700'} rounded-full flex items-center justify-center text-sm font-bold mx-auto mb-1`}>
-                {stepDone('sent') ? '✓' : '•'}
-              </div>
-              <span className="text-xs text-gray-600">Poslata</span>
+            <span className="text-xs text-gray-600">Kreirana</span>
+          </div>
+          <div className={`flex-1 h-0.5 ${stepDone('sent') ? 'bg-green-300' : 'bg-gray-200'}`} />
+          {/* Poslata */}
+          <div className="text-center">
+            <div className={`w-8 h-8 ${stepDone('sent') ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-700'} rounded-full flex items-center justify-center text-sm font-bold mx-auto mb-1`}>
+              {stepDone('sent') ? '✓' : '•'}
             </div>
-            <div className={`flex-1 h-0.5 ${stepDone('accepted') ? 'bg-green-300' : 'bg-gray-200'}`} />
-            {/* Prihvaćena */}
-            <div className="text-center">
-              <div className={`w-8 h-8 ${stepDone('accepted') ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-700'} rounded-full flex items-center justify-center text-sm font-bold mx-auto mb-1`}>
-                {stepDone('accepted') ? '✓' : '•'}
-              </div>
-              <span className="text-xs text-gray-600">Prihvaćena</span>
+            <span className="text-xs text-gray-600">Poslata</span>
+          </div>
+          <div className={`flex-1 h-0.5 ${stepDone('accepted') ? 'bg-green-300' : 'bg-gray-200'}`} />
+          {/* Prihvaćena */}
+          <div className="text-center">
+            <div className={`w-8 h-8 ${stepDone('accepted') ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-700'} rounded-full flex items-center justify-center text-sm font-bold mx-auto mb-1`}>
+              {stepDone('accepted') ? '✓' : '•'}
             </div>
-            <div className={`flex-1 h-0.5 ${stepDone('paid') ? 'bg-green-300' : 'bg-gray-200'}`} />
-            {/* Plaćena */}
-            <div className="text-center">
-              <div className={`w-8 h-8 ${stepDone('paid') ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-700'} rounded-full flex items-center justify-center text-sm font-bold mx-auto mb-1`}>
-                {stepDone('paid') ? '✓' : '?'}
-              </div>
-              <span className="text-xs text-gray-600">Plaćena</span>
+            <span className="text-xs text-gray-600">Prihvaćena</span>
+          </div>
+          <div className={`flex-1 h-0.5 ${stepDone('paid') ? 'bg-green-300' : 'bg-gray-200'}`} />
+          {/* Plaćena */}
+          <div className="text-center">
+            <div className={`w-8 h-8 ${stepDone('paid') ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-700'} rounded-full flex items-center justify-center text-sm font-bold mx-auto mb-1`}>
+              {stepDone('paid') ? '✓' : '?'}
             </div>
+            <span className="text-xs text-gray-600">Plaćena</span>
           </div>
         </div>
       </div>

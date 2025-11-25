@@ -166,8 +166,8 @@ app.use('/api/webhooks', webhookRoutes); // Webhook endpoints (no rate limit - v
 app.use('/api/exports', exportsRoutes); // Export routes (PDF, Excel)
 app.use('/api/bulk', rateLimiters.api, bulkRoutes); // Bulk operations
 
-// 404 handler
-app.use('*', (req, res) => {
+// 404 handler (Express 5 requires named wildcard parameter)
+app.use('/{*splat}', (req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 

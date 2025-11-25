@@ -175,7 +175,7 @@ export const metricsMiddleware = (req: Request, res: Response, next: NextFunctio
 /**
  * Endpoint to expose Prometheus metrics
  */
-export const metricsEndpoint = async (req: Request, res: Response) => {
+export const metricsEndpoint = async (_req: Request, res: Response) => {
   try {
     res.set('Content-Type', register.contentType);
     const metrics = await register.metrics();

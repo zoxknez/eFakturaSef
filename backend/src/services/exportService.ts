@@ -6,15 +6,48 @@ import { logger } from '../utils/logger';
 import { format } from 'date-fns';
 
 /**
+ * Sanitize filename to prevent directory traversal and header injection
+ * @param filename - Original filename
+ * @returns Safe filename for use in Content-Disposition header
+ */
+function sanitizeFilename(filename: string): string {
+  if (!filename || typeof filename !== 'string') {
+    return 'document';
+  }
+
+  return filename
+    // Remove directory traversal attempts
+    .replace(/\.\./g, '')
+    .replace(/[\/\\]/g, '')
+    // Remove control characters and newlines (prevents header injection)
+    .replace(/[\r\n\t\0\x08\x0B\x0C]/g, '')
+    // Remove quotes and other problematic characters
+    .replace(/["'`]/g, '')
+    // Allow only safe characters: alphanumeric, dash, underscore, space, dot
+    .replace(/[^a-zA-Z0-9\-_ \.]/g, '_')
+    // Remove multiple consecutive dots or spaces
+    .replace(/\.{2,}/g, '.')
+    .replace(/\s{2,}/g, ' ')
+    // Trim spaces and dots from start/end
+    .trim()
+    .replace(/^\.+|\.+$/g, '')
+    // Limit length to 200 characters
+    .substring(0, 200)
+    // If empty after sanitization, return default
+    || 'document';
+}
+
+/**
  * Generate PDF from invoice data
  */
 export async function generateInvoicePDF(invoice: any, res: Response): Promise<void> {
   try {
     const doc = new PDFDocument({ size: 'A4', margin: 50 });
 
-    // Set response headers
+    // Set response headers with sanitized filename
+    const safeFilename = sanitizeFilename(`invoice-${invoice.invoiceNumber}`);
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename=invoice-${invoice.invoiceNumber}.pdf`);
+    res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}.pdf"`);
 
     // Pipe PDF to response
     doc.pipe(res);
@@ -192,12 +225,13 @@ export async function generateInvoicesExcel(invoices: any[], res: Response): Pro
       });
     });
 
-    // Set response headers
+    // Set response headers with sanitized filename
+    const safeFilename = sanitizeFilename(`invoices-${format(new Date(), 'yyyy-MM-dd')}`);
     res.setHeader(
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     );
-    res.setHeader('Content-Disposition', `attachment; filename=invoices-${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
+    res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}.xlsx"`);
 
     // Write to response
     await workbook.xlsx.write(res);
@@ -281,14 +315,15 @@ export async function generateInvoiceReport(
     invoicesSheet.getColumn('totalAmount').numFmt = '#,##0.00';
     invoicesSheet.getColumn('taxAmount').numFmt = '#,##0.00';
 
-    // Set response headers
+    // Set response headers with sanitized filename
+    const safeFilename = sanitizeFilename(`invoice-report-${format(new Date(), 'yyyy-MM-dd')}`);
     res.setHeader(
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     );
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename=invoice-report-${format(new Date(), 'yyyy-MM-dd')}.xlsx`
+      `attachment; filename="${safeFilename}.xlsx"`
     );
 
     await workbook.xlsx.write(res);
@@ -306,4 +341,5 @@ export default {
   generateInvoicesExcel,
   generateInvoiceReport,
 };
+
 

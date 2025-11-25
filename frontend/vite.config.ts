@@ -5,8 +5,6 @@ import path from 'path';
 export default defineConfig({
   plugins: [
     react({
-      // Enable Fast Refresh
-      fastRefresh: true,
       // Exclude storybook stories
       exclude: /\.stories\.(t|j)sx?$/,
     }),

@@ -210,7 +210,7 @@ export function contextualErrorHandler(
   err: any,
   req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ) {
   const context = getContext(req);
   

@@ -3,7 +3,7 @@ import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import { config } from '../config';
 import { logger } from '../utils/logger';
-import { prisma } from '../db/prisma';
+// import { prisma } from '../db/prisma';
 
 // Store nonces in-memory (for production, use Redis)
 const nonceCache = new Map<string, number>();

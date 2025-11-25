@@ -35,9 +35,10 @@ router.get('/invoice/:id/pdf', async (req: Request, res: Response) => {
     }
 
     await generateInvoicePDF(invoice, res);
+    return;
   } catch (error: any) {
     logger.error('Failed to export invoice PDF', { error: error.message });
-    res.status(500).json({ error: 'Failed to generate PDF' });
+    return res.status(500).json({ error: 'Failed to generate PDF' });
   }
 });
 
@@ -83,9 +84,10 @@ router.get('/invoices/excel', async (req: Request, res: Response) => {
     }
 
     await generateInvoicesExcel(invoices, res);
+    return;
   } catch (error: any) {
     logger.error('Failed to export invoices Excel', { error: error.message });
-    res.status(500).json({ error: 'Failed to generate Excel' });
+    return res.status(500).json({ error: 'Failed to generate Excel' });
   }
 });
 
@@ -159,4 +161,6 @@ router.get('/report/excel', async (req: Request, res: Response) => {
 });
 
 export default router;
+
+
 

@@ -139,29 +139,7 @@ async function incrementCounter(key: string, windowMs: number): Promise<number> 
   }
 }
 
-/**
- * Get current counter value
- */
-async function getCounter(key: string): Promise<number> {
-  if (isRedisConnected && redisClient) {
-    try {
-      const value = await redisClient.get(key);
-      return value ? parseInt(value, 10) : 0;
-    } catch (error: any) {
-      logger.error('Failed to get rate limit counter from Redis', {
-        error: error.message,
-        key,
-      });
-    }
-  }
-
-  // Check memory
-  const stored = memoryStore.get(key);
-  if (!stored || Date.now() > stored.resetTime) {
-    return 0;
-  }
-  return stored.count;
-}
+// getCounter removed as it was unused
 
 /**
  * Get TTL for key
@@ -293,12 +271,15 @@ export const rateLimiters = {
   }),
 
   /**
-   * Authentication endpoints (stricter limits)
+   * Authentication endpoints (stricter limits in production)
    */
   auth: advancedRateLimit({
     identifier: 'auth',
     roleLimits: {
-      [UserRole.ANONYMOUS]: { windowMs: 15 * 60 * 1000, max: 10 },
+      [UserRole.ANONYMOUS]: { 
+        windowMs: 15 * 60 * 1000, 
+        max: process.env.NODE_ENV === 'development' ? 1000 : 10 
+      },
     },
   }),
 

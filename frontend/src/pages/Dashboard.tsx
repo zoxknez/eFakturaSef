@@ -1,199 +1,413 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 
-const StatCard = ({ title, value, subtitle, icon, gradient, trend }: {
+// Animated counter hook
+const useAnimatedCounter = (target: number, duration: number = 1500) => {
+  const [count, setCount] = useState(0);
+  
+  useEffect(() => {
+    let startTime: number | null = null;
+    const animate = (currentTime: number) => {
+      if (!startTime) startTime = currentTime;
+      const progress = Math.min((currentTime - startTime) / duration, 1);
+      setCount(Math.floor(progress * target));
+      if (progress < 1) requestAnimationFrame(animate);
+    };
+    requestAnimationFrame(animate);
+  }, [target, duration]);
+  
+  return count;
+};
+
+// Modern stat card with glass effect and animations
+const StatCard = ({ title, value, subtitle, icon, gradient, trend, delay = 0 }: {
   title: string;
-  value: string | number;
+  value: number | string;
   subtitle: string;
-  icon: string;
+  icon: React.ReactNode;
   gradient: string;
   trend?: { value: string; positive: boolean };
-}) => (
-  <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 card-hover border border-gray-200/50">
-    <div className="flex items-center justify-between">
-      <div className="flex-1">
-        <p className="text-sm font-medium text-gray-600 mb-1">{title}</p>
-        <p className="text-3xl font-bold text-gray-900 mb-2">{value}</p>
-        <p className="text-sm text-gray-500">{subtitle}</p>
-        {trend && (
-          <div className={`flex items-center mt-2 text-sm ${trend.positive ? 'text-green-600' : 'text-red-600'}`}>
-            <span className="mr-1">{trend.positive ? '↗' : '↘'}</span>
-            {trend.value}
-          </div>
-        )}
-      </div>
-      <div className={`w-16 h-16 rounded-2xl ${gradient} flex items-center justify-center text-2xl shadow-lg`}>
-        {icon}
-      </div>
-    </div>
-  </div>
-);
-
-const ActivityItem = ({ title, time, status, icon }: {
-  title: string;
-  time: string;
-  status: 'success' | 'warning' | 'info';
-  icon: string;
+  delay?: number;
 }) => {
-  const statusColors = {
-    success: 'bg-green-100 text-green-800',
-    warning: 'bg-yellow-100 text-yellow-800',
-    info: 'bg-blue-100 text-blue-800'
-  };
+  const numericValue = typeof value === 'number' ? value : parseInt(value.replace(/[^0-9]/g, ''));
+  const animatedValue = useAnimatedCounter(numericValue);
+  const displayValue = typeof value === 'string' && value.includes('M') 
+    ? `${(animatedValue / 10).toFixed(1)}M` 
+    : animatedValue.toLocaleString('sr-RS');
 
   return (
-    <div className="flex items-center p-4 bg-gray-50/50 rounded-xl hover:bg-gray-100/50 transition-colors">
-      <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 flex items-center justify-center text-white text-sm mr-4">
+    <div 
+      className="group relative bg-white/90 backdrop-blur-xl rounded-3xl p-6 border border-gray-100 shadow-sm hover:shadow-2xl hover:shadow-blue-500/10 transition-all duration-500 hover:-translate-y-2 overflow-hidden"
+      style={{ animationDelay: `${delay}ms` }}
+    >
+      {/* Background gradient overlay on hover */}
+      <div className={`absolute inset-0 ${gradient} opacity-0 group-hover:opacity-5 transition-opacity duration-500`}></div>
+      
+      <div className="relative flex items-start justify-between">
+        <div className="flex-1 space-y-3">
+          <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider">{title}</p>
+          <p className="text-4xl font-black text-gray-900 tracking-tight">{displayValue}</p>
+          <p className="text-sm text-gray-400 font-medium">{subtitle}</p>
+          {trend && (
+            <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold ${
+              trend.positive 
+                ? 'bg-emerald-50 text-emerald-600' 
+                : 'bg-red-50 text-red-600'
+            }`}>
+              <svg className={`w-4 h-4 mr-1 ${trend.positive ? '' : 'rotate-180'}`} fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+              </svg>
+              {trend.value}
+            </div>
+          )}
+        </div>
+        <div className={`w-16 h-16 rounded-2xl ${gradient} flex items-center justify-center text-white text-2xl shadow-lg group-hover:scale-110 group-hover:rotate-3 transition-all duration-300`}>
+          {icon}
+        </div>
+      </div>
+      
+      {/* Subtle bottom border gradient */}
+      <div className={`absolute bottom-0 left-0 right-0 h-1 ${gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-500`}></div>
+    </div>
+  );
+};
+
+// Timeline activity item with enhanced styling
+const ActivityItem = ({ title, time, status, icon, description }: {
+  title: string;
+  time: string;
+  status: 'success' | 'warning' | 'info' | 'error';
+  icon: React.ReactNode;
+  description?: string;
+}) => {
+  const statusConfig = {
+    success: { bg: 'bg-emerald-500', ring: 'ring-emerald-100', text: 'text-emerald-700', badge: 'bg-emerald-50 text-emerald-700', label: 'Uspešno' },
+    warning: { bg: 'bg-amber-500', ring: 'ring-amber-100', text: 'text-amber-700', badge: 'bg-amber-50 text-amber-700', label: 'Čekanje' },
+    info: { bg: 'bg-blue-500', ring: 'ring-blue-100', text: 'text-blue-700', badge: 'bg-blue-50 text-blue-700', label: 'Info' },
+    error: { bg: 'bg-red-500', ring: 'ring-red-100', text: 'text-red-700', badge: 'bg-red-50 text-red-700', label: 'Greška' }
+  };
+  const config = statusConfig[status];
+
+  return (
+    <div className="group flex items-start gap-4 p-4 rounded-2xl hover:bg-gray-50/80 transition-all duration-300 cursor-pointer">
+      <div className={`relative flex-shrink-0 w-12 h-12 rounded-xl ${config.bg} ring-4 ${config.ring} flex items-center justify-center text-white text-lg shadow-lg group-hover:scale-110 transition-transform duration-300`}>
         {icon}
+        <span className={`absolute -bottom-1 -right-1 w-4 h-4 ${config.bg} rounded-full border-2 border-white`}></span>
       </div>
-      <div className="flex-1">
-        <p className="text-sm font-medium text-gray-900">{title}</p>
-        <p className="text-xs text-gray-500">{time}</p>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-sm font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">{title}</p>
+          <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${config.badge}`}>
+            {config.label}
+          </span>
+        </div>
+        {description && <p className="text-sm text-gray-500 mb-1">{description}</p>}
+        <p className="text-xs text-gray-400 font-medium">{time}</p>
       </div>
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColors[status]}`}>
-        {status === 'success' ? 'Uspešno' : status === 'warning' ? 'Upozorenje' : 'Info'}
-      </span>
+      <svg className="w-5 h-5 text-gray-300 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+      </svg>
+    </div>
+  );
+};
+
+// Quick action button component
+const QuickActionButton = ({ icon, label, description, gradient, to, primary = false }: {
+  icon: React.ReactNode;
+  label: string;
+  description: string;
+  gradient?: string;
+  to: string;
+  primary?: boolean;
+}) => (
+  <Link
+    to={to}
+    className={`group relative flex items-center gap-4 p-4 rounded-2xl transition-all duration-300 overflow-hidden ${
+      primary 
+        ? `${gradient} text-white shadow-lg hover:shadow-xl hover:-translate-y-1` 
+        : 'bg-gray-50 hover:bg-gray-100 text-gray-700 hover:-translate-y-1'
+    }`}
+  >
+    <div className={`flex-shrink-0 w-12 h-12 rounded-xl ${primary ? 'bg-white/20' : 'bg-white shadow-sm'} flex items-center justify-center text-xl group-hover:scale-110 transition-transform`}>
+      {icon}
+    </div>
+    <div className="flex-1">
+      <p className="font-semibold">{label}</p>
+      <p className={`text-xs ${primary ? 'text-white/80' : 'text-gray-500'}`}>{description}</p>
+    </div>
+    <svg className={`w-5 h-5 ${primary ? 'text-white/60' : 'text-gray-400'} group-hover:translate-x-1 transition-transform`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+    </svg>
+  </Link>
+);
+
+// System status indicator
+const SystemStatus = ({ name, status, description }: {
+  name: string;
+  status: 'online' | 'warning' | 'offline';
+  description: string;
+}) => {
+  const statusConfig = {
+    online: { color: 'bg-emerald-500', pulse: true, text: 'text-emerald-600', label: 'Online' },
+    warning: { color: 'bg-amber-500', pulse: false, text: 'text-amber-600', label: 'Upozorenje' },
+    offline: { color: 'bg-red-500', pulse: false, text: 'text-red-600', label: 'Offline' }
+  };
+  const config = statusConfig[status];
+
+  return (
+    <div className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
+      <div className="flex items-center gap-3">
+        <div className="relative">
+          <div className={`w-3 h-3 rounded-full ${config.color}`}></div>
+          {config.pulse && (
+            <div className={`absolute inset-0 w-3 h-3 rounded-full ${config.color} animate-ping opacity-75`}></div>
+          )}
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-gray-900">{name}</p>
+          <p className="text-xs text-gray-500">{description}</p>
+        </div>
+      </div>
+      <span className={`text-xs font-bold ${config.text}`}>{config.label}</span>
     </div>
   );
 };
 
 export const Dashboard: React.FC = () => {
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const greeting = () => {
+    const hour = currentTime.getHours();
+    if (hour < 12) return 'Dobro jutro';
+    if (hour < 18) return 'Dobar dan';
+    return 'Dobro veče';
+  };
+
   return (
-    <div className="space-y-8">
-      {/* Welcome Banner */}
-      <div className="bg-gradient-to-r from-blue-600 via-purple-600 to-cyan-600 rounded-3xl p-8 text-white relative overflow-hidden">
-        <div className="absolute inset-0 bg-black/10"></div>
-        <div className="relative z-10">
-          <h1 className="text-3xl font-bold mb-2">Dobro došli u SEF Portal! 👋</h1>
-          <p className="text-blue-100 text-lg">Upravljajte elektronskim fakturama brzo i efikasno</p>
-          <div className="mt-6 flex space-x-4">
-            <button className="bg-white/20 backdrop-blur-sm text-white px-6 py-3 rounded-xl font-medium hover:bg-white/30 transition-colors">
-              📄 Nova faktura
-            </button>
-            <button className="bg-white/10 backdrop-blur-sm text-white px-6 py-3 rounded-xl font-medium hover:bg-white/20 transition-colors border border-white/20">
-              📊 Izveštaji
-            </button>
+    <div className="space-y-8 animate-fadeIn">
+      {/* Welcome Banner - Premium Design */}
+      <div className="relative bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 rounded-[2rem] p-8 lg:p-10 text-white overflow-hidden">
+        {/* Animated background elements */}
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute -top-24 -right-24 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl animate-pulse"></div>
+          <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-full blur-3xl"></div>
+          
+          {/* Floating orbs */}
+          <div className="absolute top-10 right-20 w-20 h-20 bg-white/5 rounded-full floating"></div>
+          <div className="absolute bottom-10 right-40 w-14 h-14 bg-white/5 rounded-full floating" style={{ animationDelay: '2s' }}></div>
+          <div className="absolute top-20 right-1/3 w-8 h-8 bg-white/10 rounded-full floating" style={{ animationDelay: '4s' }}></div>
+          
+          {/* Grid pattern */}
+          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAwIDEwIEwgNDAgMTAgTSAxMCAwIEwgMTAgNDAgTSAwIDIwIEwgNDAgMjAgTSAyMCAwIEwgMjAgNDAgTSAwIDMwIEwgNDAgMzAgTSAzMCAwIEwgMzAgNDAiIGZpbGw9Im5vbmUiIHN0cm9rZT0icmdiYSgyNTUsMjU1LDI1NSwwLjAzKSIgc3Ryb2tlLXdpZHRoPSIxIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2dyaWQpIi8+PC9zdmc+')] opacity-50"></div>
+        </div>
+        
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+          <div className="space-y-4">
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full text-sm font-medium">
+              <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span>
+              Sistem aktivan • {currentTime.toLocaleTimeString('sr-RS')}
+            </div>
+            <h1 className="text-4xl lg:text-5xl font-black tracking-tight">
+              {greeting()}, <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-400">Admin</span>! 👋
+            </h1>
+            <p className="text-xl text-blue-200/80 max-w-xl">
+              Upravljajte elektronskim fakturama brzo i efikasno kroz moderan SEF portal.
+            </p>
+            <div className="flex flex-wrap gap-3 pt-4">
+              <Link to="/invoices/new" className="group inline-flex items-center gap-2 bg-white text-slate-900 px-6 py-3.5 rounded-xl font-bold hover:bg-blue-50 transition-all duration-300 shadow-lg shadow-white/25 hover:shadow-xl hover:shadow-white/30 hover:-translate-y-0.5">
+                <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Nova faktura
+                <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                </svg>
+              </Link>
+              <Link to="/invoices" className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm text-white px-6 py-3.5 rounded-xl font-bold hover:bg-white/20 transition-all duration-300 border border-white/20">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Pregledaj fakture
+              </Link>
+            </div>
+          </div>
+          
+          {/* Mini stats in banner */}
+          <div className="grid grid-cols-2 gap-4 lg:w-80">
+            <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/10">
+              <p className="text-3xl font-black">127</p>
+              <p className="text-sm text-blue-200/70">Faktura danas</p>
+            </div>
+            <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/10">
+              <p className="text-3xl font-black text-emerald-400">98%</p>
+              <p className="text-sm text-blue-200/70">Prihvaćeno</p>
+            </div>
           </div>
         </div>
-        <div className="absolute -right-8 -top-8 w-32 h-32 bg-white/10 rounded-full floating"></div>
-        <div className="absolute -right-16 -bottom-8 w-24 h-24 bg-white/5 rounded-full floating" style={{animationDelay: '2s'}}></div>
       </div>
 
-      {/* KPI Cards */}
+      {/* KPI Cards - Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
         <StatCard
           title="Poslate fakture"
-          value="127"
+          value={127}
           subtitle="Ovaj mesec"
-          icon="📤"
-          gradient="bg-gradient-to-r from-blue-500 to-cyan-500"
+          icon={<svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>}
+          gradient="bg-gradient-to-br from-blue-500 to-cyan-500"
           trend={{ value: "+12%", positive: true }}
+          delay={100}
         />
         <StatCard
           title="Prihvaćene fakture"
-          value="98"
+          value={98}
           subtitle="77% stopa prihvatanja"
-          icon="✅"
-          gradient="bg-gradient-to-r from-green-500 to-emerald-500"
+          icon={<svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+          gradient="bg-gradient-to-br from-emerald-500 to-green-500"
           trend={{ value: "+8%", positive: true }}
+          delay={200}
         />
         <StatCard
           title="Na čekanju"
-          value="15"
+          value={15}
           subtitle="Čeka odluku"
-          icon="⏳"
-          gradient="bg-gradient-to-r from-yellow-500 to-orange-500"
+          icon={<svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+          gradient="bg-gradient-to-br from-amber-500 to-orange-500"
           trend={{ value: "-3%", positive: false }}
+          delay={300}
         />
         <StatCard
           title="Ukupan promet"
-          value="2.4M"
+          value="24"
           subtitle="RSD ovaj mesec"
-          icon="💰"
-          gradient="bg-gradient-to-r from-purple-500 to-pink-500"
+          icon={<svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+          gradient="bg-gradient-to-br from-violet-500 to-purple-500"
           trend={{ value: "+15%", positive: true }}
+          delay={400}
         />
       </div>
 
+      {/* Main Content Grid */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         {/* Recent Activity */}
         <div className="xl:col-span-2">
-          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50">
+          <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-gray-900">Poslednje aktivnosti</h3>
-              <button className="text-blue-600 hover:text-blue-700 text-sm font-medium">
-                Pogledaj sve →
-              </button>
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">Poslednje aktivnosti</h3>
+                <p className="text-sm text-gray-500">Praćenje svih promena u realnom vremenu</p>
+              </div>
+              <Link to="/audit-logs" className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-semibold group">
+                Pogledaj sve
+                <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                </svg>
+              </Link>
             </div>
-            <div className="space-y-4">
+            <div className="space-y-2">
               <ActivityItem
                 title="Faktura #2024-001 uspešno poslata"
+                description="Kupac: ABC Solutions d.o.o."
                 time="Pre 2 sata"
                 status="success"
-                icon="📤"
+                icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>}
               />
               <ActivityItem
                 title="Nova ulazna faktura od ABC d.o.o."
+                description="Iznos: 125,000.00 RSD"
                 time="Pre 4 sata"
                 status="info"
-                icon="📥"
+                icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>}
               />
               <ActivityItem
-                title="Faktura #2024-002 na čekanju"
+                title="Faktura #2024-002 čeka odobrenje"
+                description="Status: Na čekanju kod kupca"
                 time="Pre 6 sati"
                 status="warning"
-                icon="⏳"
+                icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
               />
               <ActivityItem
                 title="SEF API konekcija obnovljena"
+                description="Veza sa SEF serverom uspostavljena"
                 time="Pre 1 dan"
                 status="success"
-                icon="🔗"
+                icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>}
               />
             </div>
           </div>
         </div>
 
-        {/* System Status */}
+        {/* Right Sidebar */}
         <div className="space-y-6">
-          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50">
-            <h3 className="text-xl font-bold text-gray-900 mb-4">Status sistema</h3>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-gray-700">SEF API</span>
-                <div className="flex items-center">
-                  <div className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></div>
-                  <span className="text-green-600 text-sm font-medium">Online</span>
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-gray-700">Baza podataka</span>
-                <div className="flex items-center">
-                  <div className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></div>
-                  <span className="text-green-600 text-sm font-medium">Aktivna</span>
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-gray-700">Backup sistem</span>
-                <div className="flex items-center">
-                  <div className="w-2 h-2 bg-yellow-500 rounded-full mr-2"></div>
-                  <span className="text-yellow-600 text-sm font-medium">U toku</span>
-                </div>
-              </div>
+          {/* Quick Actions */}
+          <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Brze akcije</h3>
+            <div className="space-y-3">
+              <QuickActionButton
+                icon={<svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>}
+                label="Kreiraj fakturu"
+                description="Nova izlazna faktura"
+                gradient="bg-gradient-to-r from-blue-600 to-cyan-500"
+                to="/invoices/new"
+                primary
+              />
+              <QuickActionButton
+                icon="👥"
+                label="Dodaj partnera"
+                description="Novi kupac ili dobavljač"
+                to="/partners"
+              />
+              <QuickActionButton
+                icon="📦"
+                label="Dodaj proizvod"
+                description="Novi artikal u šifarniku"
+                to="/products"
+              />
+              <QuickActionButton
+                icon="📊"
+                label="Generiši izveštaj"
+                description="Finansijski izveštaji"
+                to="/accounting/reports"
+              />
             </div>
           </div>
 
-          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50">
-            <h3 className="text-xl font-bold text-gray-900 mb-4">Brze akcije</h3>
-            <div className="space-y-3">
-              <button className="w-full bg-gradient-to-r from-blue-500 to-cyan-500 text-white p-3 rounded-xl font-medium hover:shadow-lg hover:shadow-blue-500/25 transition-all">
-                🆕 Kreiraj fakturu
-              </button>
-              <button className="w-full bg-gray-100 text-gray-700 p-3 rounded-xl font-medium hover:bg-gray-200 transition-colors">
-                📊 Generisi izveštaj
-              </button>
-              <button className="w-full bg-gray-100 text-gray-700 p-3 rounded-xl font-medium hover:bg-gray-200 transition-colors">
-                ⚙️ Podešavanja
-              </button>
+          {/* System Status */}
+          <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-900">Status sistema</h3>
+              <span className="px-2 py-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-full">Sve u redu</span>
+            </div>
+            <div className="space-y-1">
+              <SystemStatus name="SEF API" status="online" description="demoefaktura.mfin.gov.rs" />
+              <SystemStatus name="Baza podataka" status="online" description="PostgreSQL 15" />
+              <SystemStatus name="Redis keš" status="online" description="Konekcija aktivna" />
+              <SystemStatus name="Backup sistem" status="warning" description="Sledeći za 2h" />
+            </div>
+          </div>
+
+          {/* Mini Chart Placeholder */}
+          <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl p-6 text-white">
+            <h3 className="text-lg font-bold mb-2">Mesečni pregled</h3>
+            <p className="text-sm text-slate-400 mb-4">Fakture po danima</p>
+            <div className="flex items-end justify-between h-24 gap-1">
+              {[40, 65, 45, 80, 55, 70, 90, 60, 75, 85, 95, 70].map((height, i) => (
+                <div 
+                  key={i} 
+                  className="flex-1 bg-gradient-to-t from-blue-500 to-cyan-400 rounded-t-sm opacity-80 hover:opacity-100 transition-opacity cursor-pointer"
+                  style={{ height: `${height}%` }}
+                  title={`Dan ${i + 1}`}
+                ></div>
+              ))}
+            </div>
+            <div className="flex justify-between mt-3 text-xs text-slate-500">
+              <span>Nov 1</span>
+              <span>Nov 12</span>
             </div>
           </div>
         </div>

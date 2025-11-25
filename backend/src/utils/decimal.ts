@@ -159,7 +159,9 @@ export function formatCurrency(
   
   // Serbian format: 1.234,56
   const parts = formatted.split('.');
-  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  if (parts[0]) {
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  }
   const serbianFormat = parts.join(',');
   
   return `${serbianFormat} ${currency}`;

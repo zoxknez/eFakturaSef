@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { apiClient } from '../services/api';
 import { logger } from '../utils/logger';
 
@@ -22,7 +22,22 @@ interface AuthState {
   error: string | null;
 }
 
-export const useAuth = () => {
+interface AuthContextType extends AuthState {
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  register: (data: {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+    companyId: string;
+  }) => Promise<{ success: boolean; error?: string }>;
+  logout: () => Promise<void>;
+  clearError: () => void;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [authState, setAuthState] = useState<AuthState>({
     user: null,
     isAuthenticated: false,
@@ -86,7 +101,7 @@ export const useAuth = () => {
           user: null,
           isAuthenticated: false,
           isLoading: false,
-          error: 'Authentication check failed'
+          error: null
         });
       }
     };
@@ -113,17 +128,20 @@ export const useAuth = () => {
           error: null
         });
         
+        logger.info('Login successful', { email: user.email });
         return { success: true };
       } else {
+        const errorMsg = response.error || 'Login failed';
         setAuthState(prev => ({
           ...prev,
           isLoading: false,
-          error: response.error || 'Login failed'
+          error: errorMsg
         }));
-        return { success: false, error: response.error };
+        return { success: false, error: errorMsg };
       }
     } catch (error) {
       const errorMessage = 'Login failed. Please try again.';
+      logger.error('Login error', error);
       setAuthState(prev => ({
         ...prev,
         isLoading: false,
@@ -192,11 +210,23 @@ export const useAuth = () => {
     setAuthState(prev => ({ ...prev, error: null }));
   }, []);
 
-  return {
-    ...authState,
-    login,
-    register,
-    logout,
-    clearError
-  };
+  return (
+    <AuthContext.Provider value={{
+      ...authState,
+      login,
+      register,
+      logout,
+      clearError
+    }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
 };

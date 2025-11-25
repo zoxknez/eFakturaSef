@@ -63,3 +63,5 @@ echo "  1. Run 'npx prisma generate' to update Prisma client"
 echo "  2. Restart the application"
 echo "  3. Test thoroughly before resuming operations"
 
+
+

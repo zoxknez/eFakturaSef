@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
-import { prisma } from '../db/prisma';
 import { logger } from '../utils/logger';
+import { CompanyService, CreateCompanySchema, UpdateCompanySchema } from '../services/companyService';
 
 export class CompanyController {
   /**
@@ -9,20 +9,14 @@ export class CompanyController {
   static async get(req: Request, res: Response) {
     try {
       const userId = (req as any).user?.id;
-
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        include: { company: true },
-      });
-
-      if (!user || !user.company) {
-        return res.status(404).json({ success: false, error: 'Company not found' });
-      }
-
-      res.json({ success: true, data: user.company });
+      const company = await CompanyService.getUserCompany(userId);
+      return res.json({ success: true, data: company });
     } catch (error: any) {
       logger.error('Failed to get company:', error);
-      res.status(500).json({ success: false, error: 'Failed to fetch company' });
+      if (error.message === 'Company not found for this user') {
+        return res.status(404).json({ success: false, error: error.message });
+      }
+      return res.status(500).json({ success: false, error: 'Failed to fetch company' });
     }
   }
 
@@ -31,30 +25,23 @@ export class CompanyController {
    */
   static async create(req: Request, res: Response) {
     try {
-      const { name, pib, address, city, postalCode, email, phone } = req.body;
-
-      if (!name || !pib) {
-        return res.status(400).json({ error: 'Name and PIB are required' });
+      // Validate request body
+      const validationResult = CreateCompanySchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({
+          error: 'Validation failed',
+          details: validationResult.error.format(),
+        });
       }
 
-      const company = await prisma.company.create({
-        data: {
-          name,
-          pib,
-          address: address || '',
-          city: city || '',
-          postalCode: postalCode || '',
-          country: 'RS',
-          email,
-          phone,
-        },
-      });
-
-      logger.info(`Company created: ${company.id}`);
-      res.status(201).json(company);
+      const company = await CompanyService.createCompany(validationResult.data);
+      return res.status(201).json(company);
     } catch (error: any) {
       logger.error('Failed to create company:', error);
-      res.status(500).json({ error: 'Failed to create company' });
+      if (error.message.includes('already exists')) {
+        return res.status(409).json({ error: error.message });
+      }
+      return res.status(500).json({ error: 'Failed to create company' });
     }
   }
 
@@ -64,50 +51,27 @@ export class CompanyController {
   static async update(req: Request, res: Response) {
     try {
       const userId = (req as any).user?.id;
-      const updateData = req.body;
-
-      // Get user's company
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { companyId: true },
-      });
-
-      if (!user?.companyId) {
-        return res.status(404).json({ error: 'User has no company associated' });
+      
+      // Get user's company ID first
+      const company = await CompanyService.getUserCompany(userId);
+      
+      // Validate request body
+      const validationResult = UpdateCompanySchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({
+          error: 'Validation failed',
+          details: validationResult.error.format(),
+        });
       }
 
-      // Whitelist allowed fields for update
-      const allowedFields = [
-        'name',
-        'address',
-        'city',
-        'postalCode',
-        'country',
-        'email',
-        'phone',
-        'bankAccount',
-        'sefApiKey',
-        'sefEnvironment',
-        'autoStockDeduction',
-      ];
-
-      const filteredData: any = {};
-      for (const key of allowedFields) {
-        if (updateData[key] !== undefined) {
-          filteredData[key] = updateData[key];
-        }
-      }
-
-      const company = await prisma.company.update({
-        where: { id: user.companyId },
-        data: filteredData,
-      });
-
-      logger.info(`Company updated: ${user.companyId}`, { fields: Object.keys(filteredData) });
-      res.json({ success: true, data: company });
+      const updatedCompany = await CompanyService.updateCompany(company.id, validationResult.data);
+      return res.json({ success: true, data: updatedCompany });
     } catch (error: any) {
       logger.error('Failed to update company:', error);
-      res.status(500).json({ error: 'Failed to update company' });
+      if (error.message === 'Company not found' || error.message === 'Company not found for this user') {
+        return res.status(404).json({ error: error.message });
+      }
+      return res.status(500).json({ error: 'Failed to update company' });
     }
   }
 }

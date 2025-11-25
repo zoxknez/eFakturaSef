@@ -1,0 +1,38 @@
+# Frontend Development Dockerfile
+FROM node:18-alpine
+
+# Install dumb-init for proper signal handling
+RUN apk add --no-cache dumb-init
+
+# Create app user
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nextjs -u 1001
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+COPY frontend/package*.json ./frontend/
+COPY shared/package*.json ./shared/
+
+# Install dependencies
+RUN npm install
+RUN cd frontend && npm install
+RUN cd shared && npm install
+
+# Copy source code
+COPY frontend ./frontend
+COPY shared ./shared
+
+# Switch to non-root user
+USER nextjs
+
+# Expose Vite dev server port
+EXPOSE 3000
+
+# Set working directory to frontend
+WORKDIR /app/frontend
+
+# Start Vite development server
+CMD ["dumb-init", "npm", "run", "dev", "--", "--host", "0.0.0.0"]

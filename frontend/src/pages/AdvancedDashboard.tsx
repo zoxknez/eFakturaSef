@@ -296,49 +296,74 @@ export const AdvancedDashboard: React.FC = () => {
 
   return (
     <div className="space-y-8 animate-fade-in">
-      {/* Company & Environment Header */}
-      <div className="flex items-center justify-between bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-gray-200/50">
-        <div className="flex items-center space-x-4">
-          <select 
-            value={selectedCompany} 
-            onChange={(e) => setSelectedCompany(e.target.value)}
-            className="bg-transparent border-none text-lg font-semibold text-gray-900 focus:ring-0 cursor-pointer"
-          >
-            <option>Primer d.o.o. (12345678)</option>
-            <option>Test Company (87654321)</option>
-            <option>ABC d.o.o. (11111111)</option>
-          </select>
-          <span className="text-sm text-gray-500">•</span>
-          <span className="text-sm text-gray-600">Multi-company režim</span>
+      {/* Hero Section */}
+      <div className="relative bg-gradient-to-br from-slate-900 via-purple-900 to-violet-900 rounded-[2rem] p-8 lg:p-10 text-white overflow-hidden">
+        {/* Animated background elements */}
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute -top-24 -right-24 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl animate-pulse"></div>
+          <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-violet-500/20 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
+          
+          {/* Floating elements */}
+          <div className="absolute top-10 right-20 w-20 h-20 bg-white/5 rounded-2xl rotate-12 floating"></div>
+          <div className="absolute bottom-10 right-40 w-14 h-14 bg-white/5 rounded-xl -rotate-12 floating" style={{ animationDelay: '2s' }}></div>
+          
+          {/* Dashboard grid pattern */}
+          <div className="absolute top-8 right-16 opacity-10">
+            <svg className="w-24 h-24" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M3 3h8v8H3V3zm0 10h8v8H3v-8zm10-10h8v8h-8V3zm0 10h8v8h-8v-8z"/>
+            </svg>
+          </div>
         </div>
         
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={fetchDashboardData}
-            disabled={loading}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            title="Osveži podatke"
-          >
-            <span className={loading ? 'animate-spin' : ''}>🔄</span>
-          </button>
-          
-          <div className={`px-4 py-2 rounded-full text-sm font-medium flex items-center ${
-            isDemoMode 
-              ? 'bg-orange-100 text-orange-800 border-2 border-orange-300' 
-              : 'bg-green-100 text-green-800 border-2 border-green-300'
-          }`}>
-            <div className={`w-2 h-2 rounded-full mr-2 animate-pulse ${
-              isDemoMode ? 'bg-orange-500' : 'bg-green-500'
-            }`}></div>
-            {isDemoMode ? 'DEMO OKRUŽENJE' : 'PRODUKCIJA'}
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+          <div className="space-y-4">
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full text-sm font-medium">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              Napredni dashboard • Multi-company
+            </div>
+            <h1 className="text-4xl lg:text-5xl font-black tracking-tight">
+              📊 Napredni Dashboard
+            </h1>
+            <p className="text-xl text-purple-100 max-w-xl">
+              Detaljna analitika, SEF health monitoring i napredna pretraga faktura.
+            </p>
           </div>
-          <button 
-            onClick={() => setIsDemoMode(!isDemoMode)}
-            className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-            title="Prebaci okruženje"
-          >
-            🔄
-          </button>
+          
+          <div className="flex flex-wrap gap-3">
+            <select 
+              value={selectedCompany} 
+              onChange={(e) => setSelectedCompany(e.target.value)}
+              className="px-4 py-2.5 bg-white/10 backdrop-blur-sm border border-white/20 text-white rounded-xl font-medium hover:bg-white/20 transition-all"
+            >
+              <option className="text-gray-900">Primer d.o.o. (12345678)</option>
+              <option className="text-gray-900">Test Company (87654321)</option>
+              <option className="text-gray-900">ABC d.o.o. (11111111)</option>
+            </select>
+            <button
+              onClick={fetchDashboardData}
+              disabled={loading}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/10 backdrop-blur-sm border border-white/20 text-white rounded-xl font-medium hover:bg-white/20 transition-all disabled:opacity-50"
+            >
+              <span className={loading ? 'animate-spin' : ''}>🔄</span>
+              Osveži
+            </button>
+            <div className={`px-4 py-2.5 rounded-xl text-sm font-bold flex items-center ${
+              isDemoMode 
+                ? 'bg-orange-500 text-white' 
+                : 'bg-emerald-500 text-white'
+            }`}>
+              <div className={`w-2 h-2 rounded-full mr-2 animate-pulse bg-white`}></div>
+              {isDemoMode ? 'DEMO' : 'PRODUKCIJA'}
+            </div>
+            <button 
+              onClick={() => setIsDemoMode(!isDemoMode)}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-purple-600 rounded-xl font-semibold shadow-lg shadow-black/10 hover:shadow-xl hover:-translate-y-0.5 transition-all"
+            >
+              🔄 Promeni okruženje
+            </button>
+          </div>
         </div>
       </div>
 

@@ -72,10 +72,10 @@ try {
       throw new Error('SEF_API_KEY is required in production environment');
     }
     if (validatedEnv.JWT_SECRET.length < 64) {
-      console.warn('⚠️  WARNING: JWT_SECRET should be at least 64 characters in production');
+      throw new Error('JWT_SECRET must be at least 64 characters in production for security');
     }
     if (validatedEnv.WEBHOOK_SECRET.length < 64) {
-      console.warn('⚠️  WARNING: WEBHOOK_SECRET should be at least 64 characters in production');
+      throw new Error('WEBHOOK_SECRET must be at least 64 characters in production for security');
     }
   }
   

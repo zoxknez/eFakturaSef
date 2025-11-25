@@ -1,6 +1,6 @@
 import { create } from 'xmlbuilder2';
 import { logger } from '../utils/logger';
-import { UBLInvoiceSchema, type UBLInvoice } from '@sef-app/shared/src/validation';
+import { UBLInvoiceSchema, type UBLInvoice } from '@sef-app/shared';
 import { ZodError } from 'zod';
 
 // Re-export type for backward compatibility
@@ -30,7 +30,7 @@ export class UBLGenerator {
           .ele('cbc:CustomizationID').txt('urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0').up()
           .ele('cbc:ProfileID').txt('urn:fdc:peppol.eu:2017:poacc:billing:01:1.0').up()
           .ele('cbc:ID').txt(invoice.invoiceNumber).up()
-          .ele('cbc:IssueDate').txt(issueDate).up();
+          .ele('cbc:IssueDate').txt(issueDate || '').up();
 
       if (dueDate) {
         doc.ele('cbc:DueDate').txt(dueDate).up();

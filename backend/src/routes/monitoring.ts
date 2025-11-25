@@ -54,7 +54,7 @@ router.post('/alert', async (req: Request, res: Response) => {
  * GET /monitoring/status
  * Get monitoring status summary
  */
-router.get('/status', async (req: Request, res: Response) => {
+router.get('/status', async (_req: Request, res: Response) => {
   try {
     const status = {
       uptime: process.uptime(),

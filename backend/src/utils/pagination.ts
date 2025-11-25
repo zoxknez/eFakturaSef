@@ -1,5 +1,19 @@
 // Cursor-based pagination utilities
-import { Prisma } from '@prisma/client';
+// import { Prisma } from '@prisma/client';
+
+/**
+ * Allowed sort fields for different models
+ * This prevents property injection attacks
+ */
+export const ALLOWED_SORT_FIELDS = {
+  invoice: ['id', 'invoiceNumber', 'issueDate', 'dueDate', 'totalAmount', 'taxAmount', 'status', 'paymentStatus', 'createdAt', 'updatedAt', 'sentAt'],
+  partner: ['id', 'name', 'pib', 'type', 'isActive', 'createdAt', 'updatedAt'],
+  product: ['id', 'code', 'name', 'unitPrice', 'category', 'isActive', 'currentStock', 'createdAt', 'updatedAt'],
+  payment: ['id', 'amount', 'paymentDate', 'status', 'method', 'createdAt', 'updatedAt'],
+  user: ['id', 'email', 'firstName', 'lastName', 'role', 'isActive', 'createdAt', 'updatedAt'],
+  auditLog: ['id', 'entityType', 'action', 'createdAt'],
+  default: ['id', 'createdAt', 'updatedAt'],
+} as const;
 
 /**
  * Cursor-based pagination parameters
@@ -25,12 +39,39 @@ export interface CursorPaginationResult<T> {
 }
 
 /**
- * Parse and validate cursor pagination parameters
+ * Validate orderField against allowed fields
+ * @param orderField - Field to validate
+ * @param allowedFields - List of allowed fields
+ * @returns Validated field or default 'createdAt'
  */
-export function parseCursorPagination(params: any): CursorPaginationParams {
+function validateOrderField(orderField: string | undefined, allowedFields: readonly string[]): string {
+  if (!orderField) {
+    return 'createdAt';
+  }
+
+  // Check if field is in whitelist
+  if (allowedFields.includes(orderField)) {
+    return orderField;
+  }
+
+  // If not allowed, log warning and return default
+  console.warn(`Invalid orderField attempted: ${orderField}. Using default 'createdAt'.`);
+  return 'createdAt';
+}
+
+/**
+ * Parse and validate cursor pagination parameters
+ * @param params - Raw parameters from request
+ * @param modelType - Model type for field validation (e.g., 'invoice', 'partner')
+ */
+export function parseCursorPagination(
+  params: any, 
+  modelType: keyof typeof ALLOWED_SORT_FIELDS = 'default'
+): CursorPaginationParams {
   const limit = Math.min(100, Math.max(1, parseInt(params.limit) || 20));
   const orderBy = params.orderBy === 'asc' ? 'asc' : 'desc';
-  const orderField = params.orderField || 'createdAt';
+  const allowedFields = ALLOWED_SORT_FIELDS[modelType] || ALLOWED_SORT_FIELDS.default;
+  const orderField = validateOrderField(params.orderField, allowedFields);
   const cursor = params.cursor || undefined;
 
   return { cursor, limit, orderBy, orderField };
@@ -39,7 +80,7 @@ export function parseCursorPagination(params: any): CursorPaginationParams {
 /**
  * Build Prisma cursor pagination query
  */
-export function buildCursorQuery<T>(
+export function buildCursorQuery<_T>(
   params: CursorPaginationParams,
   where?: any
 ): {
@@ -84,7 +125,8 @@ export function processCursorResults<T extends { id: string }>(
   const data = hasMore ? results.slice(0, limit) : results;
 
   // Get next cursor (ID of the last item)
-  const nextCursor = hasMore && data.length > 0 ? data[data.length - 1].id : null;
+  const lastItem = data[data.length - 1];
+  const nextCursor = hasMore && lastItem ? lastItem.id : null;
 
   return {
     data,
@@ -124,12 +166,18 @@ export interface OffsetPaginationResult<T> {
 
 /**
  * Parse offset pagination parameters
+ * @param params - Raw parameters from request
+ * @param modelType - Model type for field validation (e.g., 'invoice', 'partner')
  */
-export function parseOffsetPagination(params: any): OffsetPaginationParams {
+export function parseOffsetPagination(
+  params: any,
+  modelType: keyof typeof ALLOWED_SORT_FIELDS = 'default'
+): OffsetPaginationParams {
   const page = Math.max(1, parseInt(params.page) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(params.limit) || 20));
   const orderBy = params.orderBy === 'asc' ? 'asc' : 'desc';
-  const orderField = params.orderField || 'createdAt';
+  const allowedFields = ALLOWED_SORT_FIELDS[modelType] || ALLOWED_SORT_FIELDS.default;
+  const orderField = validateOrderField(params.orderField, allowedFields);
 
   return { page, limit, orderBy, orderField };
 }
@@ -196,7 +244,7 @@ export function createSearchFilter(
 
   const search = searchTerm.trim();
 
-  if (fields.length === 1) {
+  if (fields.length === 1 && fields[0]) {
     return { [fields[0]]: { contains: search, mode: 'insensitive' } };
   }
 

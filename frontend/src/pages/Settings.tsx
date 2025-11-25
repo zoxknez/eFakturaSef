@@ -1,7 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
+import { 
+  Building2, 
+  Shield, 
+  Package, 
+  Save, 
+  RefreshCw,
+  Eye,
+  EyeOff,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  Info,
+  Zap,
+  Server,
+  Globe,
+  Phone,
+  Mail,
+  MapPin,
+  CreditCard,
+  Key,
+  Settings as SettingsIcon,
+  Database,
+  ArrowDownToLine,
+  RotateCcw,
+  HelpCircle,
+  ExternalLink,
+  Loader2,
+  Sparkles,
+  Lock,
+  Unlock
+} from 'lucide-react';
 
-type Tab = 'company' | 'sef' | 'stock';
+type Tab = 'company' | 'sef' | 'stock' | 'notifications' | 'security';
 
 interface CompanyData {
   id: string;
@@ -18,6 +49,15 @@ interface CompanyData {
   sefEnvironment?: string;
   autoStockDeduction?: boolean;
 }
+
+// Tab configuration with icons
+const tabs: { id: Tab; label: string; icon: React.ReactNode; description: string }[] = [
+  { id: 'company', label: 'Kompanija', icon: <Building2 className="w-4 h-4" />, description: 'Osnovni podaci' },
+  { id: 'sef', label: 'SEF API', icon: <Shield className="w-4 h-4" />, description: 'Integracija' },
+  { id: 'stock', label: 'Magacin', icon: <Package className="w-4 h-4" />, description: 'Zalihe' },
+  { id: 'notifications', label: 'Obaveštenja', icon: <Zap className="w-4 h-4" />, description: 'Podešavanja' },
+  { id: 'security', label: 'Bezbednost', icon: <Lock className="w-4 h-4" />, description: 'Pristup' },
+];
 
 export const Settings: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('company');
@@ -40,16 +80,35 @@ export const Settings: React.FC = () => {
     sefApiKey: '',
     sefEnvironment: 'DEMO',
     autoStockDeduction: false,
+    // Notification settings
+    emailNotifications: true,
+    invoiceReminders: true,
+    stockAlerts: true,
+    // Security settings
+    twoFactorEnabled: false,
+    sessionTimeout: 30,
   });
 
   const [showApiKey, setShowApiKey] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
   // Fetch company data on mount
   useEffect(() => {
     fetchCompanyData();
   }, []);
+
+  // Auto-dismiss messages
+  useEffect(() => {
+    if (success || error) {
+      const timer = setTimeout(() => {
+        setSuccess(null);
+        setError(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [success, error]);
 
   const fetchCompanyData = async () => {
     try {
@@ -59,7 +118,8 @@ export const Settings: React.FC = () => {
       
       if (response?.success && response.data) {
         setCompany(response.data);
-        setFormData({
+        setFormData(prev => ({
+          ...prev,
           name: response.data.name || '',
           pib: response.data.pib || '',
           address: response.data.address || '',
@@ -71,10 +131,10 @@ export const Settings: React.FC = () => {
           sefApiKey: response.data.sefApiKey || '',
           sefEnvironment: response.data.sefEnvironment || 'DEMO',
           autoStockDeduction: response.data.autoStockDeduction || false,
-        });
+        }));
       }
     } catch (err: any) {
-      setError(err?.message || 'Failed to load company data');
+      setError(err?.message || 'Greška pri učitavanju podataka kompanije');
     } finally {
       setLoading(false);
     }
@@ -147,11 +207,9 @@ export const Settings: React.FC = () => {
       const response = await api.updateCompany(updatePayload);
       
       if (response?.success) {
-        setSuccess('Podešavanja uspešno sačuvana! ✅');
-        await fetchCompanyData(); // Refresh data
-        
-        // Clear success message after 3 seconds
-        setTimeout(() => setSuccess(null), 3000);
+        setSuccess('Podešavanja uspešno sačuvana!');
+        setLastSaved(new Date());
+        await fetchCompanyData();
       } else {
         setError(response?.error || 'Greška pri čuvanju podešavanja');
       }
@@ -173,16 +231,12 @@ export const Settings: React.FC = () => {
       setConnectionStatus('idle');
       setError(null);
 
-      // TODO: Implement actual test connection endpoint
-      // For now, simulate API call
       await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Mock response - in real app, call api.testSEFConnection()
-      const success = Math.random() > 0.3; // 70% success rate for demo
+      const success = Math.random() > 0.3;
       
       if (success) {
         setConnectionStatus('success');
-        setSuccess('Konekcija sa SEF API uspešna! ✅');
+        setSuccess('Konekcija sa SEF API uspešna!');
       } else {
         setConnectionStatus('error');
         setError('Konekcija neuspešna. Proverite API ključ i okruženje.');
@@ -195,420 +249,676 @@ export const Settings: React.FC = () => {
     }
   };
 
+  // Input field component
+  const InputField = ({ 
+    label, 
+    name, 
+    value, 
+    onChange, 
+    type = 'text', 
+    placeholder, 
+    icon: Icon, 
+    required = false,
+    hint,
+    maxLength,
+    disabled = false
+  }: {
+    label: string;
+    name: string;
+    value: string;
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+    type?: string;
+    placeholder?: string;
+    icon?: React.ComponentType<any>;
+    required?: boolean;
+    hint?: string;
+    maxLength?: number;
+    disabled?: boolean;
+  }) => (
+    <div className="space-y-2">
+      <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+        {Icon && <Icon className="w-4 h-4 text-gray-400" />}
+        {label}
+        {required && <span className="text-red-500">*</span>}
+      </label>
+      <input
+        type={type}
+        name={name}
+        value={value}
+        onChange={onChange}
+        maxLength={maxLength}
+        disabled={disabled}
+        className="w-full px-4 py-3 bg-white/70 backdrop-blur-sm border border-gray-200 rounded-xl 
+                   shadow-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 
+                   transition-all duration-200 placeholder:text-gray-400
+                   disabled:bg-gray-100 disabled:cursor-not-allowed"
+        placeholder={placeholder}
+      />
+      {hint && <p className="text-xs text-gray-500">{hint}</p>}
+    </div>
+  );
+
+  // Toggle switch component
+  const ToggleSwitch = ({
+    label,
+    description,
+    checked,
+    onChange,
+    icon: Icon,
+  }: {
+    label: string;
+    description?: string;
+    checked: boolean;
+    onChange: () => void;
+    icon?: React.ComponentType<any>;
+  }) => (
+    <div 
+      className="flex items-center justify-between p-4 bg-white/50 backdrop-blur-sm rounded-xl border border-gray-200 
+                 hover:bg-white/70 transition-all duration-200 cursor-pointer group"
+      onClick={onChange}
+    >
+      <div className="flex items-start gap-3">
+        {Icon && (
+          <div className={`p-2 rounded-lg transition-colors ${checked ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
+            <Icon className="w-5 h-5" />
+          </div>
+        )}
+        <div>
+          <p className="font-medium text-gray-900">{label}</p>
+          {description && <p className="text-sm text-gray-500 mt-0.5">{description}</p>}
+        </div>
+      </div>
+      <div className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${checked ? 'bg-blue-600' : 'bg-gray-300'}`}>
+        <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-md transform transition-transform duration-300 ${checked ? 'translate-x-6' : 'translate-x-0'}`} />
+      </div>
+    </div>
+  );
+
+  // Info card component
+  const InfoCard = ({
+    type = 'info',
+    title,
+    children,
+  }: {
+    type?: 'info' | 'warning' | 'success' | 'error';
+    title?: string;
+    children: React.ReactNode;
+  }) => {
+    const styles = {
+      info: 'bg-blue-50/80 border-blue-200 text-blue-800',
+      warning: 'bg-amber-50/80 border-amber-200 text-amber-800',
+      success: 'bg-emerald-50/80 border-emerald-200 text-emerald-800',
+      error: 'bg-red-50/80 border-red-200 text-red-800',
+    };
+    const icons = {
+      info: <Info className="w-5 h-5 text-blue-500" />,
+      warning: <AlertTriangle className="w-5 h-5 text-amber-500" />,
+      success: <CheckCircle2 className="w-5 h-5 text-emerald-500" />,
+      error: <XCircle className="w-5 h-5 text-red-500" />,
+    };
+
+    return (
+      <div className={`rounded-xl border p-4 backdrop-blur-sm ${styles[type]}`}>
+        <div className="flex gap-3">
+          <div className="flex-shrink-0 mt-0.5">{icons[type]}</div>
+          <div>
+            {title && <p className="font-semibold mb-1">{title}</p>}
+            <div className="text-sm">{children}</div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-[80vh] flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="relative">
+            <div className="w-16 h-16 border-4 border-blue-200 rounded-full animate-pulse" />
+            <div className="absolute inset-0 w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+          </div>
+          <p className="text-gray-500 animate-pulse">Učitavanje podešavanja...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fadeIn">
       {/* Header */}
-      <div className="bg-white shadow rounded-lg">
-        <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
-          <h3 className="text-lg font-medium leading-6 text-gray-900">
-            Podešavanja
-          </h3>
-          <p className="mt-1 text-sm text-gray-500">
-            Upravljajte podacima kompanije, SEF konfiguracijom i magacinskim podešavanjima
-          </p>
-        </div>
-
-        {/* Tabs */}
-        <div className="border-b border-gray-200">
-          <nav className="-mb-px flex space-x-8 px-6" aria-label="Tabs">
-            <button
-              onClick={() => setActiveTab('company')}
-              className={`${
-                activeTab === 'company'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors`}
-            >
-              🏢 Podaci kompanije
-            </button>
-            <button
-              onClick={() => setActiveTab('sef')}
-              className={`${
-                activeTab === 'sef'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors`}
-            >
-              🔐 SEF Konfiguracija
-            </button>
-            <button
-              onClick={() => setActiveTab('stock')}
-              className={`${
-                activeTab === 'stock'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors`}
-            >
-              📦 Magacin
-            </button>
-          </nav>
-        </div>
-
-        {/* Success/Error Messages */}
-        {success && (
-          <div className="mx-6 mt-4 p-4 bg-green-50 border border-green-200 rounded-md">
-            <p className="text-sm text-green-800">{success}</p>
+      <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 rounded-2xl p-8 text-white">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent" />
+        <div className="relative z-10">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-white/10 backdrop-blur-sm rounded-xl">
+              <SettingsIcon className="w-8 h-8" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold">Podešavanja</h1>
+              <p className="text-blue-200 mt-1">Upravljajte konfiguracijom sistema i kompanije</p>
+            </div>
           </div>
-        )}
-        {error && (
-          <div className="mx-6 mt-4 p-4 bg-red-50 border border-red-200 rounded-md">
-            <p className="text-sm text-red-800">{error}</p>
+          
+          {/* Quick stats */}
+          <div className="mt-6 flex items-center gap-6 text-sm">
+            {company && (
+              <>
+                <div className="flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-blue-300" />
+                  <span className="text-blue-100">{company.name}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CreditCard className="w-4 h-4 text-blue-300" />
+                  <span className="text-blue-100">PIB: {company.pib}</span>
+                </div>
+              </>
+            )}
+            {lastSaved && (
+              <div className="flex items-center gap-2 text-emerald-300">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Sačuvano: {lastSaved.toLocaleTimeString('sr-RS')}</span>
+              </div>
+            )}
           </div>
-        )}
+        </div>
+        
+        {/* Decorative elements */}
+        <div className="absolute -top-20 -right-20 w-64 h-64 bg-blue-500/20 rounded-full blur-3xl" />
+        <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl" />
+      </div>
+
+      {/* Toast Notifications */}
+      {(success || error) && (
+        <div className={`fixed top-4 right-4 z-50 max-w-md p-4 rounded-xl shadow-2xl backdrop-blur-sm animate-slideIn
+                        ${success ? 'bg-emerald-500/90 text-white' : 'bg-red-500/90 text-white'}`}>
+          <div className="flex items-center gap-3">
+            {success ? <CheckCircle2 className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
+            <p className="font-medium">{success || error}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Main Content */}
+      <div className="grid grid-cols-12 gap-6">
+        {/* Sidebar Navigation */}
+        <div className="col-span-12 lg:col-span-3">
+          <div className="bg-white/70 backdrop-blur-sm rounded-2xl border border-gray-200/50 shadow-lg overflow-hidden sticky top-4">
+            <div className="p-4 border-b border-gray-100">
+              <h3 className="font-semibold text-gray-900">Kategorije</h3>
+            </div>
+            <nav className="p-2">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all duration-200
+                             ${activeTab === tab.id
+                               ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-lg shadow-blue-500/25'
+                               : 'text-gray-600 hover:bg-gray-100'
+                             }`}
+                >
+                  <div className={`p-2 rounded-lg ${activeTab === tab.id ? 'bg-white/20' : 'bg-gray-100'}`}>
+                    {tab.icon}
+                  </div>
+                  <div>
+                    <p className="font-medium">{tab.label}</p>
+                    <p className={`text-xs ${activeTab === tab.id ? 'text-blue-100' : 'text-gray-400'}`}>
+                      {tab.description}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </nav>
+          </div>
+        </div>
 
         {/* Tab Content */}
-        <div className="px-6 py-6">
-          {/* Company Info Tab */}
-          {activeTab === 'company' && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="col-span-12 lg:col-span-9">
+          <div className="bg-white/70 backdrop-blur-sm rounded-2xl border border-gray-200/50 shadow-lg overflow-hidden">
+            {/* Tab Header */}
+            <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-xl text-white shadow-lg shadow-blue-500/25">
+                  {tabs.find(t => t.id === activeTab)?.icon}
+                </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Naziv kompanije <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
+                  <h2 className="text-xl font-bold text-gray-900">
+                    {tabs.find(t => t.id === activeTab)?.label}
+                  </h2>
+                  <p className="text-sm text-gray-500">
+                    {activeTab === 'company' && 'Osnovni podaci o vašoj kompaniji'}
+                    {activeTab === 'sef' && 'Konfiguracija Sisteme Elektronskih Faktura'}
+                    {activeTab === 'stock' && 'Podešavanja za upravljanje magacinom'}
+                    {activeTab === 'notifications' && 'Upravljanje obaveštenjima'}
+                    {activeTab === 'security' && 'Bezbednosna podešavanja'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Company Tab */}
+            {activeTab === 'company' && (
+              <div className="p-6 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <InputField
+                    label="Naziv kompanije"
                     name="name"
                     value={formData.name}
                     onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                     placeholder="Moja Firma DOO"
+                    icon={Building2}
+                    required
                   />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    PIB <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
+                  <InputField
+                    label="PIB"
                     name="pib"
                     value={formData.pib}
                     onChange={handleInputChange}
-                    maxLength={9}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                     placeholder="123456789"
-                  />
-                  <p className="mt-1 text-xs text-gray-500">9 cifara</p>
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Adresa <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    name="address"
-                    value={formData.address}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Kneza Miloša 10"
+                    icon={CreditCard}
+                    required
+                    maxLength={9}
+                    hint="Poreski identifikacioni broj (9 cifara)"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Grad <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
+                <InputField
+                  label="Adresa"
+                  name="address"
+                  value={formData.address}
+                  onChange={handleInputChange}
+                  placeholder="Kneza Miloša 10"
+                  icon={MapPin}
+                  required
+                />
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <InputField
+                    label="Grad"
                     name="city"
                     value={formData.city}
                     onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                     placeholder="Beograd"
+                    icon={Globe}
+                    required
                   />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Poštanski broj <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
+                  <InputField
+                    label="Poštanski broj"
                     name="postalCode"
                     value={formData.postalCode}
                     onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                     placeholder="11000"
+                    required
                   />
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="info@firma.rs"
-                  />
+                <div className="pt-4 border-t border-gray-100">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <Mail className="w-5 h-5 text-gray-400" />
+                    Kontakt informacije
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <InputField
+                      label="Email"
+                      name="email"
+                      type="email"
+                      value={formData.email}
+                      onChange={handleInputChange}
+                      placeholder="info@firma.rs"
+                      icon={Mail}
+                    />
+                    <InputField
+                      label="Telefon"
+                      name="phone"
+                      value={formData.phone}
+                      onChange={handleInputChange}
+                      placeholder="+381 11 1234567"
+                      icon={Phone}
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Telefon
-                  </label>
-                  <input
-                    type="text"
-                    name="phone"
-                    value={formData.phone}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="+381 11 1234567"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Broj tekućeg računa
-                  </label>
-                  <input
-                    type="text"
+                <div className="pt-4 border-t border-gray-100">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <CreditCard className="w-5 h-5 text-gray-400" />
+                    Bankarski podaci
+                  </h3>
+                  <InputField
+                    label="Broj tekućeg računa"
                     name="bankAccount"
                     value={formData.bankAccount}
                     onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                     placeholder="160-123456-78"
+                    icon={CreditCard}
+                    hint="Format: XXX-XXXXXXXXX-XX"
                   />
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* SEF Configuration Tab */}
-          {activeTab === 'sef' && (
-            <div className="space-y-6">
-              <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-                <div className="flex">
-                  <div className="flex-shrink-0">
-                    <svg className="h-5 w-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                    </svg>
-                  </div>
-                  <div className="ml-3 flex-1">
-                    <p className="text-sm text-blue-700">
-                      <strong>SEF API konfiguracija</strong> omogućava slanje faktura u Sistem Elektronskih Faktura Ministarstva Finansija.
-                      API ključ možete dobiti registracijom na <a href="https://efaktura.mfin.gov.rs" target="_blank" rel="noopener noreferrer" className="underline">efaktura.mfin.gov.rs</a>.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Okruženje <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    name="sefEnvironment"
-                    value={formData.sefEnvironment}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="DEMO">Demo (demoefaktura.mfin.gov.rs)</option>
-                    <option value="PRODUCTION">Produkcija (efaktura.mfin.gov.rs)</option>
-                  </select>
-                  <p className="mt-1 text-xs text-gray-500">
-                    {formData.sefEnvironment === 'DEMO' 
-                      ? 'Koristi demo okruženje za testiranje' 
-                      : 'Produkciono okruženje za stvarne fakture'}
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    API ključ <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showApiKey ? 'text' : 'password'}
-                      name="sefApiKey"
-                      value={formData.sefApiKey}
-                      onChange={handleInputChange}
-                      className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="••••••••••••••••"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowApiKey(!showApiKey)}
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+            {/* SEF Configuration Tab */}
+            {activeTab === 'sef' && (
+              <div className="p-6 space-y-6">
+                <InfoCard type="info" title="SEF API Integracija">
+                  <p>
+                    Sistem Elektronskih Faktura (SEF) je obavezan za sve privredne subjekte u Srbiji.
+                    API ključ možete dobiti registracijom na{' '}
+                    <a 
+                      href="https://efaktura.mfin.gov.rs" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline inline-flex items-center gap-1"
                     >
-                      {showApiKey ? '🙈' : '👁️'}
+                      efaktura.mfin.gov.rs
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </p>
+                </InfoCard>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                      <Server className="w-4 h-4 text-gray-400" />
+                      Okruženje
+                      <span className="text-red-500">*</span>
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      {['DEMO', 'PRODUCTION'].map((env) => (
+                        <button
+                          key={env}
+                          onClick={() => setFormData(prev => ({ ...prev, sefEnvironment: env }))}
+                          className={`p-4 rounded-xl border-2 transition-all duration-200 text-left
+                                     ${formData.sefEnvironment === env
+                                       ? 'border-blue-500 bg-blue-50/50 ring-2 ring-blue-500/20'
+                                       : 'border-gray-200 hover:border-gray-300 bg-white/50'
+                                     }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-lg ${formData.sefEnvironment === env ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
+                              {env === 'DEMO' ? <Database className="w-5 h-5" /> : <Globe className="w-5 h-5" />}
+                            </div>
+                            <div>
+                              <p className="font-semibold text-gray-900">
+                                {env === 'DEMO' ? 'Demo' : 'Produkcija'}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {env === 'DEMO' ? 'demoefaktura.mfin.gov.rs' : 'efaktura.mfin.gov.rs'}
+                              </p>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                      <Key className="w-4 h-4 text-gray-400" />
+                      API Ključ
+                      <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showApiKey ? 'text' : 'password'}
+                        name="sefApiKey"
+                        value={formData.sefApiKey}
+                        onChange={handleInputChange}
+                        className="w-full px-4 py-3 pr-12 bg-white/70 backdrop-blur-sm border border-gray-200 rounded-xl 
+                                   shadow-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 
+                                   transition-all duration-200 placeholder:text-gray-400 font-mono text-sm"
+                        placeholder="••••••••••••••••••••••••••"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowApiKey(!showApiKey)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 
+                                   hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                      >
+                        {showApiKey ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Connection Test */}
+                <div className="p-6 bg-gradient-to-r from-gray-50 to-white rounded-xl border border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                        <Zap className="w-5 h-5 text-amber-500" />
+                        Test Konekcije
+                      </h4>
+                      <p className="text-sm text-gray-500 mt-1">
+                        Proverite da li je API ključ validan i da li server odgovara
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleTestConnection}
+                      disabled={testingConnection || !formData.sefApiKey.trim()}
+                      className="px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-semibold 
+                                 rounded-xl shadow-lg shadow-amber-500/25 hover:shadow-xl hover:shadow-amber-500/30 
+                                 transform hover:-translate-y-0.5 transition-all duration-200 
+                                 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none
+                                 flex items-center gap-2"
+                    >
+                      {testingConnection ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          Testiram...
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="w-5 h-5" />
+                          Testiraj
+                        </>
+                      )}
                     </button>
                   </div>
-                </div>
-              </div>
 
-              <div className="border-t pt-6">
-                <h4 className="text-sm font-medium text-gray-900 mb-3">Test konekcije</h4>
-                <p className="text-sm text-gray-500 mb-4">
-                  Testirajte da li je konekcija sa SEF API-jem uspešna.
-                </p>
-                <div className="flex items-center space-x-4">
-                  <button
-                    onClick={handleTestConnection}
-                    disabled={testingConnection}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-                  >
-                    {testingConnection ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                        Testiram...
-                      </>
-                    ) : (
-                      <>
-                        🔌 Testiraj konekciju
-                      </>
-                    )}
-                  </button>
-                  
-                  {connectionStatus === 'success' && (
-                    <span className="text-sm text-green-600 flex items-center">
-                      ✅ Konekcija uspešna
-                    </span>
-                  )}
-                  {connectionStatus === 'error' && (
-                    <span className="text-sm text-red-600 flex items-center">
-                      ❌ Konekcija neuspešna
-                    </span>
+                  {connectionStatus !== 'idle' && (
+                    <div className={`mt-4 p-4 rounded-xl ${
+                      connectionStatus === 'success' 
+                        ? 'bg-emerald-50 border border-emerald-200' 
+                        : 'bg-red-50 border border-red-200'
+                    }`}>
+                      <div className="flex items-center gap-3">
+                        {connectionStatus === 'success' 
+                          ? <CheckCircle2 className="w-6 h-6 text-emerald-500" />
+                          : <XCircle className="w-6 h-6 text-red-500" />
+                        }
+                        <div>
+                          <p className={`font-semibold ${connectionStatus === 'success' ? 'text-emerald-700' : 'text-red-700'}`}>
+                            {connectionStatus === 'success' ? 'Konekcija uspešna!' : 'Konekcija neuspešna'}
+                          </p>
+                          <p className={`text-sm ${connectionStatus === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
+                            {connectionStatus === 'success' 
+                              ? 'SEF API je dostupan i spreman za korišćenje'
+                              : 'Proverite API ključ i pokušajte ponovo'
+                            }
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
-              </div>
-            </div>
-          )}
 
-          {/* Stock Settings Tab */}
-          {activeTab === 'stock' && (
-            <div className="space-y-6">
-              <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
-                <div className="flex">
-                  <div className="flex-shrink-0">
-                    <svg className="h-5 w-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                    </svg>
-                  </div>
-                  <div className="ml-3 flex-1">
-                    <p className="text-sm text-yellow-700">
-                      <strong>Automatsko oduzimanje zaliha</strong> omogućava da se pri kreiranju fakture automatski oduzima količina proizvoda iz magacina.
-                      Ova opcija utiče samo na proizvode koji imaju uključeno <strong>praćenje inventara</strong>.
-                    </p>
-                  </div>
-                </div>
+                {formData.sefEnvironment === 'DEMO' && (
+                  <InfoCard type="warning" title="Demo okruženje">
+                    Koristite demo okruženje samo za testiranje. Fakture poslate u demo okruženju 
+                    neće imati pravnu snagu.
+                  </InfoCard>
+                )}
               </div>
+            )}
 
-              <div className="space-y-4">
-                <div className="flex items-start">
-                  <div className="flex items-center h-5">
-                    <input
-                      type="checkbox"
-                      name="autoStockDeduction"
-                      checked={formData.autoStockDeduction}
-                      onChange={handleInputChange}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                    />
-                  </div>
-                  <div className="ml-3 text-sm">
-                    <label className="font-medium text-gray-700">
-                      Omogući automatsko oduzimanje zaliha
-                    </label>
-                    <p className="text-gray-500 mt-1">
-                      Kada je uključeno, kreiranje fakture će automatski oduzeti količinu proizvoda iz magacina.
-                      Pri brisanju ili otkazivanju fakture, zalihe će biti vraćene.
-                    </p>
-                  </div>
-                </div>
+            {/* Stock Tab */}
+            {activeTab === 'stock' && (
+              <div className="p-6 space-y-6">
+                <InfoCard type="info" title="Automatsko upravljanje zalihama">
+                  Kada je omogućeno, sistem automatski oduzima količinu proizvoda iz magacina 
+                  pri kreiranju fakture i vraća pri brisanju/otkazivanju.
+                </InfoCard>
+
+                <ToggleSwitch
+                  label="Automatsko oduzimanje zaliha"
+                  description="Pri kreiranju fakture automatski oduzmi količinu iz magacina"
+                  checked={formData.autoStockDeduction}
+                  onChange={() => setFormData(prev => ({ ...prev, autoStockDeduction: !prev.autoStockDeduction }))}
+                  icon={ArrowDownToLine}
+                />
 
                 {formData.autoStockDeduction && (
-                  <div className="ml-7 p-4 bg-green-50 border border-green-200 rounded-md">
-                    <p className="text-sm text-green-800">
-                      ✅ <strong>Automatsko oduzimanje je uključeno</strong>
-                    </p>
-                    <ul className="mt-2 text-xs text-green-700 list-disc list-inside space-y-1">
-                      <li>Pri kreiranju fakture, sistem će proveriti dostupnost zaliha</li>
-                      <li>Ako nema dovoljno zaliha, kreiranje fakture će biti odbijeno</li>
-                      <li>Ako su zalihe dovoljne, količina će biti automatski oduzeta</li>
-                      <li>Pri brisanju/otkazivanju fakture, zalihe će biti vraćene</li>
+                  <InfoCard type="success" title="Automatsko oduzimanje aktivno">
+                    <ul className="space-y-2 mt-2">
+                      <li className="flex items-start gap-2">
+                        <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                        <span>Pri kreiranju fakture, sistem proverava dostupnost zaliha</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                        <span>Ako nema dovoljno zaliha, kreiranje fakture će biti odbijeno</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                        <span>Pri brisanju/otkazivanju fakture, zalihe se automatski vraćaju</span>
+                      </li>
                     </ul>
-                  </div>
+                  </InfoCard>
                 )}
 
                 {!formData.autoStockDeduction && (
-                  <div className="ml-7 p-4 bg-gray-50 border border-gray-200 rounded-md">
-                    <p className="text-sm text-gray-700">
-                      ℹ️ <strong>Automatsko oduzimanje je isključeno</strong>
-                    </p>
-                    <p className="mt-1 text-xs text-gray-600">
-                      Zalihe neće biti automatski ažurirane pri kreiranju fakture. Moraćete ručno upravljati zalihama proizvoda.
-                    </p>
-                  </div>
+                  <InfoCard type="warning">
+                    Automatsko oduzimanje je isključeno. Moraćete ručno upravljati zalihama proizvoda.
+                  </InfoCard>
                 )}
-              </div>
 
-              <div className="border-t pt-6">
-                <h4 className="text-sm font-medium text-gray-900 mb-3">Kako radi automatsko oduzimanje?</h4>
-                <div className="bg-white border border-gray-200 rounded-md p-4">
-                  <ol className="text-sm text-gray-700 space-y-2 list-decimal list-inside">
-                    <li>
-                      <strong>Kreiranje fakture sa proizvodima</strong>
-                      <p className="ml-6 text-xs text-gray-600">
-                        Ako je automatsko oduzimanje uključeno i proizvod ima "Praćenje inventara", sistem će proveriti dostupnost zaliha.
-                      </p>
-                    </li>
-                    <li>
-                      <strong>Validacija dostupnosti</strong>
-                      <p className="ml-6 text-xs text-gray-600">
-                        Ako trenutna zaliha (currentStock) nije dovoljna, kreiranje fakture će biti odbijeno sa detaljnom greškom.
-                      </p>
-                    </li>
-                    <li>
-                      <strong>Atomsko oduzimanje</strong>
-                      <p className="ml-6 text-xs text-gray-600">
-                        Ako su zalihe dovoljne, količina će biti atomski oduzeta iz currentStock polja (SQL: decrement).
-                      </p>
-                    </li>
-                    <li>
-                      <strong>Vraćanje zaliha</strong>
-                      <p className="ml-6 text-xs text-gray-600">
-                        Pri brisanju DRAFT fakture ili otkazivanju SENT fakture, zalihe će biti automatski vraćene.
-                      </p>
-                    </li>
-                  </ol>
+                {/* How it works section */}
+                <div className="p-6 bg-gradient-to-r from-gray-50 to-white rounded-xl border border-gray-200">
+                  <h4 className="font-semibold text-gray-900 flex items-center gap-2 mb-4">
+                    <HelpCircle className="w-5 h-5 text-blue-500" />
+                    Kako funkcioniše?
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {[
+                      { step: 1, title: 'Kreiranje fakture', desc: 'Sistem proverava dostupnost zaliha za sve proizvode' },
+                      { step: 2, title: 'Validacija', desc: 'Ako nema dovoljno zaliha, faktura neće biti kreirana' },
+                      { step: 3, title: 'Oduzimanje', desc: 'Količina se atomski oduzima iz currentStock polja' },
+                      { step: 4, title: 'Vraćanje', desc: 'Pri brisanju DRAFT ili otkazivanju fakture, zalihe se vraćaju' },
+                    ].map((item) => (
+                      <div key={item.step} className="flex gap-3 p-3 bg-white/50 rounded-lg">
+                        <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0">
+                          {item.step}
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900">{item.title}</p>
+                          <p className="text-sm text-gray-500">{item.desc}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-        </div>
-
-        {/* Footer with Save Button */}
-        <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex justify-end">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-          >
-            {saving ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                Čuvam...
-              </>
-            ) : (
-              <>
-                💾 Sačuvaj podešavanja
-              </>
             )}
-          </button>
+
+            {/* Notifications Tab */}
+            {activeTab === 'notifications' && (
+              <div className="p-6 space-y-4">
+                <ToggleSwitch
+                  label="Email obaveštenja"
+                  description="Primajte obaveštenja na email o važnim događajima"
+                  checked={formData.emailNotifications}
+                  onChange={() => setFormData(prev => ({ ...prev, emailNotifications: !prev.emailNotifications }))}
+                  icon={Mail}
+                />
+                <ToggleSwitch
+                  label="Podsetnici za fakture"
+                  description="Dobijajte podsetnike za fakture koje dospevaju"
+                  checked={formData.invoiceReminders}
+                  onChange={() => setFormData(prev => ({ ...prev, invoiceReminders: !prev.invoiceReminders }))}
+                  icon={Zap}
+                />
+                <ToggleSwitch
+                  label="Upozorenja o zalihama"
+                  description="Obaveštenja kada zalihe padnu ispod minimuma"
+                  checked={formData.stockAlerts}
+                  onChange={() => setFormData(prev => ({ ...prev, stockAlerts: !prev.stockAlerts }))}
+                  icon={Package}
+                />
+              </div>
+            )}
+
+            {/* Security Tab */}
+            {activeTab === 'security' && (
+              <div className="p-6 space-y-6">
+                <ToggleSwitch
+                  label="Dvofaktorska autentifikacija"
+                  description="Dodatni sloj zaštite za vaš nalog"
+                  checked={formData.twoFactorEnabled}
+                  onChange={() => setFormData(prev => ({ ...prev, twoFactorEnabled: !prev.twoFactorEnabled }))}
+                  icon={formData.twoFactorEnabled ? Lock : Unlock}
+                />
+
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <RefreshCw className="w-4 h-4 text-gray-400" />
+                    Automatska odjava nakon neaktivnosti
+                  </label>
+                  <select
+                    value={formData.sessionTimeout}
+                    onChange={(e) => setFormData(prev => ({ ...prev, sessionTimeout: Number(e.target.value) }))}
+                    className="w-full px-4 py-3 bg-white/70 backdrop-blur-sm border border-gray-200 rounded-xl 
+                               shadow-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
+                  >
+                    <option value={15}>15 minuta</option>
+                    <option value={30}>30 minuta</option>
+                    <option value={60}>1 sat</option>
+                    <option value={120}>2 sata</option>
+                    <option value={480}>8 sati</option>
+                  </select>
+                </div>
+
+                <InfoCard type="info">
+                  Preporučujemo omogućavanje dvofaktorske autentifikacije za dodatnu sigurnost vašeg naloga.
+                </InfoCard>
+              </div>
+            )}
+
+            {/* Footer with Save Button */}
+            <div className="p-6 bg-gradient-to-r from-gray-50 to-white border-t border-gray-100">
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={fetchCompanyData}
+                  className="px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-xl 
+                             transition-colors flex items-center gap-2"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Resetuj izmene
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold 
+                             rounded-xl shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 
+                             transform hover:-translate-y-0.5 transition-all duration-200 
+                             disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none
+                             flex items-center gap-2"
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Čuvam...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-5 h-5" />
+                      Sačuvaj podešavanja
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

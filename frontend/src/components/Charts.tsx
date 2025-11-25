@@ -164,3 +164,5 @@ export function MiniTrendChart({ data, color = COLORS.primary, height = 40 }: Mi
   );
 }
 
+
+

@@ -2,7 +2,7 @@
 import Bull, { Job, Queue } from 'bull';
 import { redisConfig, defaultJobOptions, isNightPause, getNightPauseDelay } from './config';
 import { prisma } from '../db/prisma';
-import { sefService, SEFValidationError, SEFNetworkError, SEFRateLimitError, SEFServerError } from '../services/sefService';
+import { SEFService, SEFValidationError, SEFNetworkError, SEFRateLimitError, SEFServerError } from '../services/sefService';
 import UBLGenerator from '../services/ublGenerator';
 import logger from '../utils/logger';
 import { recordInvoiceSent, recordQueueJob } from '../utils/businessMetrics';
@@ -128,11 +128,15 @@ invoiceQueue.process(async (job: Job<InvoiceJobData>) => {
 
     // Send to SEF
     logger.info(`Sending invoice ${invoiceId} to SEF`);
-    const sefResponse = await sefService.sendInvoice(
-      ublXml,
-      invoice.company.sefApiKey,
-      (invoice.company.sefEnvironment as 'demo' | 'production') || 'demo'
-    );
+    
+    const sefService = new SEFService({
+      apiKey: invoice.company.sefApiKey,
+      baseUrl: invoice.company.sefEnvironment === 'production' 
+        ? 'https://efaktura.mfin.gov.rs' 
+        : 'https://demoefaktura.mfin.gov.rs'
+    });
+
+    const sefResponse = await sefService.sendInvoice(ublXml);
 
     // Update invoice status
     await prisma.invoice.update({

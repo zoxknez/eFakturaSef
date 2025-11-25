@@ -49,7 +49,9 @@ function extractEntityInfo(req: Request): { entityType: string; entityId: string
   let entityId: string | null = null;
 
   if (pathParts.length >= 2) {
-    entityType = pathParts[1].replace(/s$/, ''); // Remove plural 's'
+    if (pathParts[1]) {
+      entityType = pathParts[1].replace(/s$/, ''); // Remove plural 's'
+    }
     
     // If there's an ID in the path
     if (pathParts.length >= 3 && pathParts[2]) {
@@ -128,7 +130,7 @@ export const auditLog = (
   const action = getAction(req.method, req.path);
 
   // Capture request data
-  const requestData = sanitizeData(req.body);
+  // const requestData = sanitizeData(req.body);
 
   // Store original send function
   const originalSend = res.send;

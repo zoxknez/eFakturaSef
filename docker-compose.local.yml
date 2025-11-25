@@ -1,0 +1,72 @@
+# Docker Compose for local development - Simplified
+# Only starts PostgreSQL and Redis, run frontend/backend locally
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: sef-postgres
+    environment:
+      POSTGRES_DB: sef_efakture_dev
+      POSTGRES_USER: sef_user
+      POSTGRES_PASSWORD: sef_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sef_user -d sef_efakture_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Redis for caching and job queue
+  redis:
+    image: redis:7-alpine
+    container_name: sef-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Redis Commander - Web UI for Redis (optional, useful for debugging)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: sef-redis-commander
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    profiles:
+      - tools
+    restart: unless-stopped
+
+  # Adminer - Database management (optional)
+  adminer:
+    image: adminer:latest
+    container_name: sef-adminer
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    profiles:
+      - tools
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local

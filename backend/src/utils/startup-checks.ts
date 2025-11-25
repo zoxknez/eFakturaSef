@@ -6,7 +6,7 @@
 import { prisma } from '../db/prisma';
 import { createClient } from 'redis';
 import { config } from '../config';
-import { sefService } from '../services/sefService';
+import { SEFService } from '../services/sefService';
 import { logger } from '../utils/logger';
 
 export interface StartupCheckResult {
@@ -228,6 +228,12 @@ function checkEnvironmentConfig(): StartupCheckResult {
  */
 async function checkSEFAPI(): Promise<StartupCheckResult> {
   try {
+    // Instantiate service with global config for health check
+    const sefService = new SEFService({
+      apiKey: config.SEF_API_KEY,
+      baseUrl: config.SEF_BASE_URL
+    });
+    
     const isHealthy = await sefService.healthCheck();
 
     if (!isHealthy) {

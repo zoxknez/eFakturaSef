@@ -1,6 +1,5 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import axiosRetry, { isNetworkOrIdempotentRequestError } from 'axios-retry';
-import { config } from '../config';
 import { logger } from '../utils/logger';
 import { recordSefApiCall } from '../utils/businessMetrics';
 
@@ -83,10 +82,8 @@ export class SEFService {
   private client: AxiosInstance;
   private config: SEFConfig;
 
-  constructor(customConfig?: Partial<SEFConfig>) {
+  constructor(customConfig: SEFConfig) {
     this.config = {
-      baseUrl: config.SEF_BASE_URL || 'https://demoefaktura.mfin.gov.rs',
-      apiKey: config.SEF_API_KEY || '',
       timeout: 30000,
       ...customConfig,
     };
@@ -97,6 +94,7 @@ export class SEFService {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.config.apiKey}`,
+        'ApiKey': this.config.apiKey, // Some endpoints might use this header
       },
     });
 
@@ -188,13 +186,12 @@ export class SEFService {
   }
 
   /**
-   * Send invoice to SEF system
-   */
-  /**
    * Send invoice to SEF (Submit UBL XML)
    */
-  async sendInvoice(ublXml: string, apiKey: string, environment: 'demo' | 'production' = 'demo'): Promise<SEFInvoiceResponse> {
+  async sendInvoice(ublXml: string): Promise<SEFInvoiceResponse> {
     const startTime = Date.now();
+    const environment = this.config.baseUrl.includes('demo') ? 'demo' : 'production';
+    
     try {
       const response = await this.client.post(
         '/api/publicapi/sales-invoice', 
@@ -202,7 +199,7 @@ export class SEFService {
         {
           headers: {
             'Content-Type': 'application/xml',
-            'ApiKey': apiKey,
+            // ApiKey is already in default headers, but some endpoints might need it specifically
           },
         }
       );
@@ -345,5 +342,4 @@ export class SEFService {
   }
 }
 
-// Singleton instance
-export const sefService = new SEFService();
+

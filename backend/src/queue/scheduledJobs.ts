@@ -8,6 +8,14 @@ import { updateQueueSize } from '../middleware/metrics';
 import { isNightPause } from './config';
 
 /**
+ * Job queue configuration constants
+ */
+const MAX_JOB_ATTEMPTS = 3; // Maximum retry attempts for failed jobs
+const RETRY_BATCH_SIZE = 50; // Maximum jobs to retry in one batch
+const CLEANUP_RETENTION_DAYS = 30; // Days to keep completed jobs
+const WEBHOOK_LOG_RETENTION_DAYS = 60; // Days to keep webhook logs
+
+/**
  * Retry failed jobs
  * Runs every 15 minutes
  */
@@ -22,10 +30,13 @@ export const retryFailedJobsSchedule = cron.schedule(
         where: {
           status: 'FAILED',
           attempts: {
-            lt: prisma.jobQueue.fields.maxAttempts,
+            lt: MAX_JOB_ATTEMPTS,
           },
         },
-        take: 50, // Process max 50 at a time
+        take: RETRY_BATCH_SIZE, // Process max 50 at a time
+        orderBy: {
+          updatedAt: 'asc', // Retry oldest first
+        },
       });
 
       logger.info(`Found ${failedJobs.length} failed jobs to retry`);
@@ -118,15 +129,15 @@ export const cleanupOldJobsSchedule = cron.schedule(
     try {
       logger.info('Running scheduled job: cleanup old jobs');
 
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const retentionDate = new Date();
+      retentionDate.setDate(retentionDate.getDate() - CLEANUP_RETENTION_DAYS);
 
       // Delete old completed jobs
       const deletedCompleted = await prisma.jobQueue.deleteMany({
         where: {
           status: 'COMPLETED',
           processedAt: {
-            lt: thirtyDaysAgo,
+            lt: retentionDate,
           },
         },
       });
@@ -136,7 +147,7 @@ export const cleanupOldJobsSchedule = cron.schedule(
         where: {
           status: 'CANCELLED',
           updatedAt: {
-            lt: thirtyDaysAgo,
+            lt: retentionDate,
           },
         },
       });
@@ -171,8 +182,11 @@ export const deadLetterQueueSchedule = cron.schedule(
         where: {
           status: 'FAILED',
           attempts: {
-            gte: prisma.jobQueue.fields.maxAttempts,
+            gte: MAX_JOB_ATTEMPTS,
           },
+        },
+        orderBy: {
+          updatedAt: 'asc',
         },
       });
 
@@ -185,7 +199,7 @@ export const deadLetterQueueSchedule = cron.schedule(
             where: { id: job.id },
             data: {
               status: 'CANCELLED',
-              error: `${job.error}\n\n[Dead Letter Queue] Max attempts (${job.maxAttempts}) exceeded`,
+              error: `${job.error}\n\n[Dead Letter Queue] Max attempts (${MAX_JOB_ATTEMPTS}) exceeded`,
             },
           });
 
@@ -223,14 +237,14 @@ export const cleanupWebhookLogsSchedule = cron.schedule(
     try {
       logger.info('Running scheduled job: cleanup old webhook logs');
 
-      const sixtyDaysAgo = new Date();
-      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+      const webhookRetentionDate = new Date();
+      webhookRetentionDate.setDate(webhookRetentionDate.getDate() - WEBHOOK_LOG_RETENTION_DAYS);
 
       const deleted = await prisma.sEFWebhookLog.deleteMany({
         where: {
           processed: true,
           createdAt: {
-            lt: sixtyDaysAgo,
+            lt: webhookRetentionDate,
           },
         },
       });
@@ -287,4 +301,5 @@ export default {
   start: startScheduledJobs,
   stop: stopScheduledJobs,
 };
+
 

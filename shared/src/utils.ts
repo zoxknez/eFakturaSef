@@ -47,17 +47,18 @@ export const validatePIB = (pib: string): boolean => {
     return false;
   }
 
-  // PIB checksum validation
   const digits = pib.split('').map(Number);
-  let sum = 0;
-  
+  let sum = 10;
+
   for (let i = 0; i < 8; i++) {
-    sum += digits[i] * (10 - i);
+    // Safe access since we verified length is 9
+    const digit = digits[i] as number;
+    sum = (sum + digit) % 10;
+    if (sum === 0) sum = 10;
+    sum = (sum * 2) % 11;
   }
-  
-  const remainder = sum % 11;
-  const checkDigit = remainder < 2 ? remainder : 11 - remainder;
-  
+
+  const checkDigit = (11 - sum) % 10;
   return checkDigit === digits[8];
 };
 

@@ -115,6 +115,23 @@ class ApiClient {
     }
   }
 
+  // Generic HTTP methods
+  async get<T = any>(url: string, params?: any): Promise<ApiResponse<T>> {
+    return this.request({ method: 'GET', url, params });
+  }
+
+  async post<T = any>(url: string, data?: any): Promise<ApiResponse<T>> {
+    return this.request({ method: 'POST', url, data });
+  }
+
+  async put<T = any>(url: string, data?: any): Promise<ApiResponse<T>> {
+    return this.request({ method: 'PUT', url, data });
+  }
+
+  async delete<T = any>(url: string): Promise<ApiResponse<T>> {
+    return this.request({ method: 'DELETE', url });
+  }
+
   // Auth methods
   async login(email: string, password: string): Promise<ApiResponse<{
     accessToken: string;
@@ -166,6 +183,8 @@ class ApiClient {
     limit?: number;
     status?: string;
     type?: string;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
   }): Promise<ApiResponse<PaginatedResponse<any>>> {
     return this.request({
       method: 'GET',

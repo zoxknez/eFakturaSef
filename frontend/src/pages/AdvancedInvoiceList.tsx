@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../services/api';
 import { logger } from '../utils/logger';
+import ExportModal from '../components/ExportModal';
 
 interface Partner {
   id: string;
@@ -125,6 +126,9 @@ export const AdvancedInvoiceList: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const [typeFilter, setTypeFilter] = useState<string | undefined>(undefined);
   
+  // Export Modal
+  const [showExportModal, setShowExportModal] = useState(false);
+  
   // Fetch invoices on mount and when filters change
   useEffect(() => {
     fetchInvoices();
@@ -244,20 +248,56 @@ export const AdvancedInvoiceList: React.FC = () => {
   const selectedInvoice = selectedInvoiceId ? invoices.find(i => i.id === selectedInvoiceId) : null;
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Fakture</h1>
-          <p className="text-gray-600 mt-1">Upravljanje izlaznim i ulaznim fakturama</p>
+    <div className="space-y-6 animate-fadeIn">
+      {/* Hero Section */}
+      <div className="relative bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 rounded-[2rem] p-8 lg:p-10 text-white overflow-hidden">
+        {/* Animated background elements */}
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute -top-24 -right-24 w-96 h-96 bg-white/10 rounded-full blur-3xl animate-pulse"></div>
+          <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-indigo-400/20 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
+          
+          {/* Floating elements */}
+          <div className="absolute top-10 right-20 w-20 h-20 bg-white/5 rounded-2xl rotate-12 floating"></div>
+          <div className="absolute bottom-10 right-40 w-14 h-14 bg-white/5 rounded-xl -rotate-12 floating" style={{ animationDelay: '2s' }}></div>
+          
+          {/* Document icons */}
+          <div className="absolute top-8 right-16 opacity-10">
+            <svg className="w-24 h-24" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm4 18H6V4h7v5h5v11z"/>
+            </svg>
+          </div>
         </div>
-        <div className="flex space-x-3">
-          <Link to="/invoices/create" className="btn-primary bg-blue-500 hover:bg-blue-600">
-            📄 Nova faktura
-          </Link>
-          <button className="btn-primary bg-green-500 hover:bg-green-600">
-            📊 Export
-          </button>
+        
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+          <div className="space-y-4">
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full text-sm font-medium">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Napredna lista • SEF integracija
+            </div>
+            <h1 className="text-4xl lg:text-5xl font-black tracking-tight">
+              Fakture
+            </h1>
+            <p className="text-xl text-blue-100 max-w-xl">
+              Upravljanje izlaznim i ulaznim fakturama sa naprednim filterima i pretragom.
+            </p>
+          </div>
+          
+          <div className="flex flex-wrap gap-3">
+            <button 
+              onClick={() => setShowExportModal(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/10 backdrop-blur-sm border border-white/20 text-white rounded-xl font-medium hover:bg-white/20 transition-all"
+            >
+              📊 Export
+            </button>
+            <Link 
+              to="/invoices/create" 
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-blue-600 rounded-xl font-semibold shadow-lg shadow-black/10 hover:shadow-xl hover:-translate-y-0.5 transition-all"
+            >
+              📄 Nova faktura
+            </Link>
+          </div>
         </div>
       </div>
 
@@ -654,6 +694,14 @@ export const AdvancedInvoiceList: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Export Modal */}
+      <ExportModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        exportType="invoices"
+        title="Export faktura"
+      />
     </div>
   );
 };

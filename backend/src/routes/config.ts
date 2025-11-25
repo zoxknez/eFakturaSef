@@ -9,7 +9,7 @@ const router = express.Router();
  * GET /config/features
  * Get enabled feature flags for client
  */
-router.get('/features', (req: Request, res: Response) => {
+router.get('/features', (_req: Request, res: Response) => {
   try {
     const features = getFeatureFlagsForClient();
     
@@ -29,7 +29,7 @@ router.get('/features', (req: Request, res: Response) => {
  * GET /config/environment
  * Get environment information (public data only)
  */
-router.get('/environment', (req: Request, res: Response) => {
+router.get('/environment', (_req: Request, res: Response) => {
   try {
     const env = getEnvironmentConfig();
     
@@ -51,4 +51,6 @@ router.get('/environment', (req: Request, res: Response) => {
 });
 
 export default router;
+
+
 

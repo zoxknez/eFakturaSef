@@ -33,10 +33,17 @@ model Company {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
-  users    User[]
-  invoices Invoice[]
-  partners Partner[]
-  products Product[]
+  users           User[]
+  invoices        Invoice[]
+  partners        Partner[]
+  products        Product[]
+  accounts        Account[]
+  fiscalYears     FiscalYear[]
+  journalEntries  JournalEntry[]
+  vatRecords      VATRecord[]
+  bankStatements  BankStatement[]
+  creditNotes     CreditNote[]
+  incomingInvoices IncomingInvoice[]
 
   @@map("companies")
 }
@@ -97,12 +104,20 @@ model Partner {
 
   // Indexes
   @@unique([companyId, pib], name: "unique_partner_pib_per_company")
+  
+  // Single-column indexes
   @@index([companyId])
   @@index([type])
   @@index([pib])
   @@index([isActive])
+  @@index([name]) // For autocomplete/search
+  
+  // Composite indexes for common queries
+  @@index([companyId, type, isActive])
+  @@index([companyId, isActive, name])
   @@index([companyId, type])
-  @@index([companyId, isActive])
+  @@index([companyId, createdAt(sort: Desc)])
+  
   @@map("partners")
 }
 
@@ -160,12 +175,22 @@ model Product {
 
   // Indexes
   @@unique([companyId, code], name: "unique_product_code_per_company")
+  
+  // Single-column indexes
   @@index([companyId])
   @@index([barcode])
   @@index([isActive])
   @@index([category])
-  @@index([companyId, isActive])
-  @@index([companyId, category])
+  @@index([name]) // For autocomplete/search
+  @@index([code]) // For quick lookup
+  
+  // Composite indexes for common queries
+  @@index([companyId, isActive, name])
+  @@index([companyId, category, isActive])
+  @@index([companyId, trackInventory, currentStock])
+  @@index([companyId, isActive, category])
+  @@index([companyId, createdAt(sort: Desc)])
+  
   @@map("products")
 }
 
@@ -201,6 +226,7 @@ model User {
   // Relations
   company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
   refreshTokens RefreshToken[]
+  notifications Notification[]
 
   // Indexes for performance
   @@index([companyId])
@@ -287,7 +313,9 @@ model Invoice {
 
   // Unique constraint: invoice number must be unique per company
   @@unique([companyId, invoiceNumber], name: "unique_invoice_number_per_company")
+  
   // Indexes for performance
+  // Basic single-column indexes
   @@index([companyId])
   @@index([partnerId])
   @@index([status])
@@ -296,13 +324,38 @@ model Invoice {
   @@index([dueDate])
   @@index([sefId])
   @@index([invoiceNumber])
-  @@index([companyId, status])
-  @@index([companyId, paymentStatus])
-  @@index([companyId, issueDate])
-  @@index([companyId, status, issueDate])
   @@index([buyerPIB])
   @@index([createdAt])
   @@index([sentAt])
+  @@index([type])
+  
+  // Composite indexes for common query patterns
+  // List invoices by company and status
+  @@index([companyId, status, issueDate(sort: Desc)])
+  
+  // List invoices by company and payment status
+  @@index([companyId, paymentStatus, dueDate])
+  
+  // List invoices by company and type
+  @@index([companyId, type, status])
+  
+  // Search invoices by date range (most common)
+  @@index([companyId, issueDate(sort: Desc), status])
+  
+  // Find overdue invoices
+  @@index([companyId, paymentStatus, dueDate], name: "idx_overdue_invoices")
+  
+  // Partner lookup for invoices
+  @@index([partnerId, issueDate(sort: Desc)])
+  
+  // SEF integration queries
+  @@index([sefId, status])
+  @@index([companyId, sefStatus])
+  
+  // Recent invoices (dashboard queries)
+  @@index([companyId, createdAt(sort: Desc)])
+  @@index([companyId, sentAt(sort: Desc)])
+  
   @@map("invoices")
 }
 
@@ -358,14 +411,20 @@ model AuditLog {
   invoice Invoice? @relation(fields: [entityId], references: [id], onDelete: Cascade)
 
   // Indexes for performance
+  // Single-column indexes
   @@index([entityType])
   @@index([entityId])
   @@index([userId])
   @@index([createdAt])
-  @@index([entityType, entityId])
-  @@index([entityType, createdAt])
-  @@index([userId, createdAt])
   @@index([action])
+  
+  // Composite indexes for audit queries
+  @@index([entityType, entityId, createdAt(sort: Desc)])
+  @@index([entityType, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, action, createdAt(sort: Desc)])
+  @@index([entityType, action, createdAt(sort: Desc)])
+  
   @@map("audit_logs")
 }
 
@@ -448,11 +507,19 @@ model Payment {
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   // Indexes
+  // Single-column indexes
   @@index([invoiceId])
   @@index([paymentDate])
   @@index([status])
   @@index([createdAt])
+  @@index([method])
+  
+  // Composite indexes for payment queries
   @@index([invoiceId, status])
+  @@index([invoiceId, paymentDate(sort: Desc)])
+  @@index([status, paymentDate])
+  @@index([createdAt(sort: Desc), status])
+  
   @@map("payments")
 }
 
@@ -503,3 +570,549 @@ enum JobStatus {
   FAILED
   CANCELLED
 }
+
+// ========================================
+// ACCOUNTING MODULE - KONTNI PLAN (Chart of Accounts)
+// ========================================
+
+model Account {
+  id          String      @id @default(uuid())
+  code        String      // Konto broj (npr. 2020, 4310)
+  name        String      // Naziv konta
+  nameEn      String?     @map("name_en") // English name
+  description String?     @db.Text
+  
+  // Hijerarhija
+  level       Int         // 1=klasa, 2=grupa, 3=sintetika, 4=analitika
+  parentId    String?     @map("parent_id")
+  parent      Account?    @relation("AccountHierarchy", fields: [parentId], references: [id])
+  children    Account[]   @relation("AccountHierarchy")
+  
+  // Tip konta
+  type        AccountType
+  normalSide  AccountSide @map("normal_side") // Duguje ili Potražuje
+  
+  // Status
+  isActive    Boolean     @default(true) @map("is_active")
+  isSystem    Boolean     @default(false) @map("is_system") // Sistemski konto (ne može se brisati)
+  
+  // Company relation
+  companyId   String      @map("company_id")
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  // Timestamps
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+  
+  // Relations
+  journalLines JournalLine[]
+  
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@index([parentId])
+  @@index([type])
+  @@index([level])
+  @@index([isActive])
+  @@index([companyId, level, code])
+  @@map("accounts")
+}
+
+enum AccountType {
+  ASSET           // Aktiva (klasa 0,1,2,3)
+  LIABILITY       // Pasiva - Obaveze (klasa 4)
+  EQUITY          // Kapital (klasa 3)
+  REVENUE         // Prihodi (klasa 6)
+  EXPENSE         // Rashodi (klasa 5)
+  COST            // Troškovi (klasa 5)
+  OFF_BALANCE     // Vanbilansna evidencija (klasa 8,9)
+}
+
+enum AccountSide {
+  DEBIT   // Duguje
+  CREDIT  // Potražuje
+}
+
+// ========================================
+// FISCAL YEAR - Poslovna godina
+// ========================================
+
+model FiscalYear {
+  id          String    @id @default(uuid())
+  year        Int       // Godina (2024, 2025, ...)
+  startDate   DateTime  @map("start_date")
+  endDate     DateTime  @map("end_date")
+  
+  // Status
+  status      FiscalYearStatus @default(OPEN)
+  closedAt    DateTime?        @map("closed_at")
+  closedBy    String?          @map("closed_by")
+  
+  // Company relation
+  companyId   String    @map("company_id")
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  // Timestamps
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  
+  // Relations
+  journals    JournalEntry[]
+  
+  @@unique([companyId, year])
+  @@index([companyId])
+  @@index([status])
+  @@map("fiscal_years")
+}
+
+enum FiscalYearStatus {
+  OPEN      // Otvorena - dozvoljena knjiženja
+  LOCKED    // Zaključana - privremeno (za izveštaje)
+  CLOSED    // Zatvorena - završna knjiženja urađena
+}
+
+// ========================================
+// JOURNAL ENTRY - Nalog za knjiženje
+// ========================================
+
+model JournalEntry {
+  id              String          @id @default(uuid())
+  entryNumber     String          @map("entry_number") // Redni broj naloga
+  date            DateTime        // Datum knjiženja
+  description     String          @db.Text
+  
+  // Tip naloga
+  type            JournalType     @default(MANUAL)
+  
+  // Reference (opciono)
+  referenceType   String?         @map("reference_type") // invoice, payment, bank_statement
+  referenceId     String?         @map("reference_id")
+  
+  // Fiscal year
+  fiscalYearId    String          @map("fiscal_year_id")
+  fiscalYear      FiscalYear      @relation(fields: [fiscalYearId], references: [id])
+  
+  // Status
+  status          JournalStatus   @default(DRAFT)
+  postedAt        DateTime?       @map("posted_at")
+  postedBy        String?         @map("posted_by")
+  
+  // Totals (cached for performance)
+  totalDebit      Decimal         @default(0) @map("total_debit") @db.Decimal(15, 2)
+  totalCredit     Decimal         @default(0) @map("total_credit") @db.Decimal(15, 2)
+  
+  // Company relation
+  companyId       String          @map("company_id")
+  company         Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  // Audit
+  createdBy       String          @map("created_by")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  
+  // Relations
+  lines           JournalLine[]
+  
+  @@unique([companyId, entryNumber, fiscalYearId])
+  @@index([companyId])
+  @@index([fiscalYearId])
+  @@index([date])
+  @@index([status])
+  @@index([type])
+  @@index([referenceType, referenceId])
+  @@index([companyId, date(sort: Desc)])
+  @@index([companyId, status, date])
+  @@map("journal_entries")
+}
+
+enum JournalType {
+  MANUAL          // Ručni unos
+  INVOICE         // Automatski od fakture
+  PAYMENT         // Automatski od plaćanja
+  BANK_STATEMENT  // Automatski od izvoda
+  CLOSING         // Završno knjiženje
+  OPENING         // Početno stanje
+  ADJUSTMENT      // Korekcija
+}
+
+enum JournalStatus {
+  DRAFT     // Nacrt
+  POSTED    // Proknjiženo
+  REVERSED  // Stornirano
+}
+
+// ========================================
+// JOURNAL LINE - Stavka naloga za knjiženje
+// ========================================
+
+model JournalLine {
+  id              String        @id @default(uuid())
+  lineNumber      Int           @map("line_number")
+  
+  // Account
+  accountId       String        @map("account_id")
+  account         Account       @relation(fields: [accountId], references: [id])
+  
+  // Amounts
+  debitAmount     Decimal       @default(0) @map("debit_amount") @db.Decimal(15, 2)
+  creditAmount    Decimal       @default(0) @map("credit_amount") @db.Decimal(15, 2)
+  
+  // Description (per line)
+  description     String?       @db.Text
+  
+  // Partner reference (for A/R and A/P)
+  partnerId       String?       @map("partner_id")
+  
+  // Journal entry relation
+  journalEntryId  String        @map("journal_entry_id")
+  journalEntry    JournalEntry  @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  
+  @@index([journalEntryId])
+  @@index([accountId])
+  @@index([partnerId])
+  @@index([journalEntryId, lineNumber])
+  @@map("journal_lines")
+}
+
+// ========================================
+// VAT EVIDENCE - PDV Evidencija
+// ========================================
+
+model VATRecord {
+  id              String        @id @default(uuid())
+  
+  // Period
+  year            Int
+  month           Int           // 1-12
+  
+  // Tip evidencije
+  type            VATRecordType
+  
+  // Document info
+  documentNumber  String        @map("document_number")
+  documentDate    DateTime      @map("document_date")
+  partnerName     String        @map("partner_name")
+  partnerPIB      String        @map("partner_pib")
+  
+  // Amounts
+  taxBase20       Decimal       @default(0) @map("tax_base_20") @db.Decimal(15, 2)  // Osnovica 20%
+  vatAmount20     Decimal       @default(0) @map("vat_amount_20") @db.Decimal(15, 2) // PDV 20%
+  taxBase10       Decimal       @default(0) @map("tax_base_10") @db.Decimal(15, 2)  // Osnovica 10%
+  vatAmount10     Decimal       @default(0) @map("vat_amount_10") @db.Decimal(15, 2) // PDV 10%
+  exemptAmount    Decimal       @default(0) @map("exempt_amount") @db.Decimal(15, 2) // Oslobođeno
+  totalAmount     Decimal       @default(0) @map("total_amount") @db.Decimal(15, 2)
+  
+  // Reference
+  invoiceId       String?       @map("invoice_id")
+  
+  // Company relation
+  companyId       String        @map("company_id")
+  company         Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  // Timestamps
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  
+  @@index([companyId])
+  @@index([year, month])
+  @@index([type])
+  @@index([invoiceId])
+  @@index([companyId, year, month, type])
+  @@map("vat_records")
+}
+
+enum VATRecordType {
+  OUTPUT    // Izlazni PDV (prodaja)
+  INPUT     // Ulazni PDV (nabavka)
+}
+
+// ========================================
+// BANK STATEMENT - Izvod
+// ========================================
+
+model BankStatement {
+  id              String              @id @default(uuid())
+  
+  // Statement info
+  statementNumber String              @map("statement_number")
+  accountNumber   String              @map("account_number") // IBAN ili broj računa
+  bankName        String?             @map("bank_name")
+  
+  // Period
+  statementDate   DateTime            @map("statement_date")
+  fromDate        DateTime            @map("from_date")
+  toDate          DateTime            @map("to_date")
+  
+  // Balances
+  openingBalance  Decimal             @map("opening_balance") @db.Decimal(15, 2)
+  closingBalance  Decimal             @map("closing_balance") @db.Decimal(15, 2)
+  totalDebit      Decimal             @default(0) @map("total_debit") @db.Decimal(15, 2)
+  totalCredit     Decimal             @default(0) @map("total_credit") @db.Decimal(15, 2)
+  
+  // Status
+  status          BankStatementStatus @default(IMPORTED)
+  processedAt     DateTime?           @map("processed_at")
+  
+  // Company relation
+  companyId       String              @map("company_id")
+  company         Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  // Timestamps
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+  
+  // Relations
+  transactions    BankTransaction[]
+  
+  @@unique([companyId, accountNumber, statementNumber])
+  @@index([companyId])
+  @@index([statementDate])
+  @@index([status])
+  @@map("bank_statements")
+}
+
+enum BankStatementStatus {
+  IMPORTED    // Uvezen
+  PROCESSING  // U obradi
+  MATCHED     // Upareno
+  POSTED      // Proknjiženo
+}
+
+model BankTransaction {
+  id                String              @id @default(uuid())
+  
+  // Transaction info
+  transactionDate   DateTime            @map("transaction_date")
+  valueDate         DateTime?           @map("value_date")
+  
+  // Amounts
+  amount            Decimal             @db.Decimal(15, 2)
+  type              BankTransactionType
+  
+  // Partner info
+  partnerName       String?             @map("partner_name")
+  partnerAccount    String?             @map("partner_account")
+  
+  // Reference
+  reference         String?             // Poziv na broj
+  description       String?             @db.Text
+  
+  // Matching
+  matchStatus       MatchStatus         @default(UNMATCHED) @map("match_status")
+  matchedInvoiceId  String?             @map("matched_invoice_id")
+  matchedPaymentId  String?             @map("matched_payment_id")
+  
+  // Statement relation
+  statementId       String              @map("statement_id")
+  statement         BankStatement       @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  
+  @@index([statementId])
+  @@index([transactionDate])
+  @@index([matchStatus])
+  @@index([matchedInvoiceId])
+  @@map("bank_transactions")
+}
+
+enum BankTransactionType {
+  CREDIT  // Uplata
+  DEBIT   // Isplata
+}
+
+enum MatchStatus {
+  UNMATCHED   // Nije upareno
+  MATCHED     // Upareno
+  PARTIAL     // Delimično upareno
+  IGNORED     // Ignorisano (nije potrebno uparivanje)
+}
+
+// ========================================
+// CREDIT NOTE - Knjižno odobrenje
+// ========================================
+
+model CreditNote {
+  id                String          @id @default(uuid())
+  creditNoteNumber  String          @map("credit_note_number")
+  
+  // Related invoice
+  originalInvoiceId String          @map("original_invoice_id")
+  
+  // Partner
+  partnerId         String?         @map("partner_id")
+  partnerName       String          @map("partner_name")
+  partnerPIB        String          @map("partner_pib")
+  
+  // Dates
+  issueDate         DateTime        @map("issue_date")
+  
+  // Amounts
+  totalAmount       Decimal         @map("total_amount") @db.Decimal(15, 2)
+  taxAmount         Decimal         @map("tax_amount") @db.Decimal(15, 2)
+  
+  // Reason
+  reason            String          @db.Text
+  
+  // SEF
+  sefId             String?         @unique @map("sef_id")
+  sefStatus         String?         @map("sef_status")
+  sentAt            DateTime?       @map("sent_at")
+  
+  // Status
+  status            CreditNoteStatus @default(DRAFT)
+  
+  // Company relation
+  companyId         String          @map("company_id")
+  company           Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  // Timestamps
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+  
+  // Relations
+  lines             CreditNoteLine[]
+  
+  @@unique([companyId, creditNoteNumber])
+  @@index([companyId])
+  @@index([originalInvoiceId])
+  @@index([status])
+  @@map("credit_notes")
+}
+
+model CreditNoteLine {
+  id              String      @id @default(uuid())
+  lineNumber      Int         @map("line_number")
+  
+  itemName        String      @map("item_name")
+  quantity        Decimal     @db.Decimal(10, 3)
+  unitPrice       Decimal     @map("unit_price") @db.Decimal(15, 2)
+  taxRate         Decimal     @map("tax_rate") @db.Decimal(5, 2)
+  taxAmount       Decimal     @map("tax_amount") @db.Decimal(15, 2)
+  amount          Decimal     @db.Decimal(15, 2)
+  
+  creditNoteId    String      @map("credit_note_id")
+  creditNote      CreditNote  @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
+  
+  @@index([creditNoteId])
+  @@map("credit_note_lines")
+}
+
+enum CreditNoteStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
+// ========================================
+// INCOMING INVOICE - Ulazne fakture
+// ========================================
+
+model IncomingInvoice {
+  id                String                @id @default(uuid())
+  
+  // SEF reference
+  sefId             String?               @unique @map("sef_id")
+  sefStatus         String?               @map("sef_status")
+  
+  // Invoice info
+  invoiceNumber     String                @map("invoice_number")
+  issueDate         DateTime              @map("issue_date")
+  dueDate           DateTime?             @map("due_date")
+  receivedDate      DateTime              @default(now()) @map("received_date")
+  
+  // Supplier info
+  supplierName      String                @map("supplier_name")
+  supplierPIB       String                @map("supplier_pib")
+  supplierAddress   String?               @map("supplier_address")
+  
+  // Amounts
+  totalAmount       Decimal               @map("total_amount") @db.Decimal(15, 2)
+  taxAmount         Decimal               @map("tax_amount") @db.Decimal(15, 2)
+  currency          String                @default("RSD")
+  
+  // Status
+  status            IncomingInvoiceStatus @default(RECEIVED)
+  
+  // Processing
+  acceptedAt        DateTime?             @map("accepted_at")
+  rejectedAt        DateTime?             @map("rejected_at")
+  rejectionReason   String?               @map("rejection_reason") @db.Text
+  
+  // Payment
+  paymentStatus     InvoicePaymentStatus  @default(UNPAID) @map("payment_status")
+  paidAmount        Decimal               @default(0) @map("paid_amount") @db.Decimal(15, 2)
+  
+  // Company relation
+  companyId         String                @map("company_id")
+  company           Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  // Optional partner link
+  partnerId         String?               @map("partner_id")
+  
+  // Timestamps
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
+  
+  // Relations
+  lines             IncomingInvoiceLine[]
+  
+  @@index([companyId])
+  @@index([sefId])
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([supplierPIB])
+  @@index([companyId, status, receivedDate(sort: Desc)])
+  @@map("incoming_invoices")
+}
+
+model IncomingInvoiceLine {
+  id                  String          @id @default(uuid())
+  lineNumber          Int             @map("line_number")
+  
+  itemName            String          @map("item_name")
+  quantity            Decimal         @db.Decimal(10, 3)
+  unitPrice           Decimal         @map("unit_price") @db.Decimal(15, 2)
+  taxRate             Decimal         @map("tax_rate") @db.Decimal(5, 2)
+  taxAmount           Decimal         @map("tax_amount") @db.Decimal(15, 2)
+  amount              Decimal         @db.Decimal(15, 2)
+  
+  incomingInvoiceId   String          @map("incoming_invoice_id")
+  incomingInvoice     IncomingInvoice @relation(fields: [incomingInvoiceId], references: [id], onDelete: Cascade)
+  
+  @@index([incomingInvoiceId])
+  @@map("incoming_invoice_lines")
+}
+
+enum IncomingInvoiceStatus {
+  RECEIVED    // Primljena
+  PENDING     // Čeka odobrenje
+  ACCEPTED    // Prihvaćena
+  REJECTED    // Odbijena
+  CANCELLED   // Otkazana
+}
+
+// ========================================
+// NOTIFICATION MODEL (Notifikacije)
+// ========================================
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  type      String   // INVOICE_SENT, INVOICE_ACCEPTED, PAYMENT_RECEIVED, etc.
+  title     String
+  message   String   @db.Text
+  data      Json?    @default("{}")
+  isRead    Boolean  @default(false) @map("is_read")
+  
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId, isRead])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([type])
+  @@map("notifications")
+}
+
+// ========================================
+// Add relations to Company model
+// ========================================

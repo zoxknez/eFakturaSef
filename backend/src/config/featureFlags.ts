@@ -135,7 +135,7 @@ const featureFlagsByEnvironment: Record<string, FeatureFlags> = {
  */
 export function getFeatureFlags(): FeatureFlags {
   const environment = getEnvironment();
-  return featureFlagsByEnvironment[environment] || featureFlagsByEnvironment.development;
+  return featureFlagsByEnvironment[environment] || featureFlagsByEnvironment.development!;
 }
 
 /**
@@ -151,7 +151,7 @@ export function isFeatureEnabled(feature: keyof FeatureFlags): boolean {
  * Returns 404 if feature is not enabled
  */
 export function requireFeature(feature: keyof FeatureFlags) {
-  return (req: any, res: any, next: any) => {
+  return (_req: any, res: any, next: any) => {
     if (!isFeatureEnabled(feature)) {
       return res.status(404).json({
         success: false,
@@ -189,4 +189,6 @@ export function getFeatureFlagsForClient() {
     enableExports: flags.enableExports,
   };
 }
+
+
 

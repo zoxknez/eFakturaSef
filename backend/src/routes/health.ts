@@ -136,8 +136,8 @@ function calculateOverallStatus(checks: HealthStatus['checks']): HealthStatus['s
  * GET /health
  * Basic health check endpoint (fast, for load balancers)
  */
-router.get('/', (req: Request, res: Response) => {
-  res.json({
+router.get('/', (_req: Request, res: Response) => {
+  return res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
@@ -149,7 +149,7 @@ router.get('/', (req: Request, res: Response) => {
  * Readiness probe (checks if app is ready to serve traffic)
  * Kubernetes-style readiness probe
  */
-router.get('/ready', async (req: Request, res: Response) => {
+router.get('/ready', async (_req: Request, res: Response) => {
   try {
     // Check database
     const dbCheck = await checkDatabase();
@@ -167,9 +167,10 @@ router.get('/ready', async (req: Request, res: Response) => {
       timestamp: new Date().toISOString(),
       checks: { database: dbCheck },
     });
+    return;
   } catch (error: any) {
     logger.error('Readiness check failed', { error: error.message });
-    res.status(503).json({
+    return res.status(503).json({
       ready: false,
       error: error.message,
     });
@@ -181,9 +182,9 @@ router.get('/ready', async (req: Request, res: Response) => {
  * Liveness probe (checks if app is still alive)
  * Kubernetes-style liveness probe
  */
-router.get('/live', (req: Request, res: Response) => {
+router.get('/live', (_req: Request, res: Response) => {
   // Simple check - if we can respond, we're alive
-  res.json({
+  return res.json({
     alive: true,
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
@@ -195,7 +196,7 @@ router.get('/live', (req: Request, res: Response) => {
  * GET /health/detailed
  * Detailed health check (checks all dependencies)
  */
-router.get('/detailed', async (req: Request, res: Response) => {
+router.get('/detailed', async (_req: Request, res: Response) => {
   try {
     logger.debug('Performing detailed health check');
 
@@ -225,10 +226,10 @@ router.get('/detailed', async (req: Request, res: Response) => {
     // Set appropriate HTTP status code
     const statusCode = overallStatus === 'healthy' ? 200 : overallStatus === 'degraded' ? 200 : 503;
 
-    res.status(statusCode).json(healthStatus);
+    return res.status(statusCode).json(healthStatus);
   } catch (error: any) {
     logger.error('Detailed health check failed', { error: error.message });
-    res.status(500).json({
+    return res.status(500).json({
       status: 'unhealthy',
       error: error.message,
       timestamp: new Date().toISOString(),
@@ -240,11 +241,11 @@ router.get('/detailed', async (req: Request, res: Response) => {
  * GET /health/metrics
  * System metrics (memory, CPU, etc.)
  */
-router.get('/metrics', (req: Request, res: Response) => {
+router.get('/metrics', (_req: Request, res: Response) => {
   const memoryUsage = process.memoryUsage();
   const cpuUsage = process.cpuUsage();
 
-  res.json({
+  return res.json({
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     memory: {

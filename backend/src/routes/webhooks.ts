@@ -74,7 +74,7 @@ router.post('/webhook', verifyWebhookSignature, async (req: Request, res: Respon
 
     const eventType = req.body.event ?? req.body.eventType ?? 'unknown';
     const sefId = req.body.sefId ?? req.body.invoiceSefId ?? '';
-    const status = req.body.status as string | undefined;
+    // const status = req.body.status as string | undefined;
 
     logger.info(`SEF Webhook received: ${eventType} for invoice ${sefId}`, req.body);
 
