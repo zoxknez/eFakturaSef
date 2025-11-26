@@ -70,6 +70,15 @@ interface RevenueTrendProps {
 }
 
 export function RevenueTrendChart({ data }: RevenueTrendProps) {
+  // Guard against empty or single-point data
+  if (!data || data.length < 2) {
+    return (
+      <div className="w-full h-[300px] flex items-center justify-center text-gray-400">
+        Nedovoljno podataka za prikaz trenda
+      </div>
+    );
+  }
+
   return (
     <ResponsiveContainer width="100%" height={300}>
       <LineChart data={data}>
@@ -147,6 +156,15 @@ interface MiniTrendProps {
 }
 
 export function MiniTrendChart({ data, color = COLORS.primary, height = 40 }: MiniTrendProps) {
+  // Guard against empty or single-point data which causes SVG path errors
+  if (!data || data.length < 2) {
+    return (
+      <div style={{ width: '100%', height }} className="flex items-center justify-center text-gray-400 text-xs">
+        Nedovoljno podataka
+      </div>
+    );
+  }
+
   const chartData = data.map((value, index) => ({ value, index }));
 
   return (

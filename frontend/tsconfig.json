@@ -21,7 +21,8 @@
       "@/pages/*": ["./src/pages/*"],
       "@/hooks/*": ["./src/hooks/*"],
       "@/utils/*": ["./src/utils/*"],
-      "@/types/*": ["./src/types/*"]
+      "@/types/*": ["./src/types/*"],
+      "@sef-app/shared": ["../shared/src/index.ts"]
     }
   },
   "include": [

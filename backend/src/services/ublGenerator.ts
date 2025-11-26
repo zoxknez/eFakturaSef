@@ -86,7 +86,16 @@ export class UBLGenerator {
       .up();
 
       // Invoice Lines
-      invoice.lines.forEach((line) => {
+      invoice.lines.forEach((line: any) => {
+        // Determine tax category code based on rate
+        // S = Standard rate (20%), Z = Zero rate (0%), AA = Reduced rate (10%)
+        let lineTaxCategoryId = 'S';
+        if (line.taxRate === 0) {
+          lineTaxCategoryId = 'Z';
+        } else if (line.taxRate === 10) {
+          lineTaxCategoryId = 'AA';
+        }
+
         doc.ele('cac:InvoiceLine')
           .ele('cbc:ID').txt(line.id.toString()).up()
           .ele('cbc:InvoicedQuantity', { unitCode: line.unitCode }).txt(line.quantity.toString()).up()
@@ -94,7 +103,7 @@ export class UBLGenerator {
           .ele('cac:Item')
             .ele('cbc:Name').txt(line.name).up()
             .ele('cac:ClassifiedTaxCategory')
-              .ele('cbc:ID').txt('S').up()
+              .ele('cbc:ID').txt(lineTaxCategoryId).up()
               .ele('cbc:Percent').txt(line.taxRate.toString()).up()
               .ele('cac:TaxScheme')
                 .ele('cbc:ID').txt('VAT').up()
@@ -107,21 +116,49 @@ export class UBLGenerator {
         .up();
       });
 
-      // Tax Total
-      doc.ele('cac:TaxTotal')
-        .ele('cbc:TaxAmount', { currencyID: invoice.currency }).txt(invoice.totals.taxAmount.toFixed(2)).up()
-        .ele('cac:TaxSubtotal')
-          .ele('cbc:TaxableAmount', { currencyID: invoice.currency }).txt(invoice.totals.taxExclusiveAmount.toFixed(2)).up()
-          .ele('cbc:TaxAmount', { currencyID: invoice.currency }).txt(invoice.totals.taxAmount.toFixed(2)).up()
-          .ele('cac:TaxCategory')
-            .ele('cbc:ID').txt('S').up()
-            .ele('cbc:Percent').txt('20').up()
-            .ele('cac:TaxScheme')
-              .ele('cbc:ID').txt('VAT').up()
+      // Group lines by tax rate to calculate TaxSubtotals
+      const taxGroups = invoice.lines.reduce((acc: any, line: any) => {
+        const rate = line.taxRate;
+        if (!acc[rate]) {
+          acc[rate] = { taxableAmount: 0, taxAmount: 0 };
+        }
+        acc[rate].taxableAmount += line.lineAmount;
+        acc[rate].taxAmount += line.lineAmount * (rate / 100);
+        return acc;
+      }, {} as Record<number, { taxableAmount: number; taxAmount: number }>);
+
+      // Tax Total with multiple TaxSubtotals for different rates
+      const taxTotal = doc.ele('cac:TaxTotal')
+        .ele('cbc:TaxAmount', { currencyID: invoice.currency }).txt(invoice.totals.taxAmount.toFixed(2)).up();
+
+      // Add TaxSubtotal for each tax rate (0%, 10%, 20% in Serbia)
+      Object.entries(taxGroups)
+        .sort(([a], [b]) => Number(a) - Number(b))
+        .forEach(([rate, amounts]: [string, any]) => {
+          const taxRate = Number(rate);
+          // Determine tax category code based on rate
+          // S = Standard rate, Z = Zero rate, AA = Reduced rate
+          let categoryId = 'S';
+          if (taxRate === 0) {
+            categoryId = 'Z';
+          } else if (taxRate === 10) {
+            categoryId = 'AA'; // Reduced rate
+          }
+
+          taxTotal.ele('cac:TaxSubtotal')
+            .ele('cbc:TaxableAmount', { currencyID: invoice.currency }).txt(amounts.taxableAmount.toFixed(2)).up()
+            .ele('cbc:TaxAmount', { currencyID: invoice.currency }).txt(amounts.taxAmount.toFixed(2)).up()
+            .ele('cac:TaxCategory')
+              .ele('cbc:ID').txt(categoryId).up()
+              .ele('cbc:Percent').txt(taxRate.toString()).up()
+              .ele('cac:TaxScheme')
+                .ele('cbc:ID').txt('VAT').up()
+              .up()
             .up()
-          .up()
-        .up()
-      .up();
+          .up();
+        });
+
+      taxTotal.up();
 
       // Legal Monetary Total
       doc.ele('cac:LegalMonetaryTotal')

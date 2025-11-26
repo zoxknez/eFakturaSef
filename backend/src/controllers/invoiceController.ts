@@ -1,7 +1,9 @@
 import { Request, Response } from 'express';
 import { logger } from '../utils/logger';
 import { InvoiceService, CreateInvoiceDTO, UpdateInvoiceDTO } from '../services/invoiceService';
+import { pdfService } from '../services/pdfService';
 import { AuthenticatedRequest } from '../middleware/auth';
+import { getErrorMessage } from '../types/common';
 
 /* ========================= Controller ========================= */
 
@@ -14,7 +16,7 @@ export class InvoiceController {
       const user = authReq.user;
 
       if (!user?.companyId) {
-        return res.status(403).json({ error: 'User not associated with a company' });
+        return res.status(403).json({ success: false, error: 'User not associated with a company' });
       }
 
       const result = await InvoiceService.listInvoices(user.companyId, {
@@ -29,7 +31,7 @@ export class InvoiceController {
       return res.json(result);
     } catch (error) {
       logger.error('Failed to list invoices', error);
-      return res.status(500).json({ error: 'Failed to fetch invoices' });
+      return res.status(500).json({ success: false, error: 'Failed to fetch invoices' });
     }
   }
 
@@ -38,7 +40,7 @@ export class InvoiceController {
     try {
       const { id } = req.params;
       if (!id) {
-        return res.status(400).json({ error: 'Invoice ID is required' });
+        return res.status(400).json({ success: false, error: 'Invoice ID is required' });
       }
       const authReq = req as AuthenticatedRequest;
       const user = authReq.user;
@@ -47,12 +49,13 @@ export class InvoiceController {
       const invoice = await InvoiceService.getInvoice(id, user?.companyId);
 
       return res.json(invoice);
-    } catch (error: any) {
+    } catch (error) {
+      const message = getErrorMessage(error);
       logger.error('Failed to fetch invoice', error);
-      if (error.message === 'Invoice not found') {
-        return res.status(404).json({ error: error.message });
+      if (message === 'Invoice not found') {
+        return res.status(404).json({ success: false, error: message });
       }
-      return res.status(500).json({ error: 'Failed to fetch invoice' });
+      return res.status(500).json({ success: false, error: 'Failed to fetch invoice' });
     }
   }
 
@@ -60,19 +63,27 @@ export class InvoiceController {
   static async create(req: Request, res: Response) {
     try {
       const body = req.body as CreateInvoiceDTO;
-      const created = await InvoiceService.createInvoice(body);
+      const authReq = req as AuthenticatedRequest;
+      const userId = authReq.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({ error: 'User not authenticated' });
+      }
+
+      const created = await InvoiceService.createInvoice(body, userId);
       
       logger.info(`Invoice created: ${created.id}`);
       return res.status(201).json(created);
-    } catch (error: any) {
+    } catch (error) {
+      const message = getErrorMessage(error);
       logger.error('Failed to create invoice', error);
-      if (error.message.includes('does not exist') || error.message.includes('required') || error.message.includes('Invalid')) {
-        return res.status(400).json({ error: error.message });
+      if (message.includes('does not exist') || message.includes('required') || message.includes('Invalid')) {
+        return res.status(400).json({ success: false, error: message });
       }
-      if (error.message.includes('already exists')) {
-        return res.status(409).json({ error: error.message });
+      if (message.includes('already exists')) {
+        return res.status(409).json({ success: false, error: message });
       }
-      return res.status(500).json({ error: 'Failed to create invoice' });
+      return res.status(500).json({ success: false, error: 'Failed to create invoice' });
     }
   }
 
@@ -81,7 +92,7 @@ export class InvoiceController {
     try {
       const { id } = req.params;
       if (!id) {
-        return res.status(400).json({ error: 'Invoice ID is required' });
+        return res.status(400).json({ success: false, error: 'Invoice ID is required' });
       }
       const body = req.body as UpdateInvoiceDTO;
       
@@ -89,15 +100,16 @@ export class InvoiceController {
 
       logger.info(`Invoice updated: ${id}`);
       return res.json(updated);
-    } catch (error: any) {
+    } catch (error) {
+      const message = getErrorMessage(error);
       logger.error('Failed to update invoice', error);
-      if (error.message === 'Invoice not found') {
-        return res.status(404).json({ error: error.message });
+      if (message === 'Invoice not found') {
+        return res.status(404).json({ success: false, error: message });
       }
-      if (error.message.includes('Only drafts') || error.message.includes('Invalid')) {
-        return res.status(400).json({ error: error.message });
+      if (message.includes('Only drafts') || message.includes('Invalid')) {
+        return res.status(400).json({ success: false, error: message });
       }
-      return res.status(500).json({ error: 'Failed to update invoice' });
+      return res.status(500).json({ success: false, error: 'Failed to update invoice' });
     }
   }
 
@@ -106,21 +118,29 @@ export class InvoiceController {
     try {
       const { id } = req.params;
       if (!id) {
-        return res.status(400).json({ error: 'Invoice ID is required' });
+        return res.status(400).json({ success: false, error: 'Invoice ID is required' });
       }
-      await InvoiceService.deleteInvoice(id);
+      const authReq = req as AuthenticatedRequest;
+      const userId = authReq.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({ error: 'User not authenticated' });
+      }
+
+      await InvoiceService.deleteInvoice(id, userId);
       
       logger.info(`Invoice deleted: ${id}`);
       return res.json({ message: 'Invoice deleted successfully' });
-    } catch (error: any) {
+    } catch (error) {
+      const message = getErrorMessage(error);
       logger.error('Failed to delete invoice', error);
-      if (error.message === 'Invoice not found') {
-        return res.status(404).json({ error: error.message });
+      if (message === 'Invoice not found') {
+        return res.status(404).json({ success: false, error: message });
       }
-      if (error.message.includes('Only drafts')) {
-        return res.status(400).json({ error: error.message });
+      if (message.includes('Only drafts')) {
+        return res.status(400).json({ success: false, error: message });
       }
-      return res.status(500).json({ error: 'Failed to delete invoice' });
+      return res.status(500).json({ success: false, error: 'Failed to delete invoice' });
     }
   }
 
@@ -129,7 +149,7 @@ export class InvoiceController {
     try {
       const { id } = req.params;
       if (!id) {
-        return res.status(400).json({ error: 'Invoice ID is required' });
+        return res.status(400).json({ success: false, error: 'Invoice ID is required' });
       }
       const authReq = req as AuthenticatedRequest;
       const userId = authReq.user?.id;
@@ -148,15 +168,16 @@ export class InvoiceController {
         invoiceId: result.invoiceId,
         estimatedProcessingTime: '1-2 minutes'
       });
-    } catch (error: any) {
+    } catch (error) {
+      const message = getErrorMessage(error);
       logger.error('Failed to queue invoice for SEF', error);
-      if (error.message === 'Invoice not found') {
-        return res.status(404).json({ error: error.message });
+      if (message === 'Invoice not found') {
+        return res.status(404).json({ success: false, error: message });
       }
-      if (error.message.includes('already been processed') || error.message.includes('missing') || error.message.includes('Invalid')) {
-        return res.status(400).json({ error: error.message });
+      if (message.includes('already been processed') || message.includes('missing') || message.includes('Invalid')) {
+        return res.status(400).json({ success: false, error: message });
       }
-      return res.status(500).json({ error: 'Failed to queue invoice for SEF' });
+      return res.status(500).json({ success: false, error: 'Failed to queue invoice for SEF' });
     }
   }
 
@@ -165,21 +186,22 @@ export class InvoiceController {
     try {
       const { id } = req.params;
       if (!id) {
-        return res.status(400).json({ error: 'Invoice ID is required' });
+        return res.status(400).json({ success: false, error: 'Invoice ID is required' });
       }
 
       const sefStatus = await InvoiceService.syncStatus(id);
 
       return res.json(sefStatus);
-    } catch (error: any) {
+    } catch (error) {
+      const message = getErrorMessage(error);
       logger.error('Failed to get SEF status', error);
-      if (error.message === 'Invoice not found') {
-        return res.status(404).json({ error: error.message });
+      if (message === 'Invoice not found') {
+        return res.status(404).json({ success: false, error: message });
       }
-      if (error.message.includes('not been sent')) {
-        return res.status(400).json({ error: error.message });
+      if (message.includes('not been sent')) {
+        return res.status(400).json({ success: false, error: message });
       }
-      return res.status(500).json({ error: 'Failed to get invoice status' });
+      return res.status(500).json({ success: false, error: 'Failed to get invoice status' });
     }
   }
 
@@ -188,23 +210,100 @@ export class InvoiceController {
     try {
       const { id } = req.params;
       if (!id) {
-        return res.status(400).json({ error: 'Invoice ID is required' });
+        return res.status(400).json({ success: false, error: 'Invoice ID is required' });
       }
       const { reason } = req.body as { reason?: string };
+      const authReq = req as AuthenticatedRequest;
+      const userId = authReq.user?.id;
 
-      const result = await InvoiceService.cancelInvoice(id, reason);
+      if (!userId) {
+        return res.status(401).json({ error: 'User not authenticated' });
+      }
+
+      const result = await InvoiceService.cancelInvoice(id, userId, reason);
 
       logger.info(`Invoice ${id} cancelled in SEF`);
       return res.json(result);
-    } catch (error: any) {
+    } catch (error) {
+      const message = getErrorMessage(error);
       logger.error('Failed to cancel invoice', error);
-      if (error.message === 'Invoice not found') {
-        return res.status(404).json({ error: error.message });
+      if (message === 'Invoice not found') {
+        return res.status(404).json({ success: false, error: message });
       }
-      if (error.message.includes('not been sent')) {
-        return res.status(400).json({ error: error.message });
+      if (message.includes('not been sent')) {
+        return res.status(400).json({ success: false, error: message });
       }
-      return res.status(500).json({ error: 'Failed to cancel invoice' });
+      return res.status(500).json({ success: false, error: 'Failed to cancel invoice' });
+    }
+  }
+
+  /** Export invoice as PDF */
+  static async exportPDF(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      if (!id) {
+        return res.status(400).json({ success: false, error: 'Invoice ID is required' });
+      }
+      const authReq = req as AuthenticatedRequest;
+      const user = authReq.user;
+
+      // Get invoice with company details
+      const invoice = await InvoiceService.getInvoice(id, user?.companyId);
+      if (!invoice) {
+        return res.status(404).json({ success: false, error: 'Invoice not found' });
+      }
+
+      // Transform invoice to PDF format
+      const pdfInvoiceData = {
+        id: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        issueDate: invoice.issueDate,
+        dueDate: invoice.dueDate || invoice.issueDate,
+        seller: {
+          name: invoice.company?.name || '',
+          pib: invoice.company?.pib || '',
+          address: invoice.company?.address || '',
+          city: invoice.company?.city || '',
+          bankAccount: invoice.company?.bankAccount || undefined,
+        },
+        buyer: {
+          name: invoice.buyerName || '',
+          pib: invoice.buyerPIB || '',
+          address: '',
+          city: '',
+        },
+        items: invoice.lines.map(line => ({
+          name: line.itemName || '',
+          quantity: Number(line.quantity),
+          unit: line.unit || 'kom',
+          unitPrice: Number(line.unitPrice),
+          vatRate: Number(line.taxRate),
+          totalPrice: Number(line.amount),
+        })),
+        subtotal: Number(invoice.totalAmount) - Number(invoice.taxAmount),
+        vatAmount: Number(invoice.taxAmount),
+        totalAmount: Number(invoice.totalAmount),
+        currencyCode: invoice.currency || 'RSD',
+        note: invoice.note || undefined,
+        sefId: invoice.sefId || undefined,
+      };
+
+      // Generate PDF
+      const pdfBuffer = await pdfService.generateInvoicePDF(pdfInvoiceData);
+
+      // Set response headers
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="faktura-${invoice.invoiceNumber}.pdf"`);
+      res.setHeader('Content-Length', pdfBuffer.length);
+
+      return res.send(pdfBuffer);
+    } catch (error) {
+      const message = getErrorMessage(error);
+      logger.error('Failed to export invoice PDF', error);
+      if (message === 'Invoice not found') {
+        return res.status(404).json({ success: false, error: message });
+      }
+      return res.status(500).json({ success: false, error: 'Failed to generate PDF' });
     }
   }
 }

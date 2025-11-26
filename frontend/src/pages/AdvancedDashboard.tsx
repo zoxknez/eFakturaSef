@@ -2,6 +2,46 @@ import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import { logger } from '../utils/logger';
+import { AnimatedCounter } from '../components/AnimatedCounter';
+
+interface DashboardOverview {
+  totalInvoices: number;
+  acceptedInvoices: number;
+  pendingInvoices: number;
+  totalRevenue: number;
+  acceptanceRate: number;
+  trends?: {
+    invoices?: { value: number; positive: boolean };
+    revenue?: { value: number; positive: boolean };
+  };
+}
+
+interface DashboardInvoice {
+  id: string;
+  invoiceNumber: string;
+  type: 'OUTGOING' | 'INCOMING';
+  hasPartner: boolean;
+  partnerName: string;
+  totalAmount: number;
+  currency: string;
+  createdAt: string;
+  status: string;
+}
+
+interface DashboardAlerts {
+  overdueInvoices: {
+    count: number;
+    items: Array<{ totalAmount: number }>;
+  };
+  lowStockProducts: {
+    count: number;
+  };
+  deadlines: {
+    critical: number;
+    warning: number;
+    aging: number;
+  };
+}
 
 const StatCard = ({ title, value, subtitle, icon, gradient, trend, onClick }: {
   title: string;
@@ -19,7 +59,13 @@ const StatCard = ({ title, value, subtitle, icon, gradient, trend, onClick }: {
     <div className="flex items-center justify-between">
       <div className="flex-1">
         <p className="text-sm font-medium text-gray-600 mb-1">{title}</p>
-        <p className="text-3xl font-bold text-gray-900 mb-2">{value}</p>
+        <div className="text-3xl font-bold text-gray-900 mb-2">
+          {typeof value === 'number' ? (
+            <AnimatedCounter value={value} />
+          ) : (
+            value
+          )}
+        </div>
         <p className="text-sm text-gray-500">{subtitle}</p>
         {trend && (
           <div className={`flex items-center mt-2 text-sm ${trend.positive ? 'text-green-600' : 'text-red-600'}`}>
@@ -74,7 +120,7 @@ const SEFHealthCard = () => (
   </div>
 );
 
-const DeadlinesCard = ({ alerts }: { alerts: any }) => (
+const DeadlinesCard = ({ alerts }: { alerts: DashboardAlerts | null }) => (
   <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50">
     <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
       ⏰ Rokovi za odluku
@@ -108,7 +154,7 @@ const DeadlinesCard = ({ alerts }: { alerts: any }) => (
   </div>
 );
 
-const ErrorsFeedCard = ({ alerts }: { alerts: any }) => {
+const ErrorsFeedCard = ({ alerts }: { alerts: DashboardAlerts | null }) => {
   return (
     <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50">
       <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
@@ -117,7 +163,7 @@ const ErrorsFeedCard = ({ alerts }: { alerts: any }) => {
       
       <div className="space-y-2 max-h-64 overflow-y-auto">
         {/* Overdue Invoices */}
-        {alerts?.overdueInvoices?.count > 0 && (
+        {alerts?.overdueInvoices && alerts.overdueInvoices.count > 0 && (
           <div className="p-3 rounded-lg bg-red-50 border border-red-200">
             <div className="flex items-start">
               <span className="text-lg mr-3">⚠️</span>
@@ -126,7 +172,7 @@ const ErrorsFeedCard = ({ alerts }: { alerts: any }) => {
                   {alerts.overdueInvoices.count} faktura sa isteklim rokom
                 </p>
                 <p className="text-xs text-red-600 mt-1">
-                  Ukupno: {alerts.overdueInvoices.items.reduce((sum: number, inv: any) => sum + inv.totalAmount, 0).toLocaleString('sr-RS')} RSD
+                  Ukupno: {alerts.overdueInvoices.items.reduce((sum: number, inv) => sum + inv.totalAmount, 0).toLocaleString('sr-RS')} RSD
                 </p>
               </div>
             </div>
@@ -134,7 +180,7 @@ const ErrorsFeedCard = ({ alerts }: { alerts: any }) => {
         )}
 
         {/* Low Stock Products */}
-        {alerts?.lowStockProducts?.count > 0 && (
+        {alerts?.lowStockProducts && alerts.lowStockProducts.count > 0 && (
           <div className="p-3 rounded-lg bg-orange-50 border border-orange-200">
             <div className="flex items-start">
               <span className="text-lg mr-3">📦</span>
@@ -183,7 +229,7 @@ const ErrorsFeedCard = ({ alerts }: { alerts: any }) => {
       </div>
       
       <button 
-        onClick={() => window.location.href = '/reports'} 
+        onClick={() => window.location.href = '/accounting/reports'} 
         className="w-full mt-4 px-4 py-2 bg-gray-50 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-100"
       >
         📋 Detaljni izveštaj
@@ -209,9 +255,9 @@ export const AdvancedDashboard: React.FC = () => {
   // Dashboard Data State
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [overview, setOverview] = useState<any>(null);
-  const [recentInvoices, setRecentInvoices] = useState<any[]>([]);
-  const [alerts, setAlerts] = useState<any>(null);
+  const [overview, setOverview] = useState<DashboardOverview | null>(null);
+  const [recentInvoices, setRecentInvoices] = useState<DashboardInvoice[]>([]);
+  const [alerts, setAlerts] = useState<DashboardAlerts | null>(null);
 
   // Fetch Dashboard Data
   const fetchDashboardData = useCallback(async () => {
@@ -242,7 +288,7 @@ export const AdvancedDashboard: React.FC = () => {
       } else {
         logger.error('Failed to fetch alerts', alertsRes?.error);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       logger.error('Dashboard data fetch error', err);
       setError('Greška pri učitavanju podataka');
     } finally {
@@ -465,7 +511,7 @@ export const AdvancedDashboard: React.FC = () => {
             value: `${overview.trends.revenue.value}%`, 
             positive: overview.trends.revenue.positive 
           } : undefined}
-          onClick={() => navigate('/reports')}
+          onClick={() => navigate('/accounting/reports')}
         />
       </div>
 
@@ -523,7 +569,12 @@ export const AdvancedDashboard: React.FC = () => {
                     invoice.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
                     'bg-yellow-100 text-yellow-800'
                   }`}>
-                    {invoice.status}
+                    {invoice.status === 'ACCEPTED' ? 'Prihvaćeno' :
+                     invoice.status === 'SENT' ? 'Poslato' :
+                     invoice.status === 'DRAFT' ? 'Nacrt' :
+                     invoice.status === 'REJECTED' ? 'Odbijeno' :
+                     invoice.status === 'CANCELLED' ? 'Stornirano' :
+                     invoice.status}
                   </div>
                 </div>
               </div>
@@ -559,7 +610,7 @@ export const AdvancedDashboard: React.FC = () => {
               </button>
               
               <button 
-                onClick={() => navigate('/reports')}
+                onClick={() => navigate('/accounting/reports')}
                 className="w-full flex items-center justify-between p-4 bg-green-50 hover:bg-green-100 rounded-xl transition-colors"
               >
                 <span className="flex items-center text-green-900 font-medium">

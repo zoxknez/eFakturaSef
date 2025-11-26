@@ -4,9 +4,10 @@
  */
 
 import { Request, Response } from 'express';
-import { PrismaClient, Prisma, InvoicePaymentStatus } from '@prisma/client';
+import { PrismaClient, Prisma, InvoicePaymentStatus, PartnerType, BankStatementStatus } from '@prisma/client';
 import { logger } from '../utils/logger';
 import { AuthenticatedRequest } from '../middleware/auth';
+import { getErrorMessage } from '../types/common';
 
 const prisma = new PrismaClient();
 
@@ -24,7 +25,7 @@ interface ImportResult {
 }
 
 // Validation helpers
-const validateRequired = (value: any, fieldName: string, row: number, errors: ImportError[]): boolean => {
+const validateRequired = (value: unknown, fieldName: string, row: number, errors: ImportError[]): boolean => {
   if (value === undefined || value === null || value === '') {
     errors.push({ row, field: fieldName, message: `Obavezno polje "${fieldName}" nije popunjeno` });
     return false;
@@ -117,35 +118,51 @@ export const importPartners = async (req: Request, res: Response) => {
         const cleanPib = row.pib.replace(/\D/g, '');
         const existing = await prisma.partner.findFirst({ where: { companyId, pib: cleanPib } });
         
-        const partnerData = {
-          name: row.name.trim(),
-          pib: cleanPib,
-          mb: row.mb?.replace(/\D/g, '') || null,
-          address: row.address?.trim() || null,
-          city: row.city?.trim() || null,
-          email: row.email?.toLowerCase().trim() || null,
-          phone: row.phone?.trim() || null,
-          type: ['pravno_lice', 'fizicko_lice', 'preduzetnik'].includes(row.type) ? row.type : 'pravno_lice',
-          companyId
-        };
-        
         if (existing) {
-          await prisma.partner.update({ where: { id: existing.id }, data: partnerData });
+          await prisma.partner.update({ 
+            where: { id: existing.id }, 
+            data: {
+              name: row.name.trim(),
+              pib: cleanPib,
+              address: row.address?.trim() || '',
+              city: row.city?.trim() || '',
+              postalCode: row.postalCode?.trim() || '',
+              email: row.email?.toLowerCase().trim() || null,
+              phone: row.phone?.trim() || null,
+              type: row.type === 'SUPPLIER' ? PartnerType.SUPPLIER : 
+                    row.type === 'BOTH' ? PartnerType.BOTH : PartnerType.BUYER,
+            }
+          });
         } else {
-          await prisma.partner.create({ data: partnerData as any });
+          await prisma.partner.create({ 
+            data: {
+              name: row.name.trim(),
+              pib: cleanPib,
+              address: row.address?.trim() || '',
+              city: row.city?.trim() || '',
+              postalCode: row.postalCode?.trim() || '',
+              email: row.email?.toLowerCase().trim() || null,
+              phone: row.phone?.trim() || null,
+              type: row.type === 'SUPPLIER' ? PartnerType.SUPPLIER : 
+                    row.type === 'BOTH' ? PartnerType.BOTH : PartnerType.BUYER,
+              company: { connect: { id: companyId } }
+            }
+          });
         }
         result.imported++;
-      } catch (err: any) {
-        result.errors.push({ row: rowNum, message: err.message || 'Greška' });
+      } catch (err) {
+        const errorMessage = getErrorMessage(err);
+        result.errors.push({ row: rowNum, message: errorMessage });
         result.failed++;
       }
     }
     
     logger.info('Partners import', { userId, companyId, result });
     return res.json({ success: true, data: result });
-  } catch (error: any) {
+  } catch (error) {
+    const errorMessage = getErrorMessage(error);
     logger.error('Partners import error', error);
-    return res.status(500).json({ success: false, error: error.message });
+    return res.status(500).json({ success: false, error: errorMessage });
   }
 };
 
@@ -187,34 +204,47 @@ export const importProducts = async (req: Request, res: Response) => {
       try {
         const existing = await prisma.product.findFirst({ where: { companyId, code: row.code.trim() } });
         
-        const productData = {
-          code: row.code.trim(),
-          name: row.name.trim(),
-          description: row.description?.trim() || null,
-          unit: row.unit.trim(),
-          price: new Prisma.Decimal(price),
-          vatRate: row.vatRate ? parseFloat(row.vatRate) : 20,
-          category: row.category?.trim() || null,
-          companyId
-        };
-        
         if (existing) {
-          await prisma.product.update({ where: { id: existing.id }, data: productData });
+          await prisma.product.update({ 
+            where: { id: existing.id }, 
+            data: {
+              code: row.code.trim(),
+              name: row.name.trim(),
+              description: row.description?.trim() || null,
+              unit: row.unit.trim(),
+              unitPrice: new Prisma.Decimal(price),
+              vatRate: row.vatRate ? parseFloat(row.vatRate) : 20,
+              category: row.category?.trim() || null,
+            }
+          });
         } else {
-          await prisma.product.create({ data: productData as any });
+          await prisma.product.create({ 
+            data: {
+              code: row.code.trim(),
+              name: row.name.trim(),
+              description: row.description?.trim() || null,
+              unit: row.unit.trim(),
+              unitPrice: new Prisma.Decimal(price),
+              vatRate: row.vatRate ? parseFloat(row.vatRate) : 20,
+              category: row.category?.trim() || null,
+              company: { connect: { id: companyId } }
+            }
+          });
         }
         result.imported++;
-      } catch (err: any) {
-        result.errors.push({ row: rowNum, message: err.message || 'Greška' });
+      } catch (err) {
+        const errorMessage = getErrorMessage(err);
+        result.errors.push({ row: rowNum, message: errorMessage });
         result.failed++;
       }
     }
     
     logger.info('Products import', { userId, companyId, result });
     return res.json({ success: true, data: result });
-  } catch (error: any) {
+  } catch (error) {
+    const errorMessage = getErrorMessage(error);
     logger.error('Products import error', error);
-    return res.status(500).json({ success: false, error: error.message });
+    return res.status(500).json({ success: false, error: errorMessage });
   }
 };
 
@@ -275,7 +305,15 @@ export const importInvoices = async (req: Request, res: Response) => {
         
         if (!partner) {
           partner = await prisma.partner.create({
-            data: { name: row.buyerName.trim(), pib: cleanPib, type: 'pravno_lice', companyId } as any
+            data: { 
+              name: row.buyerName.trim(), 
+              pib: cleanPib, 
+              type: PartnerType.BUYER,
+              address: '',
+              city: '',
+              postalCode: '',
+              company: { connect: { id: companyId } }
+            }
           });
         }
         
@@ -286,28 +324,29 @@ export const importInvoices = async (req: Request, res: Response) => {
             dueDate,
             buyerName: row.buyerName.trim(),
             buyerPIB: cleanPib,
-            partnerId: partner.id,
+            partner: { connect: { id: partner.id } },
             totalAmount: new Prisma.Decimal(totalAmount),
             taxAmount: new Prisma.Decimal(taxAmount || 0),
             currency: row.currency?.toUpperCase() || 'RSD',
             status: 'DRAFT',
             type: 'OUTGOING',
-            companyId,
-            userId
-          } as any
+            company: { connect: { id: companyId } },
+          }
         });
         result.imported++;
-      } catch (err: any) {
-        result.errors.push({ row: rowNum, message: err.message || 'Greška' });
+      } catch (err) {
+        const errorMessage = getErrorMessage(err);
+        result.errors.push({ row: rowNum, message: errorMessage });
         result.failed++;
       }
     }
     
     logger.info('Invoices import', { userId, companyId, result });
     return res.json({ success: true, data: result });
-  } catch (error: any) {
+  } catch (error) {
+    const errorMessage = getErrorMessage(error);
     logger.error('Invoices import error', error);
-    return res.status(500).json({ success: false, error: error.message });
+    return res.status(500).json({ success: false, error: errorMessage });
   }
 };
 
@@ -359,13 +398,13 @@ export const importPayments = async (req: Request, res: Response) => {
         
         await prisma.payment.create({
           data: {
-            invoiceId: invoice.id,
+            invoice: { connect: { id: invoice.id } },
             paymentDate,
             amount: new Prisma.Decimal(amount),
-            method: row.method?.trim() || 'BANK_TRANSFER',
+            method: 'BANK_TRANSFER',
             reference: row.reference?.trim() || null,
-            companyId
-          } as any
+            createdBy: userId || ''
+          }
         });
         
         // Update invoice payment status
@@ -389,17 +428,19 @@ export const importPayments = async (req: Request, res: Response) => {
         });
         
         result.imported++;
-      } catch (err: any) {
-        result.errors.push({ row: rowNum, message: err.message || 'Greška' });
+      } catch (err) {
+        const errorMessage = getErrorMessage(err);
+        result.errors.push({ row: rowNum, message: errorMessage });
         result.failed++;
       }
     }
     
     logger.info('Payments import', { userId, companyId, result });
     return res.json({ success: true, data: result });
-  } catch (error: any) {
+  } catch (error) {
+    const errorMessage = getErrorMessage(error);
     logger.error('Payments import error', error);
-    return res.status(500).json({ success: false, error: error.message });
+    return res.status(500).json({ success: false, error: errorMessage });
   }
 };
 
@@ -447,27 +488,32 @@ export const importBankStatements = async (req: Request, res: Response) => {
       try {
         await prisma.bankStatement.create({
           data: {
-            transactionDate,
-            description: row.description.trim(),
-            debit: debit ? new Prisma.Decimal(debit) : null,
-            credit: credit ? new Prisma.Decimal(credit) : null,
-            reference: row.reference?.trim() || null,
-            partnerName: row.partnerName?.trim() || null,
-            status: 'PENDING',
-            companyId
-          } as any
+            statementNumber: `IMP-${Date.now()}-${i}`,
+            accountNumber: row.accountNumber?.trim() || '000-0000000000000-00',
+            statementDate: transactionDate,
+            fromDate: transactionDate,
+            toDate: transactionDate,
+            totalDebit: debit ? new Prisma.Decimal(debit) : new Prisma.Decimal(0),
+            totalCredit: credit ? new Prisma.Decimal(credit) : new Prisma.Decimal(0),
+            openingBalance: new Prisma.Decimal(0),
+            closingBalance: new Prisma.Decimal(0),
+            status: BankStatementStatus.IMPORTED,
+            company: { connect: { id: companyId } }
+          }
         });
         result.imported++;
-      } catch (err: any) {
-        result.errors.push({ row: rowNum, message: err.message || 'Greška' });
+      } catch (err) {
+        const errorMessage = getErrorMessage(err);
+        result.errors.push({ row: rowNum, message: errorMessage });
         result.failed++;
       }
     }
     
     logger.info('Bank statements import', { userId, companyId, result });
     return res.json({ success: true, data: result });
-  } catch (error: any) {
+  } catch (error) {
+    const errorMessage = getErrorMessage(error);
     logger.error('Bank statements import error', error);
-    return res.status(500).json({ success: false, error: error.message });
+    return res.status(500).json({ success: false, error: errorMessage });
   }
 };

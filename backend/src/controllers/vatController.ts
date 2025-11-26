@@ -506,6 +506,194 @@ export class VATController {
 
     return [headers.join(';'), ...rows.map((r: (string | number)[]) => r.join(';'))].join('\n');
   }
+
+  /**
+   * Get PP-PDV data for frontend form
+   * GET /api/vat/pppdv-data
+   */
+  static async getPPPDVData(req: Request, res: Response) {
+    try {
+      const authReq = req as AuthenticatedRequest;
+      const companyId = authReq.user?.companyId;
+
+      if (!companyId) {
+        return res.status(401).json({ success: false, error: 'Unauthorized' });
+      }
+
+      const { fromDate, toDate, isQuarterly } = req.query;
+
+      if (!fromDate || !toDate) {
+        return res.status(400).json({
+          success: false,
+          error: 'fromDate and toDate are required',
+        });
+      }
+
+      const from = new Date(fromDate as string);
+      const to = new Date(toDate as string);
+
+      // Get VAT records for the period
+      const records = await VATService.getVATRecordsForPeriod(companyId, from, to);
+
+      // Calculate PP-PDV fields
+      const outputRecords = records.filter(r => r.type === 'OUTPUT');
+      const inputRecords = records.filter(r => r.type === 'INPUT');
+
+      // Calculate by VAT rate
+      const output20Base = outputRecords.reduce((sum, r) => sum + Number(r.taxBase20), 0);
+      const output20VAT = outputRecords.reduce((sum, r) => sum + Number(r.vatAmount20), 0);
+      const output10Base = outputRecords.reduce((sum, r) => sum + Number(r.taxBase10), 0);
+      const output10VAT = outputRecords.reduce((sum, r) => sum + Number(r.vatAmount10), 0);
+
+      const input20Base = inputRecords.reduce((sum, r) => sum + Number(r.taxBase20), 0);
+      const input20VAT = inputRecords.reduce((sum, r) => sum + Number(r.vatAmount20), 0);
+      const input10Base = inputRecords.reduce((sum, r) => sum + Number(r.taxBase10), 0);
+      const input10VAT = inputRecords.reduce((sum, r) => sum + Number(r.vatAmount10), 0);
+
+      // Exports (0% VAT with export flag)
+      const exports = outputRecords.reduce((sum, r) => sum + Number(r.exemptAmount), 0);
+
+      const totalOutputVAT = output20VAT + output10VAT;
+      const totalInputVAT = input20VAT + input10VAT;
+
+      return res.json({
+        success: true,
+        data: {
+          fields: {
+            '001': output20Base,
+            '002': output20VAT,
+            '003': output10Base,
+            '004': output10VAT,
+            '101': input20Base,
+            '102': input20VAT,
+            '103': input10Base,
+            '104': input10VAT,
+            '301': exports,
+          },
+          totalInputVAT,
+          totalOutputVAT,
+          balance: totalOutputVAT - totalInputVAT,
+        },
+      });
+    } catch (error) {
+      return handleControllerError('GetPPPDVData', error, res);
+    }
+  }
+
+  /**
+   * Export PP-PDV as PDF
+   * GET /api/vat/pppdv/pdf
+   */
+  static async exportPPPDVPDF(req: Request, res: Response) {
+    try {
+      const authReq = req as AuthenticatedRequest;
+      const companyId = authReq.user?.companyId;
+
+      if (!companyId) {
+        return res.status(401).json({ success: false, error: 'Unauthorized' });
+      }
+
+      const dateParams = VATController.parseDateParams(req.query);
+
+      if (!dateParams) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid date parameters',
+        });
+      }
+
+      // Import PDF service dynamically to avoid circular dependencies
+      const { pdfService } = await import('../services/pdfService');
+
+      // Get PP-PDV data
+      const pppdv = await VATService.generatePPPDV(
+        companyId,
+        dateParams.year,
+        dateParams.month
+      );
+
+      // Get company info
+      const { prisma } = await import('../db/prisma');
+      const company = await prisma.company.findUnique({
+        where: { id: companyId },
+      });
+
+      if (!company) {
+        return res.status(404).json({ success: false, error: 'Company not found' });
+      }
+
+      // Generate PDF
+      const pdfBuffer = await pdfService.generatePPPDVPDF({
+        period: {
+          year: dateParams.year,
+          month: dateParams.month,
+        },
+        taxpayer: {
+          pib: company.pib,
+          name: company.name,
+          address: company.address,
+          municipality: company.city,
+        },
+        fields: [
+          { code: '101', label: 'Promet dobara i usluga (20%) - Osnovica', value: pppdv.section1?.line101 || 0 },
+          { code: '102', label: 'Promet dobara i usluga (10%) - Osnovica', value: pppdv.section1?.line102 || 0 },
+          { code: '103', label: 'Promet oslobođen PDV-a', value: pppdv.section1?.line103 || 0 },
+          { code: '104', label: 'Ukupna osnovica', value: pppdv.section1?.line104 || 0 },
+          { code: '201', label: 'PDV po stopi od 20%', value: pppdv.section2?.line201 || 0 },
+          { code: '202', label: 'PDV po stopi od 10%', value: pppdv.section2?.line202 || 0 },
+          { code: '203', label: 'Ukupan izlazni PDV', value: pppdv.section2?.line203 || 0 },
+          { code: '301', label: 'Prethodni PDV (20%)', value: pppdv.section3?.line301 || 0 },
+          { code: '302', label: 'Prethodni PDV (10%)', value: pppdv.section3?.line302 || 0 },
+          { code: '303', label: 'Ukupan prethodni PDV', value: pppdv.section3?.line303 || 0 },
+          { code: '401', label: 'PDV za uplatu', value: pppdv.section4?.line401 || 0 },
+          { code: '402', label: 'PDV za povrat', value: pppdv.section4?.line402 || 0 },
+        ],
+        totalInputVAT: pppdv.section3?.line303 || 0,
+        totalOutputVAT: pppdv.section2?.line203 || 0,
+        balance: (pppdv.section4?.line401 || 0) - (pppdv.section4?.line402 || 0),
+      });
+
+      // Send PDF response
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="PPPDV_${dateParams.year}_${dateParams.month}.pdf"`);
+      return res.send(pdfBuffer);
+    } catch (error) {
+      return handleControllerError('ExportPPPDVPDF', error, res);
+    }
+  }
+
+  /**
+   * Get PP-PDV field label by code
+   */
+  private static getPPPDVFieldLabel(code: string): string {
+    const labels: Record<string, string> = {
+      '001': 'Promet dobara i usluga po opštoj stopi (20%) - Osnovica',
+      '002': 'PDV po opštoj stopi (20%)',
+      '003': 'Promet dobara i usluga po posebnoj stopi (10%) - Osnovica',
+      '004': 'PDV po posebnoj stopi (10%)',
+      '005': 'Promet bez naknade - Osnovica',
+      '006': 'PDV za promet bez naknade',
+      '007': 'Avansne uplate - Osnovica',
+      '008': 'PDV na avansne uplate',
+      '009': 'Ukupan izlazni PDV',
+      '101': 'Nabavka dobara i usluga (20%) - Osnovica',
+      '102': 'Prethodni PDV po opštoj stopi (20%)',
+      '103': 'Nabavka dobara i usluga (10%) - Osnovica',
+      '104': 'Prethodni PDV po posebnoj stopi (10%)',
+      '105': 'PDV plaćen pri uvozu',
+      '106': 'Korekcija pretporeza',
+      '107': 'Srazmerni odbitak prethodnog PDV (%)',
+      '108': 'Ukupan prethodni PDV',
+      '201': 'PDV za uplatu',
+      '202': 'PDV za povrat',
+      '203': 'PDV kredit prenesen iz prethodnog perioda',
+      '204': 'PDV kredit za prenos u naredni period',
+      '301': 'Izvoz dobara',
+      '302': 'Promet oslobođen bez prava na odbitak',
+      '303': 'Promet u slobodnoj zoni',
+    };
+    return labels[code] || code;
+  }
 }
 
 export default VATController;

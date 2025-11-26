@@ -40,14 +40,23 @@ const Icons = {
   chevronDown: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>,
   logout: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>,
   search: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>,
+  repeat: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>,
+  download: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>,
+  calculator: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>,
+  fixedAssets: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>,
 };
 
 const navigation: NavItem[] = [
   { name: 'Komandna tabla', href: '/', icon: Icons.dashboard },
   { name: 'Fakture', href: '/invoices', icon: Icons.invoice, badge: 3 },
+  { name: 'Ulazne Fakture', href: '/incoming-invoices', icon: Icons.download },
   { name: 'Nova faktura', href: '/invoices/new', icon: Icons.add },
+  { name: 'Avansne fakture', href: '/advance-invoices', icon: Icons.invoice },
+  { name: 'Periodične Fakture', href: '/recurring-invoices', icon: Icons.repeat },
   { name: 'Partneri', href: '/partners', icon: Icons.partners },
   { name: 'Proizvodi', href: '/products', icon: Icons.products },
+  { name: 'Kalkulacije', href: '/calculations', icon: Icons.calculator },
+  { name: 'Osnovna sredstva', href: '/fixed-assets', icon: Icons.fixedAssets },
   { 
     name: 'Računovodstvo', 
     href: '/accounting', 
@@ -56,11 +65,16 @@ const navigation: NavItem[] = [
       { name: 'Kontni plan', href: '/accounting/chart-of-accounts', icon: Icons.list },
       { name: 'Dnevnik knjiženja', href: '/accounting/journal', icon: Icons.book },
       { name: 'Finansijski izveštaji', href: '/accounting/reports', icon: Icons.reports },
+      { name: 'KPO knjiga', href: '/kpo', icon: Icons.book },
     ]
   },
   { name: 'Bankovni izvodi', href: '/bank-statements', icon: Icons.bank },
   { name: 'Uparivanje', href: '/bank-reconciliation', icon: Icons.link },
-  { name: 'Tok novca', href: '/cash-flow', icon: Icons.cash },
+  { name: 'Kompenzacije', href: '/compensations', icon: Icons.link },
+  { name: 'IOS', href: '/ios', icon: Icons.form },
+  { name: 'Tok novca', href: '/cash-flow-forecast', icon: Icons.cash },
+  { name: 'Blagajna', href: '/petty-cash', icon: Icons.cash },
+  { name: 'Kursna lista', href: '/exchange-rates', icon: Icons.chart },
   { name: 'Starosna analiza', href: '/aging', icon: Icons.chart },
   { 
     name: 'PDV', 
@@ -68,10 +82,12 @@ const navigation: NavItem[] = [
     icon: Icons.vat,
     children: [
       { name: 'PDV evidencija', href: '/vat', icon: Icons.list },
-      { name: 'PP-PDV obrazac', href: '/vat/pppdv', icon: Icons.form },
+      { name: 'PP-PDV obrazac', href: '/pppdv', icon: Icons.form },
     ]
   },
   { name: 'Knjižna odobrenja', href: '/credit-notes', icon: Icons.credit },
+  { name: 'Putni nalozi', href: '/travel-orders', icon: Icons.form },
+  { name: 'Email obaveštenja', href: '/email-notifications', icon: Icons.bell },
   { name: 'Notifikacije', href: '/notifications', icon: Icons.bell, badge: 5 },
   { 
     name: 'Administracija', 
@@ -299,13 +315,13 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
               <div className="relative">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/30">
                   <span className="text-white text-sm font-bold">
-                    {user?.name?.charAt(0)?.toUpperCase() || 'A'}
+                    {user?.firstName?.charAt(0)?.toUpperCase() || 'A'}
                   </span>
                 </div>
                 <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white"></div>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-900 truncate">{user?.name || 'Admin User'}</p>
+                <p className="text-sm font-semibold text-gray-900 truncate">{user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : 'Admin User'}</p>
                 <p className="text-xs text-gray-500 truncate">{user?.email || 'admin@example.com'}</p>
               </div>
               <button 

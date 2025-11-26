@@ -1,7 +1,7 @@
-import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
+import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig, AxiosRequestConfig } from 'axios';
 import { logger } from '../utils/logger';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 
 // Create axios instance
 export const api: AxiosInstance = axios.create({
@@ -109,15 +109,15 @@ api.interceptors.response.use(
 
 // Helper functions for common HTTP methods with type safety
 export const apiClient = {
-  get: <T = any>(url: string, config?: any) => api.get<T>(url, config).then((res) => res.data),
+  get: <T = unknown>(url: string, config?: AxiosRequestConfig) => api.get<T>(url, config).then((res) => res.data),
   
-  post: <T = any>(url: string, data?: any, config?: any) => api.post<T>(url, data, config).then((res) => res.data),
+  post: <T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig) => api.post<T>(url, data, config).then((res) => res.data),
   
-  put: <T = any>(url: string, data?: any, config?: any) => api.put<T>(url, data, config).then((res) => res.data),
+  put: <T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig) => api.put<T>(url, data, config).then((res) => res.data),
   
-  patch: <T = any>(url: string, data?: any, config?: any) => api.patch<T>(url, data, config).then((res) => res.data),
+  patch: <T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig) => api.patch<T>(url, data, config).then((res) => res.data),
   
-  delete: <T = any>(url: string, config?: any) => api.delete<T>(url, config).then((res) => res.data),
+  delete: <T = unknown>(url: string, config?: AxiosRequestConfig) => api.delete<T>(url, config).then((res) => res.data),
 };
 
 export default api;

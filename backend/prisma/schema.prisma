@@ -44,6 +44,25 @@ model Company {
   bankStatements  BankStatement[]
   creditNotes     CreditNote[]
   incomingInvoices IncomingInvoice[]
+  recurringInvoices RecurringInvoice[]
+  inventoryTransactions InventoryTransaction[]
+  
+  // New Modules
+  calculations    Calculation[]
+  fixedAssets     FixedAsset[]
+  pettyCashAccounts PettyCashAccount[]
+  travelOrders    TravelOrder[]
+  sefVatEvidence  SefVatEvidence[]
+  
+  // Additional Modules
+  pppdvReports    PPPDVReport[]
+  kpoEntries      KPOEntry[]
+  compensations   Compensation[]
+  iosReports      IOSReport[]
+  advanceInvoices AdvanceInvoice[]
+  emailTemplates  EmailTemplate[]
+  emailLogs       EmailLog[]
+  cashFlowForecasts CashFlowForecast[]
 
   @@map("companies")
 }
@@ -101,6 +120,11 @@ model Partner {
 
   // Relations
   invoices Invoice[] @relation("PartnerInvoices")
+  recurringInvoices RecurringInvoice[]
+  calculations      Calculation[]
+  compensations     Compensation[]
+  iosReports        IOSReport[]
+  advanceInvoices   AdvanceInvoice[]
 
   // Indexes
   @@unique([companyId, pib], name: "unique_partner_pib_per_company")
@@ -172,6 +196,13 @@ model Product {
 
   // Relations
   invoiceLines InvoiceLine[]
+  incomingInvoiceLines IncomingInvoiceLine[]
+  inventoryTransactions InventoryTransaction[]
+  
+  // Production relations
+  bomAsFinishedGood ProductBOM[] @relation("ProductAsFinishedGood")
+  bomAsComponent    ProductBOM[] @relation("ProductAsComponent")
+  calculationItems  CalculationItem[]
 
   // Indexes
   @@unique([companyId, code], name: "unique_product_code_per_company")
@@ -217,6 +248,7 @@ model User {
   lastName  String   @map("last_name")
   password  String
   role      UserRole
+  permissions Json?    @map("permissions") // Granular permissions
   isActive  Boolean  @default(true) @map("is_active")
   companyId String   @map("company_id")
 
@@ -224,9 +256,10 @@ model User {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
-  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  refreshTokens RefreshToken[]
-  notifications Notification[]
+  company             Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  refreshTokens       RefreshToken[]
+  notifications       Notification[]
+  passwordResetTokens PasswordResetToken[]
 
   // Indexes for performance
   @@index([companyId])
@@ -234,6 +267,24 @@ model User {
   @@index([isActive])
   @@index([companyId, isActive])
   @@map("users")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  usedAt    DateTime? @map("used_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
 }
 
 model RefreshToken {
@@ -308,7 +359,7 @@ model Invoice {
 
   // Relations
   lines     InvoiceLine[]
-  auditLogs AuditLog[]
+  // auditLogs AuditLog[]
   payments  Payment[]
 
   // Unique constraint: invoice number must be unique per company
@@ -408,7 +459,7 @@ model AuditLog {
   createdAt DateTime @default(now()) @map("created_at")
 
   // Relations
-  invoice Invoice? @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  // invoice Invoice? @relation(fields: [entityId], references: [id], onDelete: Cascade)
 
   // Indexes for performance
   // Single-column indexes
@@ -1054,6 +1105,7 @@ model IncomingInvoice {
   
   // Relations
   lines             IncomingInvoiceLine[]
+  calculations      Calculation[]
   
   @@index([companyId])
   @@index([sefId])
@@ -1077,8 +1129,13 @@ model IncomingInvoiceLine {
   
   incomingInvoiceId   String          @map("incoming_invoice_id")
   incomingInvoice     IncomingInvoice @relation(fields: [incomingInvoiceId], references: [id], onDelete: Cascade)
+
+  // Product mapping (NEW)
+  productId           String?         @map("product_id")
+  product             Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
   
   @@index([incomingInvoiceId])
+  @@index([productId])
   @@map("incoming_invoice_lines")
 }
 
@@ -1114,5 +1171,870 @@ model Notification {
 }
 
 // ========================================
-// Add relations to Company model
+// RECURRING INVOICE - Periodične fakture
 // ========================================
+
+model RecurringInvoice {
+  id              String                  @id @default(uuid())
+  
+  // Schedule
+  frequency       RecurringFrequency
+  startDate       DateTime                @map("start_date")
+  endDate         DateTime?               @map("end_date")
+  nextRunAt       DateTime                @map("next_run_at")
+  lastRunAt       DateTime?               @map("last_run_at")
+  
+  // Status
+  status          RecurringInvoiceStatus  @default(ACTIVE)
+  
+  // Template Data (Snapshot of invoice data)
+  partnerId       String                  @map("partner_id")
+  partner         Partner                 @relation(fields: [partnerId], references: [id])
+  
+  currency        String                  @default("RSD")
+  items           Json                    // Array of items { name, quantity, price, etc. }
+  note            String?                 @db.Text
+  
+  // Company relation
+  companyId       String                  @map("company_id")
+  company         Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  // Audit
+  createdBy       String                  @map("created_by")
+  createdAt       DateTime                @default(now()) @map("created_at")
+  updatedAt       DateTime                @updatedAt @map("updated_at")
+  
+  @@index([companyId])
+  @@index([status])
+  @@index([nextRunAt])
+  @@map("recurring_invoices")
+}
+
+enum RecurringFrequency {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum RecurringInvoiceStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+// ========================================
+// INVENTORY TRANSACTION - Promene na zalihama
+// ========================================
+model InventoryTransaction {
+  id          String    @id @default(uuid())
+  
+  // Product
+  productId   String    @map("product_id")
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  // Transaction details
+  type        InventoryTransactionType
+  quantity    Decimal   @db.Decimal(15, 3) // Positive for add, negative for deduct
+  
+  // Stock snapshot (after transaction)
+  stockBefore Decimal   @map("stock_before") @db.Decimal(15, 3)
+  stockAfter  Decimal   @map("stock_after") @db.Decimal(15, 3)
+  
+  // Reference
+  referenceType String? @map("reference_type") // invoice, incoming_invoice, adjustment, initial
+  referenceId   String? @map("reference_id")
+  
+  // Metadata
+  note        String?   @db.Text
+  
+  // Company relation
+  companyId   String    @map("company_id")
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  // Audit
+  createdBy   String    @map("created_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  
+  @@index([companyId])
+  @@index([productId])
+  @@index([type])
+  @@index([createdAt])
+  @@index([referenceType, referenceId])
+  @@map("inventory_transactions")
+}
+
+enum InventoryTransactionType {
+  INITIAL       // Početno stanje
+  PURCHASE      // Nabavka (Ulazna faktura)
+  SALE          // Prodaja (Izlazna faktura)
+  RETURN_IN     // Povraćaj od kupca
+  RETURN_OUT    // Povraćaj dobavljaču
+  ADJUSTMENT    // Korekcija (popis)
+  DAMAGE        // Otpis (kalo, rastur)
+  TRANSFER      // Prenos
+}
+
+// ========================================
+// CALCULATION - Kalkulacija cena (Trgovina)
+// ========================================
+model Calculation {
+  id              String            @id @default(uuid())
+  number          String            @map("number") // Broj kalkulacije
+  date            DateTime          @map("date")
+  
+  // Veza sa ulaznom fakturom
+  incomingInvoiceId String?         @map("incoming_invoice_id")
+  incomingInvoice   IncomingInvoice? @relation(fields: [incomingInvoiceId], references: [id])
+  
+  // Dobavljač (ako nema ulazne fakture, npr. početno stanje)
+  partnerId       String?           @map("partner_id")
+  partner         Partner?          @relation(fields: [partnerId], references: [id])
+  
+  // Magacin
+  warehouse       String?           @default("Centralni magacin")
+  
+  // Totals
+  totalWholesale  Decimal           @default(0) @map("total_wholesale") @db.Decimal(15, 2) // Nabavna vrednost
+  totalExpenses   Decimal           @default(0) @map("total_expenses") @db.Decimal(15, 2) // Zavisni troškovi
+  totalMargin     Decimal           @default(0) @map("total_margin") @db.Decimal(15, 2) // Razlika u ceni
+  totalRetail     Decimal           @default(0) @map("total_retail") @db.Decimal(15, 2) // Prodajna vrednost sa PDV
+  
+  // Status
+  status          CalculationStatus @default(DRAFT)
+  postedAt        DateTime?         @map("posted_at")
+  
+  // Company relation
+  companyId       String            @map("company_id")
+  company         Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  // Audit
+  createdBy       String            @map("created_by")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  
+  // Relations
+  items           CalculationItem[]
+  
+  @@unique([companyId, number])
+  @@index([companyId])
+  @@index([date])
+  @@index([status])
+  @@map("calculations")
+}
+
+model CalculationItem {
+  id              String      @id @default(uuid())
+  calculationId   String      @map("calculation_id")
+  calculation     Calculation @relation(fields: [calculationId], references: [id], onDelete: Cascade)
+  
+  // Proizvod
+  productId       String      @map("product_id")
+  product         Product     @relation(fields: [productId], references: [id])
+  
+  quantity        Decimal     @db.Decimal(10, 3)
+  
+  // Cene (po jedinici)
+  supplierPrice   Decimal     @map("supplier_price") @db.Decimal(15, 2) // Fakturna cena
+  expensePerUnit  Decimal     @default(0) @map("expense_per_unit") @db.Decimal(15, 2) // Zavisni trošak po jedinici
+  costPrice       Decimal     @map("cost_price") @db.Decimal(15, 2) // Nabavna cena (Fakturna + Trošak)
+  
+  marginPercent   Decimal     @default(0) @map("margin_percent") @db.Decimal(5, 2) // Marža %
+  marginAmount    Decimal     @default(0) @map("margin_amount") @db.Decimal(15, 2) // Marža iznos
+  
+  salesPriceNoVat Decimal     @map("sales_price_no_vat") @db.Decimal(15, 2) // Prodajna bez PDV
+  vatRate         Decimal     @map("vat_rate") @db.Decimal(5, 2)
+  salesPrice      Decimal     @map("sales_price") @db.Decimal(15, 2) // Prodajna sa PDV
+  
+  @@index([calculationId])
+  @@index([productId])
+  @@map("calculation_items")
+}
+
+enum CalculationStatus {
+  DRAFT
+  POSTED    // Proknjiženo (ažuriralo zalihe i cene)
+  CANCELLED
+}
+
+// ========================================
+// FIXED ASSETS - Osnovna sredstva
+// ========================================
+model FixedAsset {
+  id              String            @id @default(uuid())
+  inventoryNumber String            @map("inventory_number") // Inventarski broj
+  name            String
+  
+  // Nabavka
+  purchaseDate    DateTime          @map("purchase_date")
+  purchaseValue   Decimal           @map("purchase_value") @db.Decimal(15, 2)
+  supplierId      String?           @map("supplier_id")
+  invoiceNumber   String?           @map("invoice_number")
+  
+  // Amortizacija
+  amortizationRate Decimal          @map("amortization_rate") @db.Decimal(5, 2) // Stopa amortizacije %
+  currentValue    Decimal           @map("current_value") @db.Decimal(15, 2) // Sadašnja vrednost
+  accumulatedAmortization Decimal   @default(0) @map("accumulated_amortization") @db.Decimal(15, 2)
+  
+  // Status
+  status          FixedAssetStatus  @default(ACTIVE)
+  location        String?
+  employee        String?           // Zaduženo lice
+  
+  // Company relation
+  companyId       String            @map("company_id")
+  company         Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  
+  @@unique([companyId, inventoryNumber])
+  @@index([companyId])
+  @@index([status])
+  @@map("fixed_assets")
+}
+
+enum FixedAssetStatus {
+  ACTIVE
+  WRITTEN_OFF   // Otpisano
+  SOLD          // Prodato
+}
+
+// ========================================
+// PETTY CASH - Blagajna
+// ========================================
+model PettyCashAccount {
+  id              String            @id @default(uuid())
+  name            String            @default("Glavna blagajna")
+  currency        String            @default("RSD")
+  balance         Decimal           @default(0) @db.Decimal(15, 2)
+  
+  // Company relation
+  companyId       String            @map("company_id")
+  company         Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  entries         PettyCashEntry[]
+  
+  @@index([companyId])
+  @@map("petty_cash_accounts")
+}
+
+model PettyCashEntry {
+  id              String            @id @default(uuid())
+  accountId       String            @map("account_id")
+  account         PettyCashAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  entryNumber     String            @map("entry_number") // Broj naloga
+  date            DateTime
+  type            PettyCashType     // UPLATA ili ISPLATA
+  
+  amount          Decimal           @db.Decimal(15, 2)
+  description     String            @db.Text
+  
+  // Partner (opciono)
+  partnerId       String?           @map("partner_id")
+  partnerName     String?           @map("partner_name") // Za fizička lica
+  
+  // Veza sa troškovima/fakturama
+  expenseCategory String?           @map("expense_category") // Npr. "Gorivo", "Reprezentacija"
+  
+  createdAt       DateTime          @default(now()) @map("created_at")
+  createdBy       String            @map("created_by")
+  
+  @@index([accountId])
+  @@index([date])
+  @@index([type])
+  @@map("petty_cash_entries")
+}
+
+enum PettyCashType {
+  DEPOSIT     // Uplata (Ulaz)
+  WITHDRAWAL  // Isplata (Izlaz)
+}
+
+// ========================================
+// TRAVEL ORDERS - Putni nalozi
+// ========================================
+model TravelOrder {
+  id              String            @id @default(uuid())
+  orderNumber     String            @map("order_number")
+  
+  employeeName    String            @map("employee_name")
+  employeeId      String?           @map("employee_id") // Optional link to User or Partner
+  
+  vehicle         String?           // Vozilo
+  
+  // Relacija
+  destination     String
+  country         String            @default("RS")
+  departureDate   DateTime          @map("departure_date")
+  returnDate      DateTime          @map("return_date")
+  
+  // Troškovi
+  advanceAmount   Decimal           @default(0) @map("advance_amount") @db.Decimal(15, 2) // Akontacija
+  totalExpenses   Decimal           @default(0) @map("total_expenses") @db.Decimal(15, 2)
+  totalPayout     Decimal           @default(0) @map("total_payout") @db.Decimal(15, 2) // Isplata (Total - Akontacija)
+  
+  status          TravelOrderStatus @default(DRAFT)
+  
+  expenses        TravelOrderExpense[]
+  
+  // Company relation
+  companyId       String            @map("company_id")
+  company         Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  
+  @@unique([companyId, orderNumber])
+  @@index([companyId])
+  @@index([status])
+  @@map("travel_orders")
+}
+
+model TravelOrderExpense {
+  id            String      @id @default(uuid())
+  travelOrderId String      @map("travel_order_id")
+  travelOrder   TravelOrder @relation(fields: [travelOrderId], references: [id], onDelete: Cascade)
+  
+  type          String      // DAILY_ALLOWANCE, TOLL, FUEL, etc.
+  date          DateTime
+  amount        Decimal     @db.Decimal(15, 2)
+  currency      String      @default("RSD")
+  description   String?     @db.Text
+  attachmentUrl String?     @map("attachment_url")
+  
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  @@index([travelOrderId])
+  @@map("travel_order_expenses")
+}
+
+enum TravelOrderStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  PAID
+}
+
+// ========================================
+// SEF VAT EVIDENCE - Pojedinačna/Zbirna evidencija PDV
+// ========================================
+model SefVatEvidence {
+  id              String            @id @default(uuid())
+  
+  period          String            // YYYY-MM
+  type            SefVatType        // INDIVIDUAL or SUMMARY
+  
+  // Sadržaj
+  taxPeriod       String            @map("tax_period") // Npr. "2025-11"
+  documentNumber  String?           @map("document_number") // Za pojedinačnu
+  issueDate       DateTime?         @map("issue_date")
+  
+  // Iznosi
+  taxBase         Decimal           @map("tax_base") @db.Decimal(15, 2)
+  taxAmount       Decimal           @map("tax_amount") @db.Decimal(15, 2)
+  totalAmount     Decimal           @map("total_amount") @db.Decimal(15, 2)
+  
+  // SEF Status
+  sefId           String?           @map("sef_id")
+  status          String            @default("PENDING") // PENDING, SENT, ERROR
+  
+  // Company relation
+  companyId       String            @map("company_id")
+  company         Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime          @default(now()) @map("created_at")
+  
+  @@index([companyId])
+  @@index([period])
+  @@index([status])
+  @@map("sef_vat_evidence")
+}
+
+enum SefVatType {
+  INDIVIDUAL  // Pojedinačna evidencija
+  SUMMARY     // Zbirna evidencija
+}
+
+// ========================================
+// PPPDV - PDV PRIJAVA
+// ========================================
+model PPPDVReport {
+  id              String            @id @default(uuid())
+  
+  // Period
+  year            Int
+  month           Int               // 1-12 (mesečno) ili kvartalno (3,6,9,12)
+  periodType      PPPDVPeriodType   @default(MONTHLY) @map("period_type")
+  
+  // Iznosi - Izlazni PDV (promet dobara i usluga)
+  field001        Decimal           @default(0) @db.Decimal(15, 2) // Promet po opštoj stopi (20%) - osnovica
+  field002        Decimal           @default(0) @db.Decimal(15, 2) // Promet po opštoj stopi (20%) - PDV
+  field003        Decimal           @default(0) @db.Decimal(15, 2) // Promet po posebnoj stopi (10%) - osnovica
+  field004        Decimal           @default(0) @db.Decimal(15, 2) // Promet po posebnoj stopi (10%) - PDV
+  field005        Decimal           @default(0) @db.Decimal(15, 2) // Promet oslobođen PDV
+  field006        Decimal           @default(0) @db.Decimal(15, 2) // Promet van RS (izvoz)
+  
+  // Ulazni PDV (prethodni porez)
+  field101        Decimal           @default(0) @db.Decimal(15, 2) // Nabavka dobara i usluga 20% - osnovica
+  field102        Decimal           @default(0) @db.Decimal(15, 2) // Nabavka dobara i usluga 20% - PDV
+  field103        Decimal           @default(0) @db.Decimal(15, 2) // Nabavka dobara i usluga 10% - osnovica
+  field104        Decimal           @default(0) @db.Decimal(15, 2) // Nabavka dobara i usluga 10% - PDV
+  field105        Decimal           @default(0) @db.Decimal(15, 2) // Uvoz dobara 20% - PDV
+  field106        Decimal           @default(0) @db.Decimal(15, 2) // Uvoz dobara 10% - PDV
+  
+  // Obračun
+  field201        Decimal           @default(0) @db.Decimal(15, 2) // Ukupan izlazni PDV (002 + 004)
+  field202        Decimal           @default(0) @db.Decimal(15, 2) // Ukupan ulazni PDV (102 + 104 + 105 + 106)
+  field203        Decimal           @default(0) @db.Decimal(15, 2) // PDV za uplatu (201 - 202, ako > 0)
+  field204        Decimal           @default(0) @db.Decimal(15, 2) // PDV za povraćaj (202 - 201, ako > 0)
+  
+  // Status
+  status          PPPDVStatus       @default(DRAFT)
+  submittedAt     DateTime?         @map("submitted_at")
+  
+  // Company relation
+  companyId       String            @map("company_id")
+  company         Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  
+  @@unique([companyId, year, month])
+  @@index([companyId])
+  @@index([year, month])
+  @@index([status])
+  @@map("pppdv_reports")
+}
+
+enum PPPDVPeriodType {
+  MONTHLY     // Mesečno
+  QUARTERLY   // Kvartalno
+}
+
+enum PPPDVStatus {
+  DRAFT       // Nacrt
+  CALCULATED  // Izračunato
+  SUBMITTED   // Predato
+  CORRECTED   // Korigovano
+}
+
+// ========================================
+// KPO - KNJIGA PROMETA OBVEZNIKA
+// ========================================
+model KPOEntry {
+  id              String            @id @default(uuid())
+  
+  date            DateTime          // Datum prometa
+  ordinalNumber   Int               @map("ordinal_number") // Redni broj u knjizi
+  
+  // Opis prometa
+  description     String            @db.Text
+  documentNumber  String?           @map("document_number") // Broj dokumenta
+  documentType    String?           @map("document_type") // Tip dokumenta (faktura, račun, etc.)
+  
+  // Iznosi
+  grossIncome     Decimal           @default(0) @map("gross_income") @db.Decimal(15, 2) // Bruto prihod
+  vatAmount       Decimal           @default(0) @map("vat_amount") @db.Decimal(15, 2) // PDV
+  netIncome       Decimal           @default(0) @map("net_income") @db.Decimal(15, 2) // Neto prihod
+  
+  // Za rashode
+  expense         Decimal           @default(0) @db.Decimal(15, 2) // Rashod
+  
+  // Veza sa fakturom
+  invoiceId       String?           @map("invoice_id")
+  
+  // Company relation
+  companyId       String            @map("company_id")
+  company         Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime          @default(now()) @map("created_at")
+  
+  @@index([companyId])
+  @@index([date])
+  @@index([companyId, date])
+  @@map("kpo_entries")
+}
+
+// ========================================
+// KOMPENZACIJE
+// ========================================
+model Compensation {
+  id              String              @id @default(uuid())
+  number          String              // Broj kompenzacije
+  date            DateTime            // Datum kompenzacije
+  
+  // Strane u kompenzaciji
+  partnerId       String              @map("partner_id")
+  partner         Partner             @relation(fields: [partnerId], references: [id])
+  
+  // Iznosi
+  totalAmount     Decimal             @map("total_amount") @db.Decimal(15, 2) // Ukupan iznos kompenzacije
+  
+  // Status
+  status          CompensationStatus  @default(DRAFT)
+  signedAt        DateTime?           @map("signed_at")
+  
+  // Notes
+  note            String?             @db.Text
+  
+  // Company relation
+  companyId       String              @map("company_id")
+  company         Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  // Relations
+  items           CompensationItem[]
+  
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+  
+  @@unique([companyId, number])
+  @@index([companyId])
+  @@index([partnerId])
+  @@index([date])
+  @@index([status])
+  @@map("compensations")
+}
+
+model CompensationItem {
+  id              String            @id @default(uuid())
+  compensationId  String            @map("compensation_id")
+  compensation    Compensation      @relation(fields: [compensationId], references: [id], onDelete: Cascade)
+  
+  // Tip stavke
+  type            CompensationItemType
+  
+  // Veza sa dokumentom
+  invoiceId       String?           @map("invoice_id") // Može biti izlazna ili ulazna faktura
+  documentNumber  String            @map("document_number")
+  documentDate    DateTime          @map("document_date")
+  
+  // Iznos
+  originalAmount  Decimal           @map("original_amount") @db.Decimal(15, 2) // Originalni iznos
+  compensatedAmount Decimal         @map("compensated_amount") @db.Decimal(15, 2) // Kompenzovani iznos
+  remainingAmount Decimal           @map("remaining_amount") @db.Decimal(15, 2) // Preostalo
+  
+  @@index([compensationId])
+  @@index([invoiceId])
+  @@map("compensation_items")
+}
+
+enum CompensationStatus {
+  DRAFT
+  PENDING     // Poslato partneru
+  SIGNED      // Potpisano
+  CANCELLED
+}
+
+enum CompensationItemType {
+  RECEIVABLE  // Naše potraživanje (mi dugujemo)
+  PAYABLE     // Naša obaveza (partner duguje)
+}
+
+// ========================================
+// IOS - IZVOD OTVORENIH STAVKI
+// ========================================
+model IOSReport {
+  id              String            @id @default(uuid())
+  number          String            // Broj IOS-a
+  
+  // Partner
+  partnerId       String            @map("partner_id")
+  partner         Partner           @relation(fields: [partnerId], references: [id])
+  
+  // Datum stanja
+  asOfDate        DateTime          @map("as_of_date")
+  
+  // Ukupna stanja
+  totalReceivable Decimal           @default(0) @map("total_receivable") @db.Decimal(15, 2) // Naše potraživanje
+  totalPayable    Decimal           @default(0) @map("total_payable") @db.Decimal(15, 2) // Naša obaveza
+  balance         Decimal           @default(0) @db.Decimal(15, 2) // Saldo (Receivable - Payable)
+  
+  // Status
+  status          IOSStatus         @default(DRAFT)
+  sentAt          DateTime?         @map("sent_at")
+  confirmedAt     DateTime?         @map("confirmed_at")
+  
+  // Partner response
+  partnerConfirmed Boolean          @default(false) @map("partner_confirmed")
+  partnerNotes    String?           @map("partner_notes") @db.Text
+  
+  // Company relation
+  companyId       String            @map("company_id")
+  company         Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  // Relations
+  items           IOSItem[]
+  
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  
+  @@unique([companyId, number])
+  @@index([companyId])
+  @@index([partnerId])
+  @@index([asOfDate])
+  @@map("ios_reports")
+}
+
+model IOSItem {
+  id              String            @id @default(uuid())
+  iosReportId     String            @map("ios_report_id")
+  iosReport       IOSReport         @relation(fields: [iosReportId], references: [id], onDelete: Cascade)
+  
+  // Dokument
+  documentType    String            @map("document_type") // INVOICE, CREDIT_NOTE, PAYMENT
+  documentNumber  String            @map("document_number")
+  documentDate    DateTime          @map("document_date")
+  dueDate         DateTime?         @map("due_date")
+  
+  // Iznosi
+  debitAmount     Decimal           @default(0) @map("debit_amount") @db.Decimal(15, 2) // Duguje
+  creditAmount    Decimal           @default(0) @map("credit_amount") @db.Decimal(15, 2) // Potražuje
+  balance         Decimal           @default(0) @db.Decimal(15, 2) // Saldo
+  
+  // Reference
+  invoiceId       String?           @map("invoice_id")
+  
+  @@index([iosReportId])
+  @@map("ios_items")
+}
+
+enum IOSStatus {
+  DRAFT
+  SENT
+  CONFIRMED
+  DISPUTED
+}
+
+// ========================================
+// NBS KURSNA LISTA
+// ========================================
+model ExchangeRate {
+  id              String            @id @default(uuid())
+  
+  date            DateTime          // Datum kursa
+  currencyCode    String            @map("currency_code") @db.VarChar(3) // EUR, USD, CHF, etc.
+  currencyName    String            @map("currency_name") // Naziv valute
+  
+  country         String?           // Zemlja
+  unit            Int               @default(1) // Jedinica (1, 100, etc.)
+  
+  buyingRate      Decimal           @map("buying_rate") @db.Decimal(15, 6) // Kupovni kurs
+  middleRate      Decimal           @map("middle_rate") @db.Decimal(15, 6) // Srednji kurs
+  sellingRate     Decimal           @map("selling_rate") @db.Decimal(15, 6) // Prodajni kurs
+  
+  source          String            @default("NBS") // Izvor (NBS, ECB, etc.)
+  
+  createdAt       DateTime          @default(now()) @map("created_at")
+  
+  @@unique([date, currencyCode])
+  @@index([date])
+  @@index([currencyCode])
+  @@index([date, currencyCode])
+  @@map("exchange_rates")
+}
+
+// ========================================
+// AVANSNE FAKTURE
+// ========================================
+model AdvanceInvoice {
+  id              String            @id @default(uuid())
+  
+  // Osnovni podaci
+  invoiceNumber   String            @map("invoice_number")
+  issueDate       DateTime          @map("issue_date")
+  
+  // Partner
+  partnerId       String            @map("partner_id")
+  partner         Partner           @relation(fields: [partnerId], references: [id])
+  
+  // Iznosi
+  advanceAmount   Decimal           @map("advance_amount") @db.Decimal(15, 2) // Iznos avansa
+  taxAmount       Decimal           @map("tax_amount") @db.Decimal(15, 2) // PDV
+  totalAmount     Decimal           @map("total_amount") @db.Decimal(15, 2) // Ukupno
+  currency        String            @default("RSD")
+  
+  // Zatvaranje
+  usedAmount      Decimal           @default(0) @map("used_amount") @db.Decimal(15, 2) // Iskorišćeno
+  remainingAmount Decimal           @map("remaining_amount") @db.Decimal(15, 2) // Preostalo
+  
+  // Veze sa konačnim fakturama
+  closedByInvoices Json?            @map("closed_by_invoices") // Array of invoice IDs
+  
+  // Status
+  status          AdvanceInvoiceStatus @default(DRAFT)
+  
+  // SEF
+  sefId           String?           @unique @map("sef_id")
+  sefStatus       String?           @map("sef_status")
+  sentAt          DateTime?         @map("sent_at")
+  
+  // Company relation
+  companyId       String            @map("company_id")
+  company         Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  
+  @@unique([companyId, invoiceNumber])
+  @@index([companyId])
+  @@index([partnerId])
+  @@index([status])
+  @@map("advance_invoices")
+}
+
+enum AdvanceInvoiceStatus {
+  DRAFT
+  SENT
+  PARTIALLY_USED  // Delimično iskorišćen
+  FULLY_USED      // Potpuno iskorišćen
+  CANCELLED
+}
+
+// ========================================
+// EMAIL TEMPLATES & LOGS
+// ========================================
+model EmailTemplate {
+  id              String            @id @default(uuid())
+  
+  name            String            // Naziv šablona
+  type            EmailTemplateType // Tip šablona
+  
+  subject         String            // Naslov emaila
+  bodyHtml        String            @map("body_html") @db.Text // HTML sadržaj
+  bodyText        String?           @map("body_text") @db.Text // Plain text verzija
+  
+  // Variables available: {companyName}, {partnerName}, {invoiceNumber}, etc.
+  variables       Json?             // Lista dostupnih varijabli
+  
+  isDefault       Boolean           @default(false) @map("is_default")
+  isActive        Boolean           @default(true) @map("is_active")
+  
+  // Company relation (null = system template)
+  companyId       String?           @map("company_id")
+  company         Company?          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  
+  @@index([companyId])
+  @@index([type])
+  @@map("email_templates")
+}
+
+model EmailLog {
+  id              String            @id @default(uuid())
+  
+  // Recipient
+  toEmail         String            @map("to_email")
+  toName          String?           @map("to_name")
+  
+  // Content
+  subject         String
+  bodyHtml        String            @map("body_html") @db.Text
+  
+  // Reference
+  templateId      String?           @map("template_id")
+  referenceType   String?           @map("reference_type") // invoice, ios, reminder, etc.
+  referenceId     String?           @map("reference_id")
+  
+  // Status
+  status          EmailStatus       @default(PENDING)
+  sentAt          DateTime?         @map("sent_at")
+  errorMessage    String?           @map("error_message") @db.Text
+  
+  // Tracking
+  openedAt        DateTime?         @map("opened_at")
+  clickedAt       DateTime?         @map("clicked_at")
+  
+  // Company relation
+  companyId       String            @map("company_id")
+  company         Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime          @default(now()) @map("created_at")
+  
+  @@index([companyId])
+  @@index([status])
+  @@index([referenceType, referenceId])
+  @@map("email_logs")
+}
+
+enum EmailTemplateType {
+  INVOICE_SENT        // Faktura poslata
+  PAYMENT_REMINDER    // Podsetnik za plaćanje
+  PAYMENT_OVERDUE     // Faktura dospela
+  IOS_REQUEST         // IOS zahtev
+  COMPENSATION        // Kompenzacija
+  WELCOME             // Dobrodošlica
+  CUSTOM              // Prilagođeno
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  FAILED
+  BOUNCED
+}
+
+// ========================================
+// CASH FLOW FORECAST
+// ========================================
+model CashFlowForecast {
+  id              String            @id @default(uuid())
+  
+  date            DateTime          // Datum prognoze
+  
+  // Planirani prilivi
+  expectedInflow  Decimal           @default(0) @map("expected_inflow") @db.Decimal(15, 2)
+  actualInflow    Decimal           @default(0) @map("actual_inflow") @db.Decimal(15, 2)
+  
+  // Planirani odlivi
+  expectedOutflow Decimal           @default(0) @map("expected_outflow") @db.Decimal(15, 2)
+  actualOutflow   Decimal           @default(0) @map("actual_outflow") @db.Decimal(15, 2)
+  
+  // Saldo
+  expectedBalance Decimal           @default(0) @map("expected_balance") @db.Decimal(15, 2)
+  actualBalance   Decimal           @default(0) @map("actual_balance") @db.Decimal(15, 2)
+  
+  // Napomene
+  notes           String?           @db.Text
+  
+  // Company relation
+  companyId       String            @map("company_id")
+  company         Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  
+  @@unique([companyId, date])
+  @@index([companyId])
+  @@index([date])
+  @@map("cash_flow_forecasts")
+}
+
+// ========================================
+// PRODUCTION - Normativi (Sastavnice)
+// ========================================
+model ProductBOM {
+  id              String            @id @default(uuid())
+  
+  // Gotov proizvod
+  productId       String            @map("product_id")
+  product         Product           @relation("ProductAsFinishedGood", fields: [productId], references: [id], onDelete: Cascade)
+  
+  // Komponenta (Materijal)
+  componentId     String            @map("component_id")
+  component       Product           @relation("ProductAsComponent", fields: [componentId], references: [id])
+  
+  quantity        Decimal           @db.Decimal(10, 4) // Koliko komponente ide u 1 gotov proizvod
+  
+  createdAt       DateTime          @default(now()) @map("created_at")
+  
+  @@index([productId])
+  @@index([componentId])
+  @@map("product_bom")
+}

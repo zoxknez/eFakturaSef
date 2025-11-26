@@ -1,7 +1,8 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, InventoryTransactionType } from '@prisma/client';
 import { prisma } from '../db/prisma';
 import { logger } from '../utils/logger';
 import { z } from 'zod';
+import { InventoryService } from './inventoryService';
 
 // ========================================
 // ZOD VALIDATION SCHEMAS
@@ -401,39 +402,28 @@ export class ProductService {
    * Update product stock
    */
   static async updateStock(id: string, companyId: string, adjustment: number, note: string | undefined, userId: string) {
-    // Check if product exists and has inventory tracking enabled
-    const product = await prisma.product.findFirst({
-      where: {
-        id,
-        companyId,
-      },
-    });
+    // Use InventoryService to create transaction and update stock
+    const transaction = await InventoryService.createTransaction(
+      companyId,
+      id,
+      InventoryTransactionType.ADJUSTMENT,
+      adjustment,
+      userId,
+      {
+        note: note || 'Manual adjustment',
+      }
+    );
 
-    if (!product) {
-      throw new Error('Product not found');
-    }
-
-    if (!product.trackInventory) {
-      throw new Error('Inventory tracking is not enabled for this product');
-    }
-
-    const newStock = Number(product.currentStock || 0) + adjustment;
-
-    if (newStock < 0) {
-      throw new Error(`Insufficient stock. Current: ${product.currentStock}, Adjustment: ${adjustment}, Result: ${newStock}`);
-    }
-
-    // Update stock
-    const updatedProduct = await prisma.product.update({
+    // Return updated product (which is fetched inside createTransaction, but we need to return it here)
+    // InventoryService.createTransaction returns the transaction.
+    // We can fetch the product again or return the transaction.
+    // The controller expects the updated product.
+    
+    const updatedProduct = await prisma.product.findUnique({
       where: { id },
-      data: {
-        currentStock: newStock,
-      },
     });
 
-    logger.info(`Product stock updated: ${id} (${product.currentStock} -> ${newStock}, adjustment: ${adjustment}) by user ${userId}`, {
-      note,
-    });
+    if (!updatedProduct) throw new Error('Product not found after update');
 
     return updatedProduct;
   }

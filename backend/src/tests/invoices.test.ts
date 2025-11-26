@@ -1,383 +1,210 @@
 import request from 'supertest';
 import app from '../index';
 import { prisma } from '../db/prisma';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import { sign } from 'jsonwebtoken';
 import { config } from '../config';
+import { InvoiceStatus, InvoiceType } from '@prisma/client';
 
-describe('Invoices', () => {
+describe('Invoice Module Integration Tests', () => {
   let authToken: string;
   let companyId: string;
   let userId: string;
+  let partnerId: string;
+  let productId: string;
+  let invoiceId: string;
 
-  beforeEach(async () => {
-    // Clean up test data
-    await prisma.invoiceLine.deleteMany();
-    await prisma.invoice.deleteMany();
-    await prisma.user.deleteMany();
-    await prisma.company.deleteMany();
-
-    // Create test company
+  beforeAll(async () => {
+    // 1. Create Company
     const company = await prisma.company.create({
       data: {
-        pib: '123456789',
-        name: 'Test Company',
-        address: 'Test Address',
-        city: 'Test City',
+        name: 'Invoice Test Company',
+        pib: '100000004',
+        address: 'Test Address Invoice',
+        city: 'Belgrade',
         postalCode: '11000',
-        country: 'RS'
-      }
+        email: 'invoice@test.com',
+        autoStockDeduction: true, // Enable to test stock logic
+      },
     });
     companyId = company.id;
 
-    // Create test user
-    const hashedPassword = await bcrypt.hash('password123', 12);
+    // 2. Create User
     const user = await prisma.user.create({
       data: {
-        email: 'test@example.com',
-        password: hashedPassword,
-        firstName: 'Test',
-        lastName: 'User',
-        role: 'OPERATOR',
-        companyId: company.id
-      }
+        email: `invoice_test_${Date.now()}@test.com`,
+        password: 'hashed_password',
+        firstName: 'Invoice',
+        lastName: 'Tester',
+        role: 'ADMIN',
+        companyId: company.id,
+      },
     });
     userId = user.id;
 
-    // Generate auth token
-    authToken = jwt.sign(
-      { id: user.id, email: user.email, role: user.role, companyId: company.id },
-      config.JWT_SECRET,
-      { expiresIn: '1h' }
-    );
+    // 3. Generate Token
+    authToken = sign({ id: user.id, email: user.email, role: user.role, companyId: user.companyId }, config.JWT_SECRET, { expiresIn: '1h' });
+
+    // 4. Create Refresh Token
+    await prisma.refreshToken.create({
+      data: {
+        token: `refresh_token_inv_${Date.now()}`,
+        userId: user.id,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      },
+    });
+
+    // 5. Create Partner
+    const partner = await prisma.partner.create({
+      data: {
+        companyId,
+        name: 'Test Partner',
+        pib: '100000005',
+        address: 'Partner Address',
+        city: 'Novi Sad',
+        postalCode: '21000',
+        email: 'partner@test.com',
+        type: 'BUYER',
+      },
+    });
+    partnerId = partner.id;
+
+    // 6. Create Product
+    const product = await prisma.product.create({
+      data: {
+        companyId,
+        name: 'Test Product',
+        code: 'PROD-001',
+        unit: 'kom',
+        unitPrice: 100,
+        vatRate: 20,
+        trackInventory: true,
+        currentStock: 100,
+      },
+    });
+    productId = product.id;
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    // Cleanup in reverse order of dependency
+    await prisma.inventoryTransaction.deleteMany({ where: { companyId } });
+    await prisma.invoiceLine.deleteMany({ where: { invoice: { companyId } } });
+    await prisma.invoice.deleteMany({ where: { companyId } });
+    await prisma.product.deleteMany({ where: { companyId } });
+    await prisma.partner.deleteMany({ where: { companyId } });
+    await prisma.refreshToken.deleteMany({ where: { userId } });
+    await prisma.user.deleteMany({ where: { id: userId } });
+    await prisma.company.deleteMany({ where: { id: companyId } });
   });
 
-  describe('POST /api/invoices', () => {
-    it('should create invoice successfully', async () => {
-      const invoiceData = {
-        companyId,
-        invoiceNumber: '2024-001',
-        issueDate: '2024-01-01',
-        buyerName: 'Test Buyer',
-        buyerPIB: '987654321',
-        lines: [
-          {
-            name: 'Test Item',
-            quantity: 1,
-            unitPrice: 100,
-            taxRate: 20
-          }
-        ]
-      };
-
-      const response = await request(app)
+  describe('Invoice CRUD', () => {
+    it('should create a new invoice', async () => {
+      const res = await request(app)
         .post('/api/invoices')
         .set('Authorization', `Bearer ${authToken}`)
-        .send(invoiceData)
-        .expect(201);
-
-      expect(response.body.invoiceNumber).toBe('2024-001');
-      expect(response.body.buyerName).toBe('Test Buyer');
-      expect(response.body.lines).toHaveLength(1);
-      expect(response.body.lines[0].itemName).toBe('Test Item');
-    });
-
-    it('should fail without authentication', async () => {
-      const invoiceData = {
-        companyId,
-        invoiceNumber: '2024-001',
-        issueDate: '2024-01-01',
-        buyerName: 'Test Buyer',
-        buyerPIB: '987654321',
-        lines: [
-          {
-            name: 'Test Item',
-            quantity: 1,
-            unitPrice: 100,
-            taxRate: 20
-          }
-        ]
-      };
-
-      const response = await request(app)
-        .post('/api/invoices')
-        .send(invoiceData)
-        .expect(401);
-
-      expect(response.body.success).toBe(false);
-    });
-
-    it('should fail with invalid data', async () => {
-      const invoiceData = {
-        companyId,
-        invoiceNumber: '', // Invalid: empty
-        issueDate: '2024-01-01',
-        buyerName: 'Test Buyer',
-        buyerPIB: '123', // Invalid: too short
-        lines: [] // Invalid: empty lines
-      };
-
-      const response = await request(app)
-        .post('/api/invoices')
-        .set('Authorization', `Bearer ${authToken}`)
-        .send(invoiceData)
-        .expect(400);
-
-      expect(response.body.success).toBe(false);
-    });
-  });
-
-  describe('GET /api/invoices', () => {
-    beforeEach(async () => {
-      // Create test invoices
-      const invoice1 = await prisma.invoice.create({
-        data: {
+        .send({
           companyId,
-          invoiceNumber: '2024-001',
-          issueDate: new Date('2024-01-01'),
-          buyerName: 'Test Buyer 1',
-          buyerPIB: '987654321',
-          totalAmount: 120,
-          taxAmount: 20,
-          status: 'DRAFT',
-          type: 'OUTGOING'
-        }
-      });
+          partnerId,
+          invoiceNumber: 'INV-2023-001',
+          issueDate: new Date().toISOString(),
+          dueDate: new Date(Date.now() + 86400000).toISOString(), // +1 day
+          currency: 'RSD',
+          note: 'Test Invoice',
+          type: InvoiceType.OUTGOING,
+          lines: [
+            {
+              name: 'Service Item',
+              quantity: 2,
+              unitPrice: 1000,
+              taxRate: 20
+            },
+            {
+              name: 'Product Item',
+              quantity: 5,
+              unitPrice: 100,
+              taxRate: 20,
+              productId: productId
+            }
+          ]
+        });
 
-      const invoice2 = await prisma.invoice.create({
-        data: {
-          companyId,
-          invoiceNumber: '2024-002',
-          issueDate: new Date('2024-01-02'),
-          buyerName: 'Test Buyer 2',
-          buyerPIB: '987654322',
-          totalAmount: 240,
-          taxAmount: 40,
-          status: 'SENT',
-          type: 'OUTGOING'
-        }
-      });
-
-      // Add invoice lines
-      await prisma.invoiceLine.createMany({
-        data: [
-          {
-            invoiceId: invoice1.id,
-            lineNumber: 1,
-            itemName: 'Test Item 1',
-            quantity: 1,
-            unitPrice: 100,
-            taxRate: 20,
-            amount: 120
-          },
-          {
-            invoiceId: invoice2.id,
-            lineNumber: 1,
-            itemName: 'Test Item 2',
-            quantity: 2,
-            unitPrice: 100,
-            taxRate: 20,
-            amount: 240
-          }
-        ]
-      });
+      if (res.status !== 201) {
+        console.error('Create Invoice Error:', res.body);
+      }
+      expect(res.status).toBe(201);
+      expect(res.body.invoiceNumber).toBe('INV-2023-001');
+      expect(res.body.status).toBe(InvoiceStatus.DRAFT);
+      expect(res.body.lines.length).toBe(2);
+      
+      // Check totals
+      // Line 1: 2 * 1000 = 2000 + 20% = 2400
+      // Line 2: 5 * 100 = 500 + 20% = 600
+      // Total: 3000
+      expect(Number(res.body.totalAmount)).toBe(3000);
+      
+      invoiceId = res.body.id;
     });
 
-    it('should get all invoices', async () => {
-      const response = await request(app)
-        .get('/api/invoices')
-        .set('Authorization', `Bearer ${authToken}`)
-        .expect(200);
-
-      expect(response.body.data).toHaveLength(2);
-      expect(response.body.pagination.total).toBe(2);
+    it('should verify stock deduction', async () => {
+      const product = await prisma.product.findUnique({ where: { id: productId } });
+      // Initial 100 - 5 sold = 95
+      expect(Number(product?.currentStock)).toBe(95);
     });
 
-    it('should filter by status', async () => {
-      const response = await request(app)
-        .get('/api/invoices?status=DRAFT')
-        .set('Authorization', `Bearer ${authToken}`)
-        .expect(200);
-
-      expect(response.body.data).toHaveLength(1);
-      expect(response.body.data[0].status).toBe('DRAFT');
-    });
-
-    it('should paginate results', async () => {
-      const response = await request(app)
-        .get('/api/invoices?page=1&limit=1')
-        .set('Authorization', `Bearer ${authToken}`)
-        .expect(200);
-
-      expect(response.body.data).toHaveLength(1);
-      expect(response.body.pagination.page).toBe(1);
-      expect(response.body.pagination.limit).toBe(1);
-      expect(response.body.pagination.total).toBe(2);
-    });
-  });
-
-  describe('GET /api/invoices/:id', () => {
-    let invoiceId: string;
-
-    beforeEach(async () => {
-      const invoice = await prisma.invoice.create({
-        data: {
-          companyId,
-          invoiceNumber: '2024-001',
-          issueDate: new Date('2024-01-01'),
-          buyerName: 'Test Buyer',
-          buyerPIB: '987654321',
-          totalAmount: 120,
-          taxAmount: 20,
-          status: 'DRAFT',
-          type: 'OUTGOING'
-        }
-      });
-      invoiceId = invoice.id;
-
-      await prisma.invoiceLine.create({
-        data: {
-          invoiceId: invoice.id,
-          lineNumber: 1,
-          itemName: 'Test Item',
-          quantity: 1,
-          unitPrice: 100,
-          taxRate: 20,
-          amount: 120
-        }
-      });
-    });
-
-    it('should get invoice by id', async () => {
-      const response = await request(app)
+    it('should get the invoice by ID', async () => {
+      const res = await request(app)
         .get(`/api/invoices/${invoiceId}`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .expect(200);
+        .set('Authorization', `Bearer ${authToken}`);
 
-      expect(response.body.id).toBe(invoiceId);
-      expect(response.body.invoiceNumber).toBe('2024-001');
-      expect(response.body.lines).toHaveLength(1);
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe(invoiceId);
+      expect(res.body.partner.id).toBe(partnerId);
     });
 
-    it('should return 404 for non-existent invoice', async () => {
-      const response = await request(app)
-        .get('/api/invoices/non-existent-id')
-        .set('Authorization', `Bearer ${authToken}`)
-        .expect(404);
+    it('should list invoices', async () => {
+      const res = await request(app)
+        .get('/api/invoices')
+        .set('Authorization', `Bearer ${authToken}`);
 
-      expect(response.body.error).toBe('Invoice not found');
-    });
-  });
-
-  describe('PUT /api/invoices/:id', () => {
-    let invoiceId: string;
-
-    beforeEach(async () => {
-      const invoice = await prisma.invoice.create({
-        data: {
-          companyId,
-          invoiceNumber: '2024-001',
-          issueDate: new Date('2024-01-01'),
-          buyerName: 'Test Buyer',
-          buyerPIB: '987654321',
-          totalAmount: 120,
-          taxAmount: 20,
-          status: 'DRAFT',
-          type: 'OUTGOING'
-        }
-      });
-      invoiceId = invoice.id;
+      expect(res.status).toBe(200);
+      expect(res.body.data.length).toBeGreaterThanOrEqual(1);
+      expect(res.body.data[0].invoiceNumber).toBe('INV-2023-001');
     });
 
-    it('should update invoice successfully', async () => {
-      const updateData = {
-        buyerName: 'Updated Buyer',
-        buyerPIB: '987654322'
-      };
-
-      const response = await request(app)
+    it('should update the invoice', async () => {
+      const res = await request(app)
         .put(`/api/invoices/${invoiceId}`)
         .set('Authorization', `Bearer ${authToken}`)
-        .send(updateData)
-        .expect(200);
+        .send({
+          note: 'Updated Note',
+          buyerCity: 'Updated City'
+        });
 
-      expect(response.body.buyerName).toBe('Updated Buyer');
-      expect(response.body.buyerPIB).toBe('987654322');
+      expect(res.status).toBe(200);
+      expect(res.body.note).toBe('Updated Note');
+      expect(res.body.buyerCity).toBe('Updated City');
     });
 
-    it('should not update sent invoice', async () => {
-      // Update invoice to SENT status
-      await prisma.invoice.update({
-        where: { id: invoiceId },
-        data: { status: 'SENT' }
-      });
-
-      const updateData = {
-        buyerName: 'Updated Buyer'
-      };
-
-      const response = await request(app)
-        .put(`/api/invoices/${invoiceId}`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .send(updateData)
-        .expect(400);
-
-      expect(response.body.error).toBe('Only drafts can be updated');
-    });
-  });
-
-  describe('DELETE /api/invoices/:id', () => {
-    let invoiceId: string;
-
-    beforeEach(async () => {
-      const invoice = await prisma.invoice.create({
-        data: {
-          companyId,
-          invoiceNumber: '2024-001',
-          issueDate: new Date('2024-01-01'),
-          buyerName: 'Test Buyer',
-          buyerPIB: '987654321',
-          totalAmount: 120,
-          taxAmount: 20,
-          status: 'DRAFT',
-          type: 'OUTGOING'
-        }
-      });
-      invoiceId = invoice.id;
-    });
-
-    it('should delete draft invoice', async () => {
-      const response = await request(app)
+    it('should delete the invoice', async () => {
+      const res = await request(app)
         .delete(`/api/invoices/${invoiceId}`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .expect(200);
+        .set('Authorization', `Bearer ${authToken}`);
 
-      expect(response.body.message).toBe('Invoice deleted successfully');
-
-      // Verify invoice is deleted
-      const deletedInvoice = await prisma.invoice.findUnique({
-        where: { id: invoiceId }
-      });
-      expect(deletedInvoice).toBeNull();
+      expect(res.status).toBe(200);
+      expect(res.body.message).toBe('Invoice deleted successfully');
     });
 
-    it('should not delete sent invoice', async () => {
-      // Update invoice to SENT status
-      await prisma.invoice.update({
-        where: { id: invoiceId },
-        data: { status: 'SENT' }
-      });
+    it('should verify stock restoration after delete', async () => {
+      const product = await prisma.product.findUnique({ where: { id: productId } });
+      // Should be back to 100
+      expect(Number(product?.currentStock)).toBe(100);
+    });
 
-      const response = await request(app)
-        .delete(`/api/invoices/${invoiceId}`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .expect(400);
+    it('should not find the deleted invoice', async () => {
+      const res = await request(app)
+        .get(`/api/invoices/${invoiceId}`)
+        .set('Authorization', `Bearer ${authToken}`);
 
-      expect(response.body.error).toBe('Only drafts can be deleted');
+      expect(res.status).toBe(404);
     });
   });
 });

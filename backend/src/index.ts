@@ -27,6 +27,27 @@ import bulkRoutes from './routes/bulk';
 import partnerRoutes from './routes/partners';
 import productRoutes from './routes/products';
 import paymentRoutes from './routes/payments';
+import accountingRoutes from './routes/accounting';
+import notificationRoutes from './routes/notifications';
+import creditNoteRoutes from './routes/creditNotes';
+import vatRoutes from './routes/vat';
+import bankStatementRoutes from './routes/bankStatements';
+import auditLogRoutes from './routes/auditLogs';
+import importRoutes from './routes/import';
+import recurringInvoiceRoutes from './routes/recurringInvoices';
+import incomingInvoiceRoutes from './routes/incomingInvoices';
+import calculationRoutes from './routes/calculations';
+import fixedAssetRoutes from './routes/fixedAssets';
+import pettyCashRoutes from './routes/pettyCash';
+import travelOrderRoutes from './routes/travelOrders';
+import pppdvRoutes from './routes/pppdv';
+import kpoRoutes from './routes/kpo';
+import compensationRoutes from './routes/compensations';
+import iosRoutes from './routes/ios';
+import exchangeRateRoutes from './routes/exchangeRates';
+import advanceInvoiceRoutes from './routes/advanceInvoices';
+import cashFlowRoutes from './routes/cashFlow';
+import emailNotificationRoutes from './routes/emailNotifications';
 
 // Queue imports
 import { invoiceQueue, webhookQueue, closeAllQueues } from './queue';
@@ -91,7 +112,9 @@ const limiter = rateLimit({
 });
 
 // Apply rate limiting to all API routes
-app.use('/api/', limiter);
+if (config.NODE_ENV !== 'test') {
+  app.use('/api/', limiter);
+}
 
 // Stricter rate limiting for auth routes
 const authLimiter = rateLimit({
@@ -104,7 +127,10 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false
 });
-app.use('/api/auth/', authLimiter);
+
+if (config.NODE_ENV !== 'test') {
+  app.use('/api/auth/', authLimiter);
+}
 
 // Request context and tracing (must be early in the middleware stack)
 app.use(requestContext);
@@ -161,10 +187,31 @@ app.use('/api/payments', authMiddleware, rateLimiters.api, paymentRoutes); // Pa
 app.use('/api/company', authMiddleware, rateLimiters.api, companyRoutes);
 app.use('/api/users', authMiddleware, rateLimiters.api, userRoutes);
 app.use('/api/dashboard', authMiddleware, rateLimiters.dashboard, dashboardRoutes);
-app.use('/api/sef', rateLimiters.sef, sefRoutes); // SEF endpoints with strict limits
+app.use('/api/accounting', authMiddleware, rateLimiters.api, accountingRoutes); // Accounting routes (Chart of Accounts, Journal Entries, Reports)
+app.use('/api/notifications', authMiddleware, rateLimiters.api, notificationRoutes); // User notifications
+app.use('/api/credit-notes', authMiddleware, rateLimiters.api, creditNoteRoutes); // Credit notes (Knjižna odobrenja)
+app.use('/api/vat', authMiddleware, rateLimiters.api, vatRoutes); // VAT/PDV routes
+app.use('/api/bank-statements', authMiddleware, rateLimiters.api, bankStatementRoutes); // Bank statements
+app.use('/api/audit-logs', authMiddleware, rateLimiters.api, auditLogRoutes); // Audit logs
+app.use('/api/import', authMiddleware, rateLimiters.api, importRoutes); // Import routes
+app.use('/api/recurring-invoices', authMiddleware, rateLimiters.api, recurringInvoiceRoutes); // Recurring invoices
+app.use('/api/incoming-invoices', authMiddleware, rateLimiters.api, incomingInvoiceRoutes); // Incoming invoices
+app.use('/api/calculations', authMiddleware, rateLimiters.api, calculationRoutes); // Calculations (Kalkulacije)
+app.use('/api/fixed-assets', authMiddleware, rateLimiters.api, fixedAssetRoutes); // Fixed Assets (Osnovna sredstva)
+app.use('/api/petty-cash', authMiddleware, rateLimiters.api, pettyCashRoutes); // Petty Cash (Blagajna)
+app.use('/api/travel-orders', authMiddleware, rateLimiters.api, travelOrderRoutes); // Travel Orders (Putni Nalozi)
+app.use('/api/pppdv', authMiddleware, rateLimiters.api, pppdvRoutes); // PP-PDV Reports
+app.use('/api/kpo', authMiddleware, rateLimiters.api, kpoRoutes); // KPO Knjiga prometa
+app.use('/api/compensations', authMiddleware, rateLimiters.api, compensationRoutes); // Kompenzacije
+app.use('/api/ios', authMiddleware, rateLimiters.api, iosRoutes); // IOS - Izvod otvorenih stavki
+app.use('/api/exchange-rates', authMiddleware, rateLimiters.api, exchangeRateRoutes); // NBS Kursna lista
+app.use('/api/advance-invoices', authMiddleware, rateLimiters.api, advanceInvoiceRoutes); // Avansne fakture
+app.use('/api/cash-flow', authMiddleware, rateLimiters.api, cashFlowRoutes); // Cash flow prognoza
+app.use('/api/emails', authMiddleware, rateLimiters.api, emailNotificationRoutes); // Email šabloni i slanje
+app.use('/api/sef', authMiddleware, rateLimiters.sef, sefRoutes); // SEF endpoints with strict limits
 app.use('/api/webhooks', webhookRoutes); // Webhook endpoints (no rate limit - verified by signature)
-app.use('/api/exports', exportsRoutes); // Export routes (PDF, Excel)
-app.use('/api/bulk', rateLimiters.api, bulkRoutes); // Bulk operations
+app.use('/api/exports', authMiddleware, rateLimiters.api, exportsRoutes); // Export routes (PDF, Excel)
+app.use('/api/bulk', authMiddleware, rateLimiters.api, bulkRoutes); // Bulk operations
 
 // 404 handler (Express 5 requires named wildcard parameter)
 app.use('/{*splat}', (req, res) => {
@@ -182,52 +229,55 @@ const PORT = config.PORT || 3001;
 // Server instance (will be set after startup checks)
 let server: any = null;
 
-// Perform startup checks before starting server
-performStartupChecksOrExit().then(async () => {
-  server = app.listen(PORT, async () => {
-    logger.info(`🚀 SEF eFakture API Server started on port ${PORT}`);
-    logger.info(`📝 Environment: ${config.NODE_ENV}`);
-    logger.info(`🔗 Frontend URL: ${config.FRONTEND_URL}`);
-    logger.info(`📦 Bull Queue initialized (Invoice & Webhook processing)`);
-    logger.info(`🔴 Redis connection: ${config.redis.host}:${config.redis.port}`);
-  
-    // Initialize idempotency Redis
-    try {
-      await initIdempotencyRedis();
-      logger.info(`🔁 Idempotency Redis initialized`);
-    } catch (error: any) {
-      logger.warn(`⚠️  Idempotency Redis failed, using in-memory fallback`, {
-        error: error.message,
-      });
-    }
+// Only start server if not in test mode
+if (config.NODE_ENV !== 'test') {
+  // Perform startup checks before starting server
+  performStartupChecksOrExit().then(async () => {
+    server = app.listen(PORT, async () => {
+      logger.info(`🚀 SEF eFakture API Server started on port ${PORT}`);
+      logger.info(`📝 Environment: ${config.NODE_ENV}`);
+      logger.info(`🔗 Frontend URL: ${config.FRONTEND_URL}`);
+      logger.info(`📦 Bull Queue initialized (Invoice & Webhook processing)`);
+      logger.info(`🔴 Redis connection: ${config.redis.host}:${config.redis.port}`);
     
-    // Initialize advanced rate limiting Redis
-    try {
-      await initRateLimitRedis();
-      logger.info(`🚦 Advanced rate limiting Redis initialized`);
-    } catch (error: any) {
-      logger.warn(`⚠️  Rate limiting Redis failed, using in-memory fallback`, {
-        error: error.message,
-      });
-    }
-    
-    // Initialize caching Redis
-    try {
-      await initCacheRedis();
-      logger.info(`📦 Caching Redis initialized`);
-    } catch (error: any) {
-      logger.warn(`⚠️  Caching Redis failed, using in-memory fallback`, {
-        error: error.message,
-      });
-    }
-    
-    // Start scheduled jobs (cron)
-    scheduledJobs.start();
+      // Initialize idempotency Redis
+      try {
+        await initIdempotencyRedis();
+        logger.info(`🔁 Idempotency Redis initialized`);
+      } catch (error: any) {
+        logger.warn(`⚠️  Idempotency Redis failed, using in-memory fallback`, {
+          error: error.message,
+        });
+      }
+      
+      // Initialize advanced rate limiting Redis
+      try {
+        await initRateLimitRedis();
+        logger.info(`🚦 Advanced rate limiting Redis initialized`);
+      } catch (error: any) {
+        logger.warn(`⚠️  Rate limiting Redis failed, using in-memory fallback`, {
+          error: error.message,
+        });
+      }
+      
+      // Initialize caching Redis
+      try {
+        await initCacheRedis();
+        logger.info(`📦 Caching Redis initialized`);
+      } catch (error: any) {
+        logger.warn(`⚠️  Caching Redis failed, using in-memory fallback`, {
+          error: error.message,
+        });
+      }
+      
+      // Start scheduled jobs (cron)
+      scheduledJobs.start();
+    });
+  }).catch((error) => {
+    logger.error('Failed to start server', error);
+    process.exit(1);
   });
-}).catch((error) => {
-  logger.error('Failed to start server', error);
-  process.exit(1);
-});
+}
 
 // Graceful shutdown
 const gracefulShutdown = async (signal: string) => {

@@ -8,6 +8,7 @@ import { AuthenticatedRequest } from '../middleware/auth';
 import { AccountService, CreateAccountSchema, UpdateAccountSchema } from '../services/accountService';
 import { JournalService, CreateJournalEntrySchema, UpdateJournalEntrySchema } from '../services/journalService';
 import { FinancialReportsService } from '../services/financialReportsService';
+import { ReportExportService } from '../services/reportExportService';
 import { handleControllerError, Errors } from '../utils/errorHandler';
 import { JournalStatus, JournalType, AccountType } from '@prisma/client';
 
@@ -422,7 +423,21 @@ export class AccountingController {
   static async getBalanceSheet(req: Request, res: Response) {
     try {
       const companyId = getCompanyId(req);
-      const { asOfDate } = req.query;
+      const { asOfDate, format } = req.query;
+
+      if (format === 'pdf') {
+        return ReportExportService.exportBalanceSheetPDF(
+          companyId,
+          asOfDate ? new Date(asOfDate as string) : new Date(),
+          res
+        );
+      } else if (format === 'excel') {
+        return ReportExportService.exportBalanceSheetExcel(
+          companyId,
+          asOfDate ? new Date(asOfDate as string) : new Date(),
+          res
+        );
+      }
 
       const balanceSheet = await FinancialReportsService.generateBalanceSheet(
         companyId,
@@ -442,10 +457,26 @@ export class AccountingController {
   static async getIncomeStatement(req: Request, res: Response) {
     try {
       const companyId = getCompanyId(req);
-      const { fromDate, toDate } = req.query;
+      const { fromDate, toDate, format } = req.query;
 
       if (!fromDate || !toDate) {
         return res.status(400).json({ success: false, error: 'fromDate and toDate are required' });
+      }
+
+      if (format === 'pdf') {
+        return ReportExportService.exportIncomeStatementPDF(
+          companyId,
+          new Date(fromDate as string),
+          new Date(toDate as string),
+          res
+        );
+      } else if (format === 'excel') {
+        return ReportExportService.exportIncomeStatementExcel(
+          companyId,
+          new Date(fromDate as string),
+          new Date(toDate as string),
+          res
+        );
       }
 
       const incomeStatement = await FinancialReportsService.generateIncomeStatement(

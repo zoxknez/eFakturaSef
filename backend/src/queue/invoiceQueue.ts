@@ -50,15 +50,32 @@ invoiceQueue.process(async (job: Job<InvoiceJobData>) => {
   });
 
   try {
-    // Check for night pause
+    // Check for night pause - throw custom error to re-queue with delay
     if (isNightPause()) {
       const delay = getNightPauseDelay();
-      logger.info(`Night pause active, delaying invoice processing`, {
+      logger.info(`Night pause active, will re-queue invoice processing`, {
         invoiceId,
         delayMs: delay,
         resumeAt: new Date(Date.now() + delay).toISOString(),
       });
-      throw new Error('NIGHT_PAUSE'); // Will be retried after delay
+      
+      // Re-add the job with delay instead of retrying immediately
+      // Remove current job and add new one with delay
+      await invoiceQueue.add(job.data, {
+        ...defaultJobOptions,
+        delay,
+        jobId: `invoice-${invoiceId}-nightpause-${Date.now()}`,
+        attempts: defaultJobOptions.attempts, // Reset attempts for fresh job
+      });
+      
+      // Return success to mark current job as complete (new delayed job created)
+      return {
+        success: false,
+        rescheduled: true,
+        invoiceId,
+        reason: 'Night pause active (01:00-06:00)',
+        resumeAt: new Date(Date.now() + delay).toISOString(),
+      };
     }
 
     // Fetch invoice with relations
@@ -242,13 +259,6 @@ invoiceQueue.process(async (job: Job<InvoiceJobData>) => {
           note: errorNote,
         },
       });
-    }
-    
-    // Night pause -> RETRY
-    else if (error.message === 'NIGHT_PAUSE') {
-      logger.info(`Night pause detected, will retry later`, { invoiceId });
-      shouldRetry = true;
-      errorNote = 'Delayed due to night pause (01:00-06:00)';
     }
     
     // Unknown errors -> DO NOT RETRY (safe default)

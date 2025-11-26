@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { logger } from '../utils/logger';
 import { CompanyService, CreateCompanySchema, UpdateCompanySchema } from '../services/companyService';
+import { AuthenticatedRequest } from '../middleware/auth';
+import { getErrorMessage } from '../types/common';
 
 export class CompanyController {
   /**
@@ -8,13 +10,18 @@ export class CompanyController {
    */
   static async get(req: Request, res: Response) {
     try {
-      const userId = (req as any).user?.id;
+      const authReq = req as AuthenticatedRequest;
+      const userId = authReq.user?.id;
+      if (!userId) {
+        return res.status(401).json({ success: false, error: 'Unauthorized' });
+      }
       const company = await CompanyService.getUserCompany(userId);
       return res.json({ success: true, data: company });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
       logger.error('Failed to get company:', error);
-      if (error.message === 'Company not found for this user') {
-        return res.status(404).json({ success: false, error: error.message });
+      if (message === 'Company not found for this user') {
+        return res.status(404).json({ success: false, error: message });
       }
       return res.status(500).json({ success: false, error: 'Failed to fetch company' });
     }
@@ -36,10 +43,11 @@ export class CompanyController {
 
       const company = await CompanyService.createCompany(validationResult.data);
       return res.status(201).json(company);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
       logger.error('Failed to create company:', error);
-      if (error.message.includes('already exists')) {
-        return res.status(409).json({ error: error.message });
+      if (message.includes('already exists')) {
+        return res.status(409).json({ error: message });
       }
       return res.status(500).json({ error: 'Failed to create company' });
     }
@@ -50,7 +58,11 @@ export class CompanyController {
    */
   static async update(req: Request, res: Response) {
     try {
-      const userId = (req as any).user?.id;
+      const authReq = req as AuthenticatedRequest;
+      const userId = authReq.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
       
       // Get user's company ID first
       const company = await CompanyService.getUserCompany(userId);
@@ -66,10 +78,11 @@ export class CompanyController {
 
       const updatedCompany = await CompanyService.updateCompany(company.id, validationResult.data);
       return res.json({ success: true, data: updatedCompany });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
       logger.error('Failed to update company:', error);
-      if (error.message === 'Company not found' || error.message === 'Company not found for this user') {
-        return res.status(404).json({ error: error.message });
+      if (message === 'Company not found' || message === 'Company not found for this user') {
+        return res.status(404).json({ error: message });
       }
       return res.status(500).json({ error: 'Failed to update company' });
     }

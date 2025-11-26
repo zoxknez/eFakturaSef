@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
+// Kontrola za demo kredencijale - isključiti u produkciji
+const SHOW_DEMO_CREDENTIALS = import.meta.env.DEV || import.meta.env.VITE_SHOW_DEMO === 'true';
+
 export const Login: React.FC = () => {
-  const [email, setEmail] = useState('admin@demo-preduzece.rs');
-  const [password, setPassword] = useState('admin123');
+  const [email, setEmail] = useState(SHOW_DEMO_CREDENTIALS ? 'admin@demo-preduzece.rs' : '');
+  const [password, setPassword] = useState(SHOW_DEMO_CREDENTIALS ? 'admin123' : '');
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const { login } = useAuth();
@@ -55,7 +59,8 @@ export const Login: React.FC = () => {
             </p>
           </div>
 
-          {/* Demo credentials info */}
+          {/* Demo credentials info - samo u dev modu */}
+          {SHOW_DEMO_CREDENTIALS && (
           <div className="mb-6 animate-fadeIn" style={{ animationDelay: '100ms' }}>
             <div className="relative bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200/50 rounded-2xl p-4 overflow-hidden">
               <div className="absolute top-0 right-0 w-20 h-20 bg-blue-200/30 rounded-full blur-2xl"></div>
@@ -77,6 +82,7 @@ export const Login: React.FC = () => {
               </div>
             </div>
           </div>
+          )}
 
           {/* Login Form */}
           <form className="space-y-5 animate-fadeIn" style={{ animationDelay: '200ms' }} onSubmit={handleSubmit}>
@@ -152,9 +158,9 @@ export const Login: React.FC = () => {
                   Zapamti me
                 </span>
               </label>
-              <a href="#" className="text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors">
+              <Link to="/forgot-password" className="text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors">
                 Zaboravili ste lozinku?
-              </a>
+              </Link>
             </div>
 
             <button
@@ -182,7 +188,7 @@ export const Login: React.FC = () => {
           <div className="mt-8 text-center animate-fadeIn" style={{ animationDelay: '300ms' }}>
             <p className="text-sm text-gray-500">
               Nemate nalog?{' '}
-              <a href="#" className="font-semibold text-blue-600 hover:text-blue-700 transition-colors">
+              <a href="mailto:podrska@example.com" className="font-semibold text-blue-600 hover:text-blue-700 transition-colors">
                 Kontaktirajte administratora
               </a>
             </p>

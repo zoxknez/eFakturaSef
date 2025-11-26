@@ -101,7 +101,7 @@ if (config.NODE_ENV === 'production') {
 
 // Enhanced logging methods
 export const auditLogger = {
-  userAction: (userId: string, action: string, details: any = {}) => {
+  userAction: (userId: string, action: string, details: Record<string, unknown> = {}) => {
     logger.info('User action', {
       type: 'audit',
       userId,
@@ -111,7 +111,7 @@ export const auditLogger = {
     });
   },
 
-  invoiceAction: (invoiceId: string, action: string, userId: string, details: any = {}) => {
+  invoiceAction: (invoiceId: string, action: string, userId: string, details: Record<string, unknown> = {}) => {
     logger.info('Invoice action', {
       type: 'audit',
       invoiceId,
@@ -122,7 +122,7 @@ export const auditLogger = {
     });
   },
 
-  sefAction: (action: string, details: any = {}) => {
+  sefAction: (action: string, details: Record<string, unknown> = {}) => {
     logger.info('SEF action', {
       type: 'audit',
       action,
@@ -131,7 +131,7 @@ export const auditLogger = {
     });
   },
 
-  securityEvent: (event: string, details: any = {}) => {
+  securityEvent: (event: string, details: Record<string, unknown> = {}) => {
     logger.warn('Security event', {
       type: 'security',
       event,
@@ -177,7 +177,7 @@ export const performanceLogger = {
 
 // Error tracking
 export const errorTracker = {
-  trackError: (error: Error, context: any = {}) => {
+  trackError: (error: Error, context: Record<string, unknown> = {}) => {
     logger.error('Application error', {
       type: 'error',
       message: error.message,
@@ -187,7 +187,7 @@ export const errorTracker = {
     });
   },
 
-  trackSEFError: (error: Error, sefId?: string, context: any = {}) => {
+  trackSEFError: (error: Error, sefId?: string, context: Record<string, unknown> = {}) => {
     logger.error('SEF integration error', {
       type: 'error',
       message: error.message,

@@ -24,7 +24,9 @@ class ApiClient {
   private baseURL: string;
 
   constructor() {
-    this.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+    // Remove trailing slash and /api suffix to prevent double /api/api issues
+    this.baseURL = apiUrl.replace(/\/$/, '').replace(/\/api$/, '');
     
     this.client = axios.create({
       baseURL: this.baseURL,
@@ -94,38 +96,44 @@ class ApiClient {
     try {
       const response: AxiosResponse<ApiResponse<T>> = await this.client(config);
       return response.data;
-    } catch (error: any) {
-      if (error.response) {
-        return {
-          success: false,
-          error: error.response.data?.error || 'Request failed',
-          details: error.response.data?.details
-        };
-      } else if (error.request) {
-        return {
-          success: false,
-          error: 'Network error - please check your connection'
-        };
-      } else {
-        return {
-          success: false,
-          error: error.message || 'An unexpected error occurred'
-        };
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error)) {
+        if (error.response) {
+          return {
+            success: false,
+            error: error.response.data?.error || 'Request failed',
+            details: error.response.data?.details
+          };
+        } else if (error.request) {
+          return {
+            success: false,
+            error: 'Network error - please check your connection'
+          };
+        }
       }
+      
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'An unexpected error occurred'
+      };
     }
   }
 
   // Generic HTTP methods
-  async get<T = any>(url: string, params?: any): Promise<ApiResponse<T>> {
-    return this.request({ method: 'GET', url, params });
+  async get<T = any>(url: string, params?: any, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
+    return this.request({ method: 'GET', url, params, ...config });
   }
 
-  async post<T = any>(url: string, data?: any): Promise<ApiResponse<T>> {
-    return this.request({ method: 'POST', url, data });
+  async post<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
+    return this.request({ method: 'POST', url, data, ...config });
   }
 
-  async put<T = any>(url: string, data?: any): Promise<ApiResponse<T>> {
-    return this.request({ method: 'PUT', url, data });
+  async put<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
+    return this.request({ method: 'PUT', url, data, ...config });
+  }
+
+  async patch<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
+    return this.request({ method: 'PATCH', url, data, ...config });
   }
 
   async delete<T = any>(url: string): Promise<ApiResponse<T>> {
@@ -431,6 +439,20 @@ class ApiClient {
     });
   }
 
+  async getInventoryHistory(id: string, params?: {
+    page?: number;
+    limit?: number;
+    startDate?: string;
+    endDate?: string;
+    type?: string;
+  }): Promise<ApiResponse<PaginatedResponse<any>>> {
+    return this.request({
+      method: 'GET',
+      url: `/api/products/${id}/inventory-history`,
+      params
+    });
+  }
+
   // Payment methods
   async getPayments(params?: {
     page?: number;
@@ -491,6 +513,62 @@ class ApiClient {
       method: 'GET',
       url: '/api/payments/stats',
       params
+    });
+  }
+
+  // Incoming Invoice methods
+  async getIncomingInvoices(params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: string;
+    paymentStatus?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    supplierPIB?: string;
+  }): Promise<ApiResponse<PaginatedResponse<any>>> {
+    return this.request({
+      method: 'GET',
+      url: '/api/incoming-invoices',
+      params
+    });
+  }
+
+  async getIncomingInvoice(id: string): Promise<ApiResponse<any>> {
+    return this.request({
+      method: 'GET',
+      url: `/api/incoming-invoices/${id}`
+    });
+  }
+
+  async createIncomingInvoice(data: any): Promise<ApiResponse<any>> {
+    return this.request({
+      method: 'POST',
+      url: '/api/incoming-invoices',
+      data
+    });
+  }
+
+  async updateIncomingInvoiceStatus(id: string, status: string, reason?: string): Promise<ApiResponse<any>> {
+    return this.request({
+      method: 'PATCH',
+      url: `/api/incoming-invoices/${id}/status`,
+      data: { status, reason }
+    });
+  }
+
+  async syncIncomingInvoices(): Promise<ApiResponse<any>> {
+    return this.request({
+      method: 'POST',
+      url: '/api/incoming-invoices/sync'
+    });
+  }
+
+  async mapIncomingInvoiceProduct(id: string, lineId: string, productId: string | null): Promise<ApiResponse<any>> {
+    return this.request({
+      method: 'POST',
+      url: `/api/incoming-invoices/${id}/map-product`,
+      data: { lineId, productId }
     });
   }
 }

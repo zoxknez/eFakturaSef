@@ -6,6 +6,7 @@ import { invoiceQueue, InvoiceJobData } from './invoiceQueue';
 import { webhookQueue, WebhookJobData } from './webhookQueue';
 import { updateQueueSize } from '../middleware/metrics';
 import { isNightPause } from './config';
+import { RecurringInvoiceService } from '../services/recurringInvoiceService';
 
 /**
  * Job queue configuration constants
@@ -264,6 +265,28 @@ export const cleanupWebhookLogsSchedule = cron.schedule(
 );
 
 /**
+ * Process recurring invoices
+ * Runs daily at 1 AM
+ */
+export const processRecurringInvoicesSchedule = cron.schedule(
+  '0 1 * * *',
+  async () => {
+    try {
+      logger.info('Running scheduled job: process recurring invoices');
+      const results = await RecurringInvoiceService.processDueInvoices();
+      logger.info('Recurring invoices processed', results);
+    } catch (error: any) {
+      logger.error('Failed to process recurring invoices', {
+        error: error.message,
+      });
+    }
+  },
+  {
+    scheduled: false,
+  }
+);
+
+/**
  * Start all scheduled jobs
  */
 export function startScheduledJobs(): void {
@@ -272,6 +295,7 @@ export function startScheduledJobs(): void {
   cleanupOldJobsSchedule.start();
   deadLetterQueueSchedule.start();
   cleanupWebhookLogsSchedule.start();
+  processRecurringInvoicesSchedule.start();
   
   logger.info('✅ Scheduled jobs started', {
     jobs: [
@@ -280,6 +304,7 @@ export function startScheduledJobs(): void {
       'cleanupOldJobs (daily 3 AM)',
       'deadLetterQueue (hourly)',
       'cleanupWebhookLogs (daily 2 AM)',
+      'processRecurringInvoices (daily 1 AM)',
     ],
   });
 }
@@ -293,6 +318,7 @@ export function stopScheduledJobs(): void {
   cleanupOldJobsSchedule.stop();
   deadLetterQueueSchedule.stop();
   cleanupWebhookLogsSchedule.stop();
+  processRecurringInvoicesSchedule.stop();
   
   logger.info('Scheduled jobs stopped');
 }

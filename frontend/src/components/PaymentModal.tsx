@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import api from '../services/api';
 
+type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'CARD' | 'CHECK' | 'COMPENSATION' | 'OTHER';
+
 interface PaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -24,7 +26,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     amount: '',
-    method: 'BANK_TRANSFER' as 'CASH' | 'BANK_TRANSFER' | 'CARD' | 'CHECK' | 'COMPENSATION' | 'OTHER',
+    method: 'BANK_TRANSFER' as PaymentMethod,
     paymentDate: new Date().toISOString().split('T')[0],
     bankAccount: '',
     reference: '',
@@ -181,7 +183,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                 required
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 value={formData.method}
-                onChange={(e) => setFormData({ ...formData, method: e.target.value as any })}
+                onChange={(e) => setFormData({ ...formData, method: e.target.value as PaymentMethod })}
               >
                 <option value="BANK_TRANSFER">{getPaymentMethodLabel('BANK_TRANSFER')}</option>
                 <option value="CASH">{getPaymentMethodLabel('CASH')}</option>

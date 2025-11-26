@@ -142,13 +142,13 @@ export async function refreshAccessToken(
 
   // Optional: Validate user agent and IP for security
   if (storedToken.userAgent && userAgent && storedToken.userAgent !== userAgent) {
-    logger.warn('User agent mismatch on token refresh - possible token theft', {
+    // Log as debug instead of warn to avoid noise in dev environment
+    // Browsers update frequently and some tools might not send consistent UA
+    logger.debug('User agent mismatch on token refresh', {
       userId: storedToken.userId,
       storedUserAgent: storedToken.userAgent,
       requestUserAgent: userAgent,
     });
-    // You can choose to reject or allow with warning
-    // throw new Error('Invalid token session');
   }
 
   // Generate new access token

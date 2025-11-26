@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3001',
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3001/api',
   headers: { 'Content-Type': 'application/json' }
 });
 
@@ -158,8 +158,12 @@ export default function CompanyProfile() {
       toast.success('Podaci kompanije uspešno ažurirani');
       setIsEditing(false);
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Greška pri ažuriranju');
+    onError: (error: unknown) => {
+      if (axios.isAxiosError(error)) {
+        toast.error(error.response?.data?.message || 'Greška pri ažuriranju');
+      } else {
+        toast.error('Greška pri ažuriranju');
+      }
     }
   });
 
@@ -173,8 +177,12 @@ export default function CompanyProfile() {
       queryClient.invalidateQueries({ queryKey: ['company'] });
       toast.success('Podešavanja uspešno sačuvana');
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Greška pri čuvanju podešavanja');
+    onError: (error: unknown) => {
+      if (axios.isAxiosError(error)) {
+        toast.error(error.response?.data?.message || 'Greška pri čuvanju podešavanja');
+      } else {
+        toast.error('Greška pri čuvanju podešavanja');
+      }
     }
   });
 
@@ -190,8 +198,12 @@ export default function CompanyProfile() {
       setShowUserModal(false);
       setUserForm({ email: '', firstName: '', lastName: '', role: 'OPERATOR', password: '' });
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Greška pri kreiranju korisnika');
+    onError: (error: unknown) => {
+      if (axios.isAxiosError(error)) {
+        toast.error(error.response?.data?.message || 'Greška pri kreiranju korisnika');
+      } else {
+        toast.error('Greška pri kreiranju korisnika');
+      }
     }
   });
 
@@ -205,8 +217,12 @@ export default function CompanyProfile() {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       toast.success('Status korisnika ažuriran');
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Greška');
+    onError: (error: unknown) => {
+      if (axios.isAxiosError(error)) {
+        toast.error(error.response?.data?.message || 'Greška');
+      } else {
+        toast.error('Greška');
+      }
     }
   });
 
@@ -216,7 +232,7 @@ export default function CompanyProfile() {
       const response = await apiClient.post('/api/sef/test-connection');
       return response.data;
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: { success: boolean; message?: string }) => {
       if (data.success) {
         toast.success('Konekcija sa SEF-om uspešna!');
       } else {

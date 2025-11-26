@@ -80,7 +80,7 @@ export function initSentry(): void {
  * Capture exception with context
  * Currently disabled - install Sentry packages to enable
  */
-export function captureException(error: Error, context?: Record<string, any>): string {
+export function captureException(error: Error, context?: Record<string, unknown>): string {
   console.error('Error captured (Sentry disabled):', error, context);
   return '';
 }

@@ -3,6 +3,7 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma';
 import { logger } from '../utils/logger';
 
@@ -27,18 +28,18 @@ export async function getAuditLogs(req: Request, res: Response, next: NextFuncti
     const skip = (pageNum - 1) * size;
 
     // Build where clause
-    const where: any = {};
+    const where: Prisma.AuditLogWhereInput = {};
 
     if (action) {
-      where.action = action;
+      where.action = action as string;
     }
 
     if (entityType) {
-      where.entityType = entityType;
+      where.entityType = entityType as string;
     }
 
     if (userId) {
-      where.userId = userId;
+      where.userId = userId as string;
     }
 
     if (dateFrom || dateTo) {
@@ -239,10 +240,10 @@ export async function exportAuditLogs(req: Request, res: Response, next: NextFun
   try {
     const { dateFrom, dateTo, action, entityType } = req.query;
 
-    const where: any = {};
+    const where: Prisma.AuditLogWhereInput = {};
 
-    if (action) where.action = action;
-    if (entityType) where.entityType = entityType;
+    if (action) where.action = action as string;
+    if (entityType) where.entityType = entityType as string;
     if (dateFrom || dateTo) {
       where.createdAt = {};
       if (dateFrom) where.createdAt.gte = new Date(dateFrom as string);

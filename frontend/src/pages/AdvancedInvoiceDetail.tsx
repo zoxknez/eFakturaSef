@@ -237,9 +237,13 @@ export const AdvancedInvoiceDetail: React.FC = () => {
       } else {
         setError(response?.error || 'Greška pri učitavanju fakture.');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       logger.error('Error fetching invoice', err);
-      setError(err?.message || 'Greška pri učitavanju fakture.');
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('Greška pri učitavanju fakture.');
+      }
     } finally {
       setLoading(false);
     }

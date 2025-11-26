@@ -525,6 +525,46 @@ export class VATService {
 
     return { created, updated, deleted: deletedRecords.count };
   }
+
+  /**
+   * Get VAT records for a date range (for PP-PDV form)
+   */
+  static async getVATRecordsForPeriod(
+    companyId: string,
+    fromDate: Date,
+    toDate: Date
+  ) {
+    const records = await prisma.vATRecord.findMany({
+      where: {
+        companyId,
+        documentDate: {
+          gte: fromDate,
+          lte: toDate,
+        },
+      },
+      orderBy: { documentDate: 'asc' },
+    });
+
+    // Map to a format suitable for PP-PDV calculations
+    return records.map(record => ({
+      id: record.id,
+      type: record.type,
+      documentNumber: record.documentNumber,
+      documentDate: record.documentDate,
+      partnerName: record.partnerName,
+      partnerPIB: record.partnerPIB,
+      vatRate: 20, // Primary rate
+      baseAmount: Number(record.taxBase20) + Number(record.taxBase10),
+      vatAmount: Number(record.vatAmount20) + Number(record.vatAmount10),
+      // Detailed breakdown
+      taxBase20: Number(record.taxBase20),
+      vatAmount20: Number(record.vatAmount20),
+      taxBase10: Number(record.taxBase10),
+      vatAmount10: Number(record.vatAmount10),
+      exemptAmount: Number(record.exemptAmount),
+      totalAmount: Number(record.totalAmount),
+    }));
+  }
 }
 
 export default VATService;

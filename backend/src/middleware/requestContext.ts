@@ -132,7 +132,7 @@ export const requestContext = (req: Request, res: Response, next: NextFunction) 
     res.on('finish', () => {
       if (res.statusCode >= 400) {
         const duration = Date.now() - startTime;
-        logger.warn('Request failed', {
+        logger.warn(`Request failed: ${req.method} ${req.path} ${res.statusCode}`, {
           requestId,
           correlationId,
           method: req.method,

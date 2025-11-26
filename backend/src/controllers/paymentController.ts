@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { logger } from '../utils/logger';
 import { PaymentService, CreatePaymentSchema, ListPaymentsQuerySchema } from '../services/paymentService';
+import { AuthenticatedRequest } from '../middleware/auth';
+import { getErrorMessage } from '../types/common';
 
 export class PaymentController {
   /**
@@ -9,7 +11,8 @@ export class PaymentController {
    */
   static async create(req: Request, res: Response) {
     try {
-      const user = (req as any).user;
+      const authReq = req as AuthenticatedRequest;
+      const user = authReq.user;
       if (!user?.companyId) {
         return res.status(403).json({ error: 'User not associated with a company' });
       }
@@ -25,13 +28,14 @@ export class PaymentController {
 
       const result = await PaymentService.createPayment(user.companyId, validationResult.data, user.id);
       return res.status(201).json(result);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
       logger.error('Failed to record payment:', error);
-      if (error.message === 'Invoice not found') {
-        return res.status(404).json({ error: error.message });
+      if (message === 'Invoice not found') {
+        return res.status(404).json({ error: message });
       }
-      if (error.message.includes('exceeds remaining balance')) {
-        return res.status(400).json({ error: error.message });
+      if (message.includes('exceeds remaining balance')) {
+        return res.status(400).json({ error: message });
       }
       return res.status(500).json({ error: 'Failed to record payment' });
     }
@@ -43,7 +47,8 @@ export class PaymentController {
    */
   static async list(req: Request, res: Response) {
     try {
-      const user = (req as any).user;
+      const authReq = req as AuthenticatedRequest;
+      const user = authReq.user;
       if (!user?.companyId) {
         return res.status(403).json({ error: 'User not associated with a company' });
       }
@@ -72,7 +77,7 @@ export class PaymentController {
       });
 
       return res.json(result);
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error('Failed to list payments:', error);
       return res.status(500).json({ error: 'Failed to fetch payments' });
     }
@@ -84,7 +89,8 @@ export class PaymentController {
    */
   static async get(req: Request, res: Response) {
     try {
-      const user = (req as any).user;
+      const authReq = req as AuthenticatedRequest;
+      const user = authReq.user;
       const id = req.params.id as string;
 
       if (!user?.companyId) {
@@ -93,10 +99,11 @@ export class PaymentController {
 
       const payment = await PaymentService.getPayment(id, user.companyId);
       return res.json(payment);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
       logger.error('Failed to get payment:', error);
-      if (error.message === 'Payment not found') {
-        return res.status(404).json({ error: error.message });
+      if (message === 'Payment not found') {
+        return res.status(404).json({ error: message });
       }
       return res.status(500).json({ error: 'Failed to fetch payment' });
     }
@@ -108,7 +115,8 @@ export class PaymentController {
    */
   static async cancel(req: Request, res: Response) {
     try {
-      const user = (req as any).user;
+      const authReq = req as AuthenticatedRequest;
+      const user = authReq.user;
       const id = req.params.id as string;
 
       if (!user?.companyId) {
@@ -117,13 +125,14 @@ export class PaymentController {
 
       const result = await PaymentService.cancelPayment(id, user.companyId, user.id);
       return res.json(result);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
       logger.error('Failed to cancel payment:', error);
-      if (error.message === 'Payment not found') {
-        return res.status(404).json({ error: error.message });
+      if (message === 'Payment not found') {
+        return res.status(404).json({ error: message });
       }
-      if (error.message === 'Payment is already cancelled') {
-        return res.status(400).json({ error: error.message });
+      if (message === 'Payment is already cancelled') {
+        return res.status(400).json({ error: message });
       }
       return res.status(500).json({ error: 'Failed to cancel payment' });
     }
@@ -135,7 +144,8 @@ export class PaymentController {
    */
   static async stats(req: Request, res: Response) {
     try {
-      const user = (req as any).user;
+      const authReq = req as AuthenticatedRequest;
+      const user = authReq.user;
       const { dateFrom, dateTo } = req.query;
 
       if (!user?.companyId) {
@@ -149,7 +159,7 @@ export class PaymentController {
       );
       
       return res.json(stats);
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error('Failed to get payment stats:', error);
       return res.status(500).json({ error: 'Failed to fetch payment statistics' });
     }
@@ -161,7 +171,8 @@ export class PaymentController {
    */
   static async getInvoicePayments(req: Request, res: Response) {
     try {
-      const user = (req as any).user;
+      const authReq = req as AuthenticatedRequest;
+      const user = authReq.user;
       const invoiceId = req.params.invoiceId as string;
 
       if (!user?.companyId) {
@@ -170,10 +181,11 @@ export class PaymentController {
 
       const payments = await PaymentService.getInvoicePayments(invoiceId, user.companyId);
       return res.json(payments);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
       logger.error('Failed to get invoice payments:', error);
-      if (error.message === 'Invoice not found') {
-        return res.status(404).json({ error: error.message });
+      if (message === 'Invoice not found') {
+        return res.status(404).json({ error: message });
       }
       return res.status(500).json({ error: 'Failed to fetch invoice payments' });
     }

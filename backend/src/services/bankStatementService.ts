@@ -1,4 +1,4 @@
-import { PrismaClient, BankStatement, BankTransaction, Prisma, BankStatementStatus, BankTransactionType, MatchStatus, PaymentStatus, InvoiceStatus } from '@prisma/client';
+import { PrismaClient, BankStatement, BankTransaction, Prisma, BankStatementStatus, BankTransactionType, MatchStatus, PaymentStatus, InvoiceStatus, InvoicePaymentStatus } from '@prisma/client';
 import { AppError } from '../utils/errorHandler';
 import { logger } from '../utils/logger';
 import * as xml2js from 'xml2js';
@@ -631,8 +631,13 @@ export class BankStatementService {
     const paidAmount = Number(payments._sum?.amount) || 0;
     
     let newStatus = invoice.status;
+    let paymentStatus = invoice.paymentStatus;
+
     if (paidAmount >= Number(invoice.totalAmount)) {
-      newStatus = InvoiceStatus.ACCEPTED;
+      // newStatus = InvoiceStatus.ACCEPTED; // Don't change SEF status based on payment
+      paymentStatus = InvoicePaymentStatus.PAID;
+    } else if (paidAmount > 0) {
+      paymentStatus = InvoicePaymentStatus.PARTIALLY_PAID;
     }
     
     await prisma.invoice.update({
@@ -640,6 +645,7 @@ export class BankStatementService {
       data: {
         paidAmount: new Prisma.Decimal(paidAmount),
         status: newStatus,
+        paymentStatus: paymentStatus,
       },
     });
     

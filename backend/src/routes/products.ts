@@ -52,6 +52,14 @@ router.get('/:id', ProductController.get);
 router.get('/:id/stats', ProductController.stats);
 
 /**
+ * @route   GET /api/products/:id/inventory-history
+ * @desc    Get inventory transaction history for a product
+ * @access  Private
+ * @query   page, limit, startDate, endDate, type
+ */
+router.get('/:id/inventory-history', ProductController.getInventoryHistory);
+
+/**
  * @route   POST /api/products
  * @desc    Create new product
  * @access  Private

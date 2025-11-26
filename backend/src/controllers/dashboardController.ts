@@ -1,13 +1,7 @@
 import { Request, Response } from 'express';
 import { logger } from '../utils/logger';
 import { DashboardService } from '../services/dashboardService';
-
-interface AuthRequest extends Request {
-  user?: {
-    id: string;
-    companyId: string;
-  };
-}
+import { AuthenticatedRequest } from '../middleware/auth';
 
 export class DashboardController {
   /**
@@ -16,7 +10,8 @@ export class DashboardController {
    */
   static async getOverview(req: Request, res: Response) {
     try {
-      const companyId = (req as AuthRequest).user?.companyId;
+      const authReq = req as AuthenticatedRequest;
+      const companyId = authReq.user?.companyId;
 
       if (!companyId) {
         return res.status(401).json({ success: false, error: 'Unauthorized' });
@@ -24,7 +19,7 @@ export class DashboardController {
 
       const overview = await DashboardService.getOverview(companyId);
       return res.json({ success: true, data: overview });
-    } catch (error: any) {
+    } catch (error) {
       logger.error('[Dashboard Overview Error]', error);
       return res.status(500).json({
         success: false,
@@ -39,7 +34,8 @@ export class DashboardController {
    */
   static async getCharts(req: Request, res: Response) {
     try {
-      const companyId = (req as AuthRequest).user?.companyId;
+      const authReq = req as AuthenticatedRequest;
+      const companyId = authReq.user?.companyId;
 
       if (!companyId) {
         return res.status(401).json({ success: false, error: 'Unauthorized' });
@@ -47,7 +43,7 @@ export class DashboardController {
 
       const charts = await DashboardService.getCharts(companyId);
       return res.json({ success: true, data: charts });
-    } catch (error: any) {
+    } catch (error) {
       logger.error('[Dashboard Charts Error]', error);
       return res.status(500).json({
         success: false,
@@ -62,7 +58,8 @@ export class DashboardController {
    */
   static async getRecent(req: Request, res: Response) {
     try {
-      const companyId = (req as AuthRequest).user?.companyId;
+      const authReq = req as AuthenticatedRequest;
+      const companyId = authReq.user?.companyId;
       const { limit = 10 } = req.query;
 
       if (!companyId) {
@@ -71,7 +68,7 @@ export class DashboardController {
 
       const recent = await DashboardService.getRecent(companyId, Number(limit));
       return res.json({ success: true, data: recent });
-    } catch (error: any) {
+    } catch (error) {
       logger.error('[Recent Invoices Error]', error);
       return res.status(500).json({
         success: false,
@@ -86,7 +83,8 @@ export class DashboardController {
    */
   static async getAlerts(req: Request, res: Response) {
     try {
-      const companyId = (req as AuthRequest).user?.companyId;
+      const authReq = req as AuthenticatedRequest;
+      const companyId = authReq.user?.companyId;
 
       if (!companyId) {
         return res.status(401).json({ success: false, error: 'Unauthorized' });
@@ -94,7 +92,7 @@ export class DashboardController {
 
       const alerts = await DashboardService.getAlerts(companyId);
       return res.json({ success: true, data: alerts });
-    } catch (error: any) {
+    } catch (error) {
       logger.error('[Dashboard Alerts Error]', error);
       return res.status(500).json({
         success: false,

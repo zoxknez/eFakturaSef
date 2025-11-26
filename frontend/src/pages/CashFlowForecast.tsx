@@ -375,7 +375,7 @@ const CashFlowForecast: React.FC = () => {
             <select
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               value={viewMode}
-              onChange={(e) => setViewMode(e.target.value as any)}
+              onChange={(e) => setViewMode(e.target.value as 'daily' | 'weekly' | 'monthly')}
             >
               <option value="daily">Dnevni</option>
               <option value="weekly">Nedeljni</option>
@@ -458,20 +458,24 @@ const CashFlowForecast: React.FC = () => {
               />
             )}
 
-            {/* Balance line */}
-            <path
-              d={projections.map((p, i) => `${i === 0 ? 'M' : 'L'} ${i * 30 + 15} ${getY(p.closingBalance)}`).join(' ')}
-              fill="none"
-              stroke="#3b82f6"
-              strokeWidth="3"
-            />
+            {/* Balance line - only render if we have data */}
+            {projections.length > 0 && (
+              <path
+                d={projections.map((p, i) => `${i === 0 ? 'M' : 'L'} ${i * 30 + 15} ${getY(p.closingBalance)}`).join(' ')}
+                fill="none"
+                stroke="#3b82f6"
+                strokeWidth="3"
+              />
+            )}
 
-            {/* Area under balance */}
-            <path
-              d={`${projections.map((p, i) => `${i === 0 ? 'M' : 'L'} ${i * 30 + 15} ${getY(p.closingBalance)}`).join(' ')} L ${(projections.length - 1) * 30 + 15} ${chartHeight} L 15 ${chartHeight} Z`}
-              fill="url(#balanceGradient)"
-              opacity="0.3"
-            />
+            {/* Area under balance - only render if we have data */}
+            {projections.length > 0 && (
+              <path
+                d={`${projections.map((p, i) => `${i === 0 ? 'M' : 'L'} ${i * 30 + 15} ${getY(p.closingBalance)}`).join(' ')} L ${(projections.length - 1) * 30 + 15} ${chartHeight} L 15 ${chartHeight} Z`}
+                fill="url(#balanceGradient)"
+                opacity="0.3"
+              />
+            )}
 
             {/* Inflow bars */}
             {projections.map((p, i) => (

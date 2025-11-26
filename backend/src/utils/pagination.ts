@@ -1,5 +1,12 @@
 // Cursor-based pagination utilities
-// import { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { RawPaginationParams } from '../types/common';
+
+// Type for Prisma where conditions
+type WhereCondition = Prisma.JsonObject | Record<string, unknown> | undefined;
+
+// Type for order direction
+type OrderDirection = 'asc' | 'desc';
 
 /**
  * Allowed sort fields for different models
@@ -65,11 +72,11 @@ function validateOrderField(orderField: string | undefined, allowedFields: reado
  * @param modelType - Model type for field validation (e.g., 'invoice', 'partner')
  */
 export function parseCursorPagination(
-  params: any, 
+  params: RawPaginationParams, 
   modelType: keyof typeof ALLOWED_SORT_FIELDS = 'default'
 ): CursorPaginationParams {
-  const limit = Math.min(100, Math.max(1, parseInt(params.limit) || 20));
-  const orderBy = params.orderBy === 'asc' ? 'asc' : 'desc';
+  const limit = Math.min(100, Math.max(1, parseInt(params.limit || '20') || 20));
+  const orderBy: OrderDirection = params.orderBy === 'asc' ? 'asc' : 'desc';
   const allowedFields = ALLOWED_SORT_FIELDS[modelType] || ALLOWED_SORT_FIELDS.default;
   const orderField = validateOrderField(params.orderField, allowedFields);
   const cursor = params.cursor || undefined;
@@ -82,13 +89,13 @@ export function parseCursorPagination(
  */
 export function buildCursorQuery<_T>(
   params: CursorPaginationParams,
-  where?: any
+  where?: WhereCondition
 ): {
-  where?: any;
+  where?: WhereCondition;
   take: number;
   skip?: number;
-  cursor?: any;
-  orderBy: any;
+  cursor?: { id: string };
+  orderBy: Record<string, OrderDirection>;
 } {
   const { cursor, limit = 20, orderBy = 'desc', orderField = 'createdAt' } = params;
 
@@ -96,7 +103,13 @@ export function buildCursorQuery<_T>(
   const take = limit + 1;
 
   // Base query
-  const query: any = {
+  const query: {
+    where?: WhereCondition;
+    take: number;
+    skip?: number;
+    cursor?: { id: string };
+    orderBy: Record<string, OrderDirection>;
+  } = {
     where,
     take,
     orderBy: { [orderField]: orderBy },
@@ -170,12 +183,12 @@ export interface OffsetPaginationResult<T> {
  * @param modelType - Model type for field validation (e.g., 'invoice', 'partner')
  */
 export function parseOffsetPagination(
-  params: any,
+  params: RawPaginationParams,
   modelType: keyof typeof ALLOWED_SORT_FIELDS = 'default'
 ): OffsetPaginationParams {
-  const page = Math.max(1, parseInt(params.page) || 1);
-  const limit = Math.min(100, Math.max(1, parseInt(params.limit) || 20));
-  const orderBy = params.orderBy === 'asc' ? 'asc' : 'desc';
+  const page = Math.max(1, parseInt(params.page || '1') || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(params.limit || '20') || 20));
+  const orderBy: OrderDirection = params.orderBy === 'asc' ? 'asc' : 'desc';
   const allowedFields = ALLOWED_SORT_FIELDS[modelType] || ALLOWED_SORT_FIELDS.default;
   const orderField = validateOrderField(params.orderField, allowedFields);
 
@@ -187,12 +200,12 @@ export function parseOffsetPagination(
  */
 export function buildOffsetQuery(
   params: OffsetPaginationParams,
-  where?: any
+  where?: WhereCondition
 ): {
-  where?: any;
+  where?: WhereCondition;
   take: number;
   skip: number;
-  orderBy: any;
+  orderBy: Record<string, OrderDirection>;
 } {
   const { page = 1, limit = 20, orderBy = 'desc', orderField = 'createdAt' } = params;
   const skip = (page - 1) * limit;
@@ -237,7 +250,7 @@ export function processOffsetResults<T>(
 export function createSearchFilter(
   searchTerm: string | undefined,
   fields: string[]
-): any {
+): Record<string, unknown> | undefined {
   if (!searchTerm || !searchTerm.trim()) {
     return undefined;
   }
@@ -258,8 +271,8 @@ export function createSearchFilter(
 /**
  * Combine multiple filters with AND
  */
-export function combineFilters(...filters: (any | undefined)[]): any {
-  const validFilters = filters.filter((f) => f !== undefined && f !== null);
+export function combineFilters(...filters: (Record<string, unknown> | undefined)[]): Record<string, unknown> | undefined {
+  const validFilters = filters.filter((f): f is Record<string, unknown> => f !== undefined && f !== null);
 
   if (validFilters.length === 0) return undefined;
   if (validFilters.length === 1) return validFilters[0];
@@ -274,12 +287,12 @@ export function createDateRangeFilter(
   field: string,
   dateFrom?: string,
   dateTo?: string
-): any {
+): Record<string, unknown> | undefined {
   if (!dateFrom && !dateTo) {
     return undefined;
   }
 
-  const filter: any = {};
+  const filter: { gte?: Date; lte?: Date } = {};
 
   if (dateFrom) {
     filter.gte = new Date(dateFrom);
@@ -301,12 +314,12 @@ export function createAmountRangeFilter(
   field: string,
   min?: number,
   max?: number
-): any {
+): Record<string, unknown> | undefined {
   if (min === undefined && max === undefined) {
     return undefined;
   }
 
-  const filter: any = {};
+  const filter: { gte?: number; lte?: number } = {};
 
   if (min !== undefined) {
     filter.gte = min;
@@ -322,7 +335,7 @@ export function createAmountRangeFilter(
 /**
  * Create array inclusion filter (in operator)
  */
-export function createInFilter(field: string, values?: string[] | string): any {
+export function createInFilter(field: string, values?: string[] | string): Record<string, unknown> | undefined {
   if (!values || (Array.isArray(values) && values.length === 0)) {
     return undefined;
   }
@@ -351,8 +364,8 @@ export interface AdvancedInvoiceFilters {
 export function buildAdvancedInvoiceFilters(
   filters: AdvancedInvoiceFilters,
   companyId: string
-): any {
-  const conditions: any[] = [
+): Record<string, unknown> {
+  const conditions: Record<string, unknown>[] = [
     { companyId }, // Always filter by company
   ];
 
@@ -399,6 +412,6 @@ export function buildAdvancedInvoiceFilters(
     }
   }
 
-  return combineFilters(...conditions);
+  return combineFilters(...conditions) || { companyId };
 }
 

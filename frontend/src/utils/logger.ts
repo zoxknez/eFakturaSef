@@ -9,7 +9,7 @@ import { captureException as sentryCaptureException } from './sentry';
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 interface LogContext {
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 class Logger {
@@ -71,7 +71,7 @@ class Logger {
   /**
    * Log API request/response for debugging
    */
-  apiLog(method: string, url: string, data?: any): void {
+  apiLog(method: string, url: string, data?: unknown): void {
     if (this.isDevelopment) {
       console.log(`[API] ${method.toUpperCase()} ${url}`, data || '');
     }

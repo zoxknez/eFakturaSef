@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'async_hooks';
 import { Request, Response, NextFunction } from 'express';
 import { randomUUID } from 'crypto';
+import { AuthenticatedRequest } from '../middleware/auth';
 
 /**
  * Request Context for Distributed Tracing
@@ -34,7 +35,7 @@ export function requestContextMiddleware(req: Request, res: Response, next: Next
   const requestId = (req.headers['x-request-id'] as string) || randomUUID();
 
   // Extract user info if authenticated
-  const user = (req as any).user;
+  const user = (req as AuthenticatedRequest).user;
 
   const context: RequestContext = {
     requestId,

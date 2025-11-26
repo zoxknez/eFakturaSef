@@ -670,6 +670,16 @@ export default function BankStatements() {
   );
 }
 
+interface Invoice {
+  id: string;
+  invoiceNumber: string;
+  partner?: {
+    name: string;
+  };
+  totalAmount: number;
+  issueDate: string;
+}
+
 // Match Transaction Modal Component
 function MatchTransactionModal({
   transaction,
@@ -741,7 +751,7 @@ function MatchTransactionModal({
             </div>
           ) : (
             <div className="space-y-2">
-              {invoices.map((invoice: any) => (
+              {invoices.map((invoice: Invoice) => (
                 <button
                   key={invoice.id}
                   onClick={() => setSelectedInvoice(invoice.id)}

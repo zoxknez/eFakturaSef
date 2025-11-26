@@ -45,8 +45,16 @@ interface Invoice {
   hasReverseCharge?: boolean;
 }
 
+interface InvoiceQueryParams {
+  page: number;
+  limit: number;
+  status?: string;
+  type?: string;
+  search?: string;
+}
+
 const StatusBadge = ({ status }: { status: Invoice['status'] }) => {
-  const styles: Record<Invoice['status'], string> = {
+  const styles: Record<string, string> = {
     DRAFT: 'bg-gray-100 text-gray-800',
     SENT: 'bg-blue-100 text-blue-800',
     ACCEPTED: 'bg-green-100 text-green-800',
@@ -54,17 +62,23 @@ const StatusBadge = ({ status }: { status: Invoice['status'] }) => {
     CANCELLED: 'bg-gray-100 text-gray-800'
   };
 
-  const labels: Record<Invoice['status'], string> = {
+  const labels: Record<string, string> = {
     DRAFT: 'Nacrt',
     SENT: 'Poslato',
     ACCEPTED: 'Prihvaćeno',
     REJECTED: 'Odbijeno',
-    CANCELLED: 'Stornirano'
+    CANCELLED: 'Stornirano',
+    PAID: 'Plaćeno',
+    OVERDUE: 'Kasni',
+    PARTIALLY_PAID: 'Delimično plaćeno',
+    UNKNOWN: 'Nepoznato'
   };
 
+  const normalizedStatus = status ? status.toUpperCase() : 'UNKNOWN';
+
   return (
-    <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[status]}`}>
-      {labels[status]}
+    <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[normalizedStatus] || 'bg-gray-100 text-gray-800'}`}>
+      {labels[normalizedStatus] || status}
     </span>
   );
 };
@@ -139,7 +153,7 @@ export const AdvancedInvoiceList: React.FC = () => {
       setLoading(true);
       setError(null);
       
-      const params: any = {
+      const params: InvoiceQueryParams = {
         page: currentPage,
         limit: pageSize
       };
@@ -166,9 +180,13 @@ export const AdvancedInvoiceList: React.FC = () => {
       } else {
         setError(response.error || 'Greška pri učitavanju faktura');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       logger.error('Error fetching invoices', err);
-      setError(err.message || 'Greška pri učitavanju faktura');
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('Greška pri učitavanju faktura');
+      }
     } finally {
       setLoading(false);
     }
@@ -186,7 +204,7 @@ export const AdvancedInvoiceList: React.FC = () => {
     'Visoki iznosi > 100k',
     'Prosečni mesec',
     'Kritični rokovi',
-    'Export ready'
+    'Spremno za izvoz'
   ];
 
   const handleSelectInvoice = (invoiceId: string) => {
@@ -354,7 +372,7 @@ export const AdvancedInvoiceList: React.FC = () => {
 
         {/* Saved Views */}
         <div className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-100">
-          <span className="text-sm text-gray-600">Saved views:</span>
+          <span className="text-sm text-gray-600">Sačuvani pregledi:</span>
           {savedViews.map((view, index) => (
             <button
               key={index}
@@ -364,7 +382,7 @@ export const AdvancedInvoiceList: React.FC = () => {
             </button>
           ))}
           <button className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm hover:bg-blue-200 transition-colors">
-            + Sačuvaj view
+            + Sačuvaj pregled
           </button>
         </div>
       </div>

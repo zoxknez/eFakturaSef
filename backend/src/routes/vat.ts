@@ -25,6 +25,12 @@ router.get('/records', VATController.getRecords);
 // Generate PP-PDV form data
 router.get('/pppdv', VATController.generatePPPDV);
 
+// Get PP-PDV data for frontend form (supports date ranges)
+router.get('/pppdv-data', VATController.getPPPDVData);
+
+// Export PP-PDV as PDF
+router.get('/pppdv/pdf', VATController.exportPPPDVPDF);
+
 // Quarterly and annual reports
 router.get('/quarterly', VATController.getQuarterlyReport);
 router.get('/annual', VATController.getAnnualSummary);

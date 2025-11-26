@@ -174,13 +174,13 @@ export class DashboardService {
           `SELECT 
             TO_CHAR(DATE_TRUNC('month', "createdAt"), 'YYYY-MM') as month,
             COALESCE(SUM("totalAmount"), 0)::float as revenue
-          FROM "Invoice"
+          FROM "invoices"
           WHERE 
-            "companyId" = $1::uuid
+            "company_id" = $1::uuid
             AND "type" = 'OUTGOING'
             AND "status" = 'ACCEPTED'
-            AND "createdAt" >= $2
-          GROUP BY DATE_TRUNC('month', "createdAt")
+            AND "created_at" >= $2
+          GROUP BY DATE_TRUNC('month', "created_at")
           ORDER BY month ASC`,
           companyId,
           twelveMonthsAgo

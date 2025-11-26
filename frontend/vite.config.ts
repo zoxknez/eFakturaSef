@@ -13,6 +13,7 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
       '@shared': path.resolve(__dirname, '../shared/src'),
+      '@sef-app/shared': path.resolve(__dirname, '../shared/src/index.ts'),
     },
   },
   server: {
@@ -35,7 +36,7 @@ export default defineConfig({
         drop_console: true,
         drop_debugger: true,
       },
-    },
+    } as any,
     rollupOptions: {
       output: {
         manualChunks: {

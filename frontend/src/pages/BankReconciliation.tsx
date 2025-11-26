@@ -41,6 +41,21 @@ interface ReconciliationSummary {
   matchRate: number;
 }
 
+interface ApiTransaction {
+  id: string;
+  transactionDate: string;
+  valueDate: string;
+  amount: number;
+  description: string;
+  reference?: string;
+  partnerName?: string;
+  partnerAccount?: string;
+  type: 'CREDIT' | 'DEBIT';
+  matchStatus: 'UNMATCHED' | 'MATCHED' | 'PARTIALLY_MATCHED' | 'IGNORED';
+  matchedInvoiceId?: string;
+  createdAt: string;
+}
+
 const BankReconciliation: React.FC = () => {
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,69 +79,39 @@ const BankReconciliation: React.FC = () => {
   const fetchTransactions = useCallback(async () => {
     try {
       setLoading(true);
-      // For now, use mock data since endpoint may not exist
-      const mockTransactions: BankTransaction[] = [
-        {
-          id: '1',
-          date: new Date().toISOString(),
-          valueDate: new Date().toISOString(),
-          amount: 125000,
-          currency: 'RSD',
-          description: 'Uplata po fakturi 2024-0123',
-          reference: '2024-0123',
-          counterpartName: 'ABC d.o.o.',
-          counterpartAccount: '160-123456-78',
-          transactionType: 'CREDIT',
-          status: 'UNMATCHED',
-          createdAt: new Date().toISOString(),
-        },
-        {
-          id: '2',
-          date: new Date(Date.now() - 86400000).toISOString(),
-          valueDate: new Date(Date.now() - 86400000).toISOString(),
-          amount: 45000,
-          currency: 'RSD',
-          description: 'Isplata dobavljaču XYZ',
-          counterpartName: 'XYZ Supplies',
-          counterpartAccount: '265-987654-32',
-          transactionType: 'DEBIT',
-          status: 'MATCHED',
-          matchedPaymentId: 'pay-001',
-          matchConfidence: 95,
-          createdAt: new Date().toISOString(),
-        },
-        {
-          id: '3',
-          date: new Date(Date.now() - 172800000).toISOString(),
-          valueDate: new Date(Date.now() - 172800000).toISOString(),
-          amount: 78500,
-          currency: 'RSD',
-          description: 'Uplata - klijent DEF',
-          counterpartName: 'DEF Company',
-          counterpartAccount: '340-555666-77',
-          transactionType: 'CREDIT',
-          status: 'PARTIALLY_MATCHED',
-          matchedInvoiceId: 'inv-002',
-          matchConfidence: 75,
-          createdAt: new Date().toISOString(),
-        },
-      ];
+      const response = await api.get('/bank-statements/transactions/unmatched');
       
-      setTransactions(mockTransactions);
+      const mappedTransactions: BankTransaction[] = response.data.data.map((t: ApiTransaction) => ({
+        id: t.id,
+        date: t.transactionDate,
+        valueDate: t.valueDate,
+        amount: Number(t.amount),
+        currency: 'RSD', // Default to RSD as backend doesn't seem to return currency per transaction yet
+        description: t.description,
+        reference: t.reference,
+        counterpartName: t.partnerName,
+        counterpartAccount: t.partnerAccount,
+        transactionType: t.type,
+        status: t.matchStatus,
+        matchedInvoiceId: t.matchedInvoiceId,
+        createdAt: t.createdAt,
+      }));
+      
+      setTransactions(mappedTransactions);
       
       // Calculate summary
-      const matched = mockTransactions.filter(t => t.status === 'MATCHED').length;
-      const unmatched = mockTransactions.filter(t => t.status === 'UNMATCHED').length;
-      const credits = mockTransactions.filter(t => t.transactionType === 'CREDIT').reduce((sum, t) => sum + t.amount, 0);
-      const debits = mockTransactions.filter(t => t.transactionType === 'DEBIT').reduce((sum, t) => sum + t.amount, 0);
+      const matched = mappedTransactions.filter(t => t.status === 'MATCHED').length;
+      const unmatched = mappedTransactions.filter(t => t.status === 'UNMATCHED').length;
+      const credits = mappedTransactions.filter(t => t.transactionType === 'CREDIT').reduce((sum, t) => sum + t.amount, 0);
+      const debits = mappedTransactions.filter(t => t.transactionType === 'DEBIT').reduce((sum, t) => sum + t.amount, 0);
       
       setSummary({
-        totalTransactions: mockTransactions.length,
+        totalTransactions: mappedTransactions.length,
         matchedTransactions: matched,
         unmatchedTransactions: unmatched,
         totalCredits: credits,
         totalDebits: debits,
-        matchRate: mockTransactions.length > 0 ? (matched / mockTransactions.length) * 100 : 0,
+        matchRate: mappedTransactions.length > 0 ? (matched / mappedTransactions.length) * 100 : 0,
       });
     } catch (error) {
       logger.error('Failed to fetch transactions', error);
@@ -186,11 +171,19 @@ const BankReconciliation: React.FC = () => {
     if (!selectedTransaction) return;
     
     try {
-      // API call to create match
+      if (matchType === 'INVOICE') {
+        await api.post(`/bank-statements/transactions/${selectedTransaction.id}/match`, {
+          invoiceId: matchId
+        });
+      } else {
+        // Handle payment match if needed, or just generic match
+        // For now assuming invoice match is the primary action
+      }
+
       setTransactions(prev => 
         prev.map(t => 
           t.id === selectedTransaction.id 
-            ? { ...t, status: 'MATCHED' as const, matchedInvoiceId: matchType === 'INVOICE' ? matchId : undefined, matchedPaymentId: matchType === 'PAYMENT' ? matchId : undefined }
+            ? { ...t, status: 'MATCHED' as const, matchedInvoiceId: matchType === 'INVOICE' ? matchId : undefined }
             : t
         )
       );
@@ -198,6 +191,7 @@ const BankReconciliation: React.FC = () => {
       setSuggestedMatches([]);
     } catch (error) {
       logger.error('Failed to match transaction', error);
+      alert('Greška pri uparivanju transakcije');
     }
   };
 
@@ -234,12 +228,20 @@ const BankReconciliation: React.FC = () => {
     try {
       setImportProgress(10);
       
-      // Simulate import progress
+      const formData = new FormData();
+      formData.append('file', importFile);
+      formData.append('format', importFormat);
+
+      // Simulate progress for UX (since axios upload progress is fast for small files)
       const interval = setInterval(() => {
-        setImportProgress(prev => Math.min(prev + 20, 90));
-      }, 500);
-      
-      await new Promise(resolve => setTimeout(resolve, 2500));
+        setImportProgress(prev => Math.min(prev + 10, 90));
+      }, 200);
+
+      await api.post('/bank-statements/import', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
       
       clearInterval(interval);
       setImportProgress(100);
@@ -253,6 +255,7 @@ const BankReconciliation: React.FC = () => {
     } catch (error) {
       logger.error('Import failed', error);
       setImportProgress(0);
+      alert('Greška pri uvozu izvoda');
     }
   };
 

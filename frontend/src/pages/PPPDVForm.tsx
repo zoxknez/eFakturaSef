@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { logger } from '../utils/logger';
+import { useAuth } from '../contexts/AuthContext';
+import { apiClient } from '../services/api';
 import { 
   FileText, 
   Calendar, 
@@ -46,8 +48,15 @@ interface PPPDVFormData {
 }
 
 const PPPDVForm: React.FC = () => {
+  const { user } = useAuth();
   const [formData, setFormData] = useState<PPPDVFormData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [companyData, setCompanyData] = useState<{
+    pib: string;
+    name: string;
+    address: string;
+    city: string;
+  } | null>(null);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedPeriod, setSelectedPeriod] = useState<number>(new Date().getMonth()); // 0-11 for months, or 0-3 for quarters
   const [isQuarterly, setIsQuarterly] = useState(false);
@@ -61,6 +70,35 @@ const PPPDVForm: React.FC = () => {
     'Jul', 'Avgust', 'Septembar', 'Oktobar', 'Novembar', 'Decembar'
   ];
   const quarters = ['Q1 (Jan-Mar)', 'Q2 (Apr-Jun)', 'Q3 (Jul-Sep)', 'Q4 (Okt-Dec)'];
+
+  // Fetch company data on mount
+  useEffect(() => {
+    const fetchCompanyData = async () => {
+      try {
+        const response = await apiClient.get('/company/profile');
+        if (response.data.success && response.data.data) {
+          setCompanyData({
+            pib: response.data.data.pib,
+            name: response.data.data.name,
+            address: response.data.data.address,
+            city: response.data.data.city
+          });
+        }
+      } catch (error) {
+        logger.error('Failed to fetch company data', error);
+        // Fallback to user company data if available
+        if (user?.company) {
+          setCompanyData({
+            pib: user.company.pib,
+            name: user.company.name,
+            address: '',
+            city: ''
+          });
+        }
+      }
+    };
+    fetchCompanyData();
+  }, [user]);
 
   // Standard PP-PDV fields based on Serbian tax form
   const standardFields: PPPDVField[] = [
@@ -111,65 +149,177 @@ const PPPDVForm: React.FC = () => {
         toDate = new Date(selectedYear, selectedPeriod + 1, 0);
       }
 
-      // For now, use mock data - in production, fetch from API
-      const mockData: PPPDVFormData = {
+      // Fetch real VAT data from API
+      const response = await apiClient.get('/vat/pppdv-data', {
+        params: {
+          fromDate: fromDate.toISOString(),
+          toDate: toDate.toISOString(),
+          isQuarterly
+        }
+      });
+
+      let vatData = response.data?.data;
+
+      // Use real company data or fallback to user company
+      const taxpayerData = {
+        pib: companyData?.pib || user?.company?.pib || '',
+        name: companyData?.name || user?.company?.name || '',
+        address: companyData?.address || '',
+        municipality: companyData?.city || '',
+      };
+
+      // If API returns data, use it; otherwise use calculated values from local data
+      if (vatData) {
+        const formDataFromApi: PPPDVFormData = {
+          period: {
+            year: selectedYear,
+            month: selectedPeriod + 1,
+            quarter: isQuarterly ? selectedPeriod + 1 : undefined,
+          },
+          taxpayer: taxpayerData,
+          fields: standardFields.map(field => ({
+            ...field,
+            value: vatData.fields?.[field.code] ?? calculateValueFromVatRecords(field.code, vatData),
+          })),
+          totalInputVAT: vatData.totalInputVAT || 0,
+          totalOutputVAT: vatData.totalOutputVAT || 0,
+          balance: vatData.balance || 0,
+          isQuarterly,
+        };
+        recalculateFields(formDataFromApi);
+        setFormData(formDataFromApi);
+      } else {
+        // Fallback: Calculate from VAT records
+        const vatRecordsResponse = await apiClient.get('/vat/records', {
+          params: {
+            fromDate: fromDate.toISOString().split('T')[0],
+            toDate: toDate.toISOString().split('T')[0]
+          }
+        });
+
+        const records = vatRecordsResponse.data?.data || [];
+        const calculatedData = calculatePPPDVFromRecords(records, taxpayerData, selectedYear, selectedPeriod, isQuarterly);
+        recalculateFields(calculatedData);
+        setFormData(calculatedData);
+      }
+    } catch (error) {
+      logger.error('Failed to fetch PP-PDV data', error);
+      // Fallback to empty form with company data
+      const emptyData: PPPDVFormData = {
         period: {
           year: selectedYear,
           month: selectedPeriod + 1,
           quarter: isQuarterly ? selectedPeriod + 1 : undefined,
         },
         taxpayer: {
-          pib: '123456789',
-          name: 'Demo Kompanija d.o.o.',
-          address: 'Bulevar Oslobođenja 123',
-          municipality: 'Beograd-Novi Beograd',
+          pib: companyData?.pib || user?.company?.pib || '',
+          name: companyData?.name || user?.company?.name || '',
+          address: companyData?.address || '',
+          municipality: companyData?.city || '',
         },
-        fields: standardFields.map(field => ({
-          ...field,
-          value: calculateMockValue(field.code),
-        })),
-        totalInputVAT: 125000,
-        totalOutputVAT: 187500,
-        balance: 62500,
+        fields: standardFields.map(field => ({ ...field, value: 0 })),
+        totalInputVAT: 0,
+        totalOutputVAT: 0,
+        balance: 0,
         isQuarterly,
       };
-
-      // Recalculate computed fields
-      recalculateFields(mockData);
-      
-      setFormData(mockData);
-    } catch (error) {
-      logger.error('Failed to fetch PP-PDV data', error);
+      setFormData(emptyData);
     } finally {
       setLoading(false);
     }
-  }, [selectedYear, selectedPeriod, isQuarterly]);
+  }, [selectedYear, selectedPeriod, isQuarterly, companyData, user]);
+
+  // Helper function to calculate PP-PDV from VAT records
+  const calculatePPPDVFromRecords = (
+    records: any[],
+    taxpayer: { pib: string; name: string; address: string; municipality: string },
+    year: number,
+    period: number,
+    quarterly: boolean
+  ): PPPDVFormData => {
+    // Separate input and output records
+    const outputRecords = records.filter(r => r.type === 'OUTPUT' || r.type === 'IZLAZNI');
+    const inputRecords = records.filter(r => r.type === 'INPUT' || r.type === 'ULAZNI');
+
+    // Calculate output VAT by rate
+    const output20Base = outputRecords
+      .filter(r => r.vatRate === 20)
+      .reduce((sum, r) => sum + (r.baseAmount || 0), 0);
+    const output20VAT = outputRecords
+      .filter(r => r.vatRate === 20)
+      .reduce((sum, r) => sum + (r.vatAmount || 0), 0);
+    const output10Base = outputRecords
+      .filter(r => r.vatRate === 10)
+      .reduce((sum, r) => sum + (r.baseAmount || 0), 0);
+    const output10VAT = outputRecords
+      .filter(r => r.vatRate === 10)
+      .reduce((sum, r) => sum + (r.vatAmount || 0), 0);
+
+    // Calculate input VAT by rate
+    const input20Base = inputRecords
+      .filter(r => r.vatRate === 20)
+      .reduce((sum, r) => sum + (r.baseAmount || 0), 0);
+    const input20VAT = inputRecords
+      .filter(r => r.vatRate === 20)
+      .reduce((sum, r) => sum + (r.vatAmount || 0), 0);
+    const input10Base = inputRecords
+      .filter(r => r.vatRate === 10)
+      .reduce((sum, r) => sum + (r.baseAmount || 0), 0);
+    const input10VAT = inputRecords
+      .filter(r => r.vatRate === 10)
+      .reduce((sum, r) => sum + (r.vatAmount || 0), 0);
+
+    // Calculate exports (0% VAT)
+    const exports = outputRecords
+      .filter(r => r.vatRate === 0 && r.isExport)
+      .reduce((sum, r) => sum + (r.baseAmount || 0), 0);
+
+    const fields = standardFields.map(field => {
+      let value = 0;
+      switch (field.code) {
+        case '001': value = output20Base; break;
+        case '002': value = output20VAT; break;
+        case '003': value = output10Base; break;
+        case '004': value = output10VAT; break;
+        case '101': value = input20Base; break;
+        case '102': value = input20VAT; break;
+        case '103': value = input10Base; break;
+        case '104': value = input10VAT; break;
+        case '301': value = exports; break;
+        case '107': value = 100; break; // Default proportional rate
+        default: value = 0;
+      }
+      return { ...field, value };
+    });
+
+    const totalOutputVAT = output20VAT + output10VAT;
+    const totalInputVAT = input20VAT + input10VAT;
+
+    return {
+      period: {
+        year,
+        month: period + 1,
+        quarter: quarterly ? period + 1 : undefined,
+      },
+      taxpayer,
+      fields,
+      totalInputVAT,
+      totalOutputVAT,
+      balance: totalOutputVAT - totalInputVAT,
+      isQuarterly: quarterly,
+    };
+  };
+
+  // Helper to calculate value from VAT data response
+  const calculateValueFromVatRecords = (code: string, vatData: any): number => {
+    return vatData[code] || 0;
+  };
 
   useEffect(() => {
-    fetchPPPDVData();
-  }, [fetchPPPDVData]);
-
-  const calculateMockValue = (code: string): number => {
-    // Mock values for demonstration
-    const mockValues: Record<string, number> = {
-      '001': 750000,
-      '002': 150000,
-      '003': 125000,
-      '004': 12500,
-      '005': 0,
-      '006': 0,
-      '007': 125000,
-      '008': 25000,
-      '101': 500000,
-      '102': 100000,
-      '103': 75000,
-      '104': 7500,
-      '105': 17500,
-      '107': 100,
-      '301': 200000,
-    };
-    return mockValues[code] || 0;
-  };
+    if (companyData || user?.company) {
+      fetchPPPDVData();
+    }
+  }, [fetchPPPDVData, companyData, user]);
 
   const recalculateFields = (data: PPPDVFormData) => {
     const fields = data.fields;

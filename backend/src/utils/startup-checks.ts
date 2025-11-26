@@ -13,7 +13,7 @@ export interface StartupCheckResult {
   name: string;
   status: 'success' | 'warning' | 'error';
   message: string;
-  details?: any;
+  details?: Record<string, unknown>;
 }
 
 /**
@@ -94,14 +94,17 @@ async function checkDatabase(): Promise<StartupCheckResult> {
         databaseUrl: config.DATABASE_URL.replace(/:[^:]*@/, ':****@'), // Hide password
       },
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorCode = error instanceof Error && 'code' in error ? (error as any).code : undefined;
+    
     return {
       name: 'Database Connection',
       status: 'error',
-      message: `Failed to connect to database: ${error.message}`,
+      message: `Failed to connect to database: ${errorMessage}`,
       details: {
-        error: error.message,
-        code: error.code,
+        error: errorMessage,
+        code: errorCode,
       },
     };
   }
@@ -140,13 +143,15 @@ async function checkRedis(): Promise<StartupCheckResult> {
         port: config.redis.port,
       },
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    
     return {
       name: 'Redis Connection',
       status: 'error',
-      message: `Failed to connect to Redis: ${error.message}`,
+      message: `Failed to connect to Redis: ${errorMessage}`,
       details: {
-        error: error.message,
+        error: errorMessage,
         host: config.redis.host,
         port: config.redis.port,
       },
@@ -255,13 +260,15 @@ async function checkSEFAPI(): Promise<StartupCheckResult> {
         baseUrl: config.SEF_BASE_URL,
       },
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    
     return {
       name: 'SEF API Connection',
       status: 'warning',
-      message: `SEF API check failed: ${error.message} (not critical)`,
+      message: `SEF API check failed: ${errorMessage} (not critical)`,
       details: {
-        error: error.message,
+        error: errorMessage,
         baseUrl: config.SEF_BASE_URL,
       },
     };
@@ -286,8 +293,9 @@ async function checkFileSystemPermissions(): Promise<StartupCheckResult> {
       // Directory doesn't exist, try to create it
       try {
         await fs.mkdir(uploadDir, { recursive: true });
-      } catch (error: any) {
-        issues.push(`Cannot create upload directory: ${error.message}`);
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        issues.push(`Cannot create upload directory: ${errorMessage}`);
       }
     }
 
@@ -299,8 +307,9 @@ async function checkFileSystemPermissions(): Promise<StartupCheckResult> {
       // Directory doesn't exist, try to create it
       try {
         await fs.mkdir(logsDir, { recursive: true });
-      } catch (error: any) {
-        issues.push(`Cannot create logs directory: ${error.message}`);
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        issues.push(`Cannot create logs directory: ${errorMessage}`);
       }
     }
 
@@ -309,8 +318,9 @@ async function checkFileSystemPermissions(): Promise<StartupCheckResult> {
     try {
       await fs.writeFile(testFile, 'test');
       await fs.unlink(testFile);
-    } catch (error: any) {
-      issues.push(`Cannot write to upload directory: ${error.message}`);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      issues.push(`Cannot write to upload directory: ${errorMessage}`);
     }
 
     if (issues.length > 0) {
@@ -331,12 +341,14 @@ async function checkFileSystemPermissions(): Promise<StartupCheckResult> {
         logsDir,
       },
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    
     return {
       name: 'File System Permissions',
       status: 'error',
-      message: `File system check failed: ${error.message}`,
-      details: { error: error.message },
+      message: `File system check failed: ${errorMessage}`,
+      details: { error: errorMessage },
     };
   }
 }

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma';
 import { SEFService } from '../services/sefService';
 import { logger } from '../utils/logger';
@@ -97,15 +98,17 @@ export class SEFController {
         sefId: result.invoiceId?.toString() || result.id?.toString(), // Adjust based on actual response
         sefStatus: result.status,
         sentAt: new Date(),
-        auditLogs: {
-          create: {
-            action: 'SENT_TO_SEF',
-            entityType: 'invoice',
-            // entityId is automatically set to invoice.id
-            userId: authReq.user!.id,
-            newData: result as any
-          }
-        }
+      }
+    });
+
+    // Create audit log
+    await prisma.auditLog.create({
+      data: {
+        action: 'SENT_TO_SEF',
+        entityType: 'invoice',
+        entityId: invoiceId,
+        userId: authReq.user!.id,
+        newData: result as unknown as Prisma.InputJsonValue
       }
     });
 
@@ -184,14 +187,16 @@ export class SEFController {
       data: {
         status: 'CANCELLED',
         sefStatus: 'CANCELLED',
-        auditLogs: {
-          create: {
-            action: 'CANCELLED_ON_SEF',
-            entityType: 'invoice',
-            userId: authReq.user!.id,
-            newData: result as any
-          }
-        }
+      }
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        action: 'CANCELLED_ON_SEF',
+        entityType: 'invoice',
+        entityId: invoiceId,
+        userId: authReq.user!.id,
+        newData: result as unknown as Prisma.InputJsonValue
       }
     });
 

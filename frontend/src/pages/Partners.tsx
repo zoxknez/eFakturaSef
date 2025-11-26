@@ -38,6 +38,36 @@ interface PaginatedResponse {
   };
 }
 
+interface PartnerParams {
+  page: number;
+  limit: number;
+  search?: string;
+  type?: string;
+  isActive?: string;
+}
+
+interface PartnerPayload {
+  type: 'BUYER' | 'SUPPLIER' | 'BOTH';
+  pib: string;
+  name: string;
+  shortName?: string;
+  address: string;
+  city: string;
+  postalCode: string;
+  country: string;
+  email?: string;
+  phone?: string;
+  fax?: string;
+  website?: string;
+  contactPerson?: string;
+  vatPayer: boolean;
+  vatNumber?: string;
+  defaultPaymentTerms: number;
+  creditLimit?: number;
+  discount?: number;
+  note?: string;
+}
+
 // Type config for badges and icons
 const typeConfig = {
   BUYER: { 
@@ -200,7 +230,7 @@ const Partners: React.FC = () => {
   const fetchPartners = async () => {
     try {
       setLoading(true);
-      const params: any = {
+      const params: PartnerParams = {
         page: currentPage,
         limit: 12,
       };
@@ -228,7 +258,7 @@ const Partners: React.FC = () => {
     e.preventDefault();
     
     try {
-      const payload = {
+      const payload: PartnerPayload = {
         ...formData,
         creditLimit: formData.creditLimit ? parseFloat(formData.creditLimit) : undefined,
         email: formData.email || undefined,
@@ -256,7 +286,7 @@ const Partners: React.FC = () => {
       setShowModal(false);
       resetForm();
       fetchPartners();
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error('Failed to save partner', error);
       alert('Greška pri čuvanju partnera');
     }
@@ -276,7 +306,7 @@ const Partners: React.FC = () => {
       } else {
         alert(response.error || 'Greška pri brisanju partnera');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error('Failed to delete partner', error);
       alert('Greška pri brisanju partnera');
     }

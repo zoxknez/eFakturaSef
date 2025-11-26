@@ -50,6 +50,20 @@ interface CompanyData {
   autoStockDeduction?: boolean;
 }
 
+interface UpdateCompanyPayload {
+  name?: string;
+  pib?: string;
+  address?: string;
+  city?: string;
+  postalCode?: string;
+  email?: string | null;
+  phone?: string | null;
+  bankAccount?: string | null;
+  sefApiKey?: string;
+  sefEnvironment?: string;
+  autoStockDeduction?: boolean;
+}
+
 // Tab configuration with icons
 const tabs: { id: Tab; label: string; icon: React.ReactNode; description: string }[] = [
   { id: 'company', label: 'Kompanija', icon: <Building2 className="w-4 h-4" />, description: 'Osnovni podaci' },
@@ -133,8 +147,9 @@ export const Settings: React.FC = () => {
           autoStockDeduction: response.data.autoStockDeduction || false,
         }));
       }
-    } catch (err: any) {
-      setError(err?.message || 'Greška pri učitavanju podataka kompanije');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Greška pri učitavanju podataka kompanije';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -182,7 +197,7 @@ export const Settings: React.FC = () => {
       setError(null);
       setSuccess(null);
 
-      const updatePayload: any = {};
+      const updatePayload: UpdateCompanyPayload = {};
       
       if (activeTab === 'company') {
         updatePayload.name = formData.name;
@@ -213,8 +228,9 @@ export const Settings: React.FC = () => {
       } else {
         setError(response?.error || 'Greška pri čuvanju podešavanja');
       }
-    } catch (err: any) {
-      setError(err?.message || 'Greška pri čuvanju podešavanja');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Greška pri čuvanju podešavanja';
+      setError(errorMessage);
     } finally {
       setSaving(false);
     }
@@ -241,9 +257,10 @@ export const Settings: React.FC = () => {
         setConnectionStatus('error');
         setError('Konekcija neuspešna. Proverite API ključ i okruženje.');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setConnectionStatus('error');
-      setError(err?.message || 'Greška pri testiranju konekcije');
+      const errorMessage = err instanceof Error ? err.message : 'Greška pri testiranju konekcije';
+      setError(errorMessage);
     } finally {
       setTestingConnection(false);
     }
@@ -269,7 +286,7 @@ export const Settings: React.FC = () => {
     onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
     type?: string;
     placeholder?: string;
-    icon?: React.ComponentType<any>;
+    icon?: React.ComponentType<{ className?: string }>;
     required?: boolean;
     hint?: string;
     maxLength?: number;
@@ -310,7 +327,7 @@ export const Settings: React.FC = () => {
     description?: string;
     checked: boolean;
     onChange: () => void;
-    icon?: React.ComponentType<any>;
+    icon?: React.ComponentType<{ className?: string }>;
   }) => (
     <div 
       className="flex items-center justify-between p-4 bg-white/50 backdrop-blur-sm rounded-xl border border-gray-200 

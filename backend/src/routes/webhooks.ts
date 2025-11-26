@@ -3,6 +3,7 @@ import { prisma } from '../db/prisma';
 import { logger } from '../utils/logger';
 import { queueWebhook } from '../queue/webhookQueue';
 import { verifyWebhookSignature } from '../middleware/webhookVerification';
+import { authMiddleware } from '../middleware/auth';
 
 const router = express.Router();
 
@@ -183,7 +184,7 @@ router.post('/webhook', verifyWebhookSignature, async (req: Request, res: Respon
  *       500:
  *         $ref: '#/components/responses/ServerError'
  */
-router.get('/logs', async (req: Request, res: Response) => {
+router.get('/logs', authMiddleware, async (req: Request, res: Response) => {
   try {
     const { page = 1, limit = 20 } = req.query;
     const skip = (Number(page) - 1) * Number(limit);

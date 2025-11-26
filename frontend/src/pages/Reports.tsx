@@ -203,15 +203,50 @@ export const Reports: React.FC = () => {
     return new Date(dateStr).toLocaleDateString('sr-RS');
   };
 
-  const exportToPDF = () => {
-    // TODO: Implement PDF export
-    alert('PDF export će biti dostupan uskoro');
+  const downloadReport = async (format: 'pdf' | 'excel') => {
+    try {
+      let url = '';
+      let filename = '';
+      
+      switch (activeReport) {
+        case 'balance-sheet':
+          url = `/api/accounting/reports/balance-sheet?asOfDate=${asOfDate}&format=${format}`;
+          filename = `bilans-stanja-${asOfDate}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
+          break;
+        case 'income-statement':
+          url = `/api/accounting/reports/income-statement?fromDate=${dateFrom}&toDate=${dateTo}&format=${format}`;
+          filename = `bilans-uspeha-${dateFrom}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
+          break;
+        default:
+          alert('Export je trenutno dostupan samo za Bilans Stanja i Bilans Uspeha');
+          return;
+      }
+
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+      });
+
+      if (!response.ok) throw new Error('Download failed');
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (err) {
+      console.error(err);
+      alert('Greška pri preuzimanju izveštaja');
+    }
   };
 
-  const exportToExcel = () => {
-    // TODO: Implement Excel export
-    alert('Excel export će biti dostupan uskoro');
-  };
+  const exportToPDF = () => downloadReport('pdf');
+  const exportToExcel = () => downloadReport('excel');
 
   const renderFilters = () => {
     const inputClass = "w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200";

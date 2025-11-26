@@ -5,11 +5,28 @@ import { logger } from '../utils/logger';
 
 // Enable default metrics (CPU, memory, etc.)
 const register = new client.Registry();
-client.collectDefaultMetrics({
-  register,
-  prefix: 'sef_',
-  gcDurationBuckets: [0.001, 0.01, 0.1, 1, 2, 5],
-});
+let stopDefaultMetrics: (() => void) | undefined;
+
+// Only start default metrics if not in test environment or if explicitly requested
+if (process.env.NODE_ENV !== 'test') {
+  const interval = client.collectDefaultMetrics({
+    register,
+    prefix: 'sef_',
+    gcDurationBuckets: [0.001, 0.01, 0.1, 1, 2, 5],
+  });
+  // Type assertion or check if it's a function (depends on prom-client version)
+  // In newer versions it returns void and manages interval internally, 
+  // but register.clear() might be needed.
+  // Actually, collectDefaultMetrics returns a clearInterval function.
+  stopDefaultMetrics = interval as unknown as () => void;
+}
+
+export const stopMetrics = () => {
+  if (stopDefaultMetrics) {
+    stopDefaultMetrics();
+  }
+  register.clear();
+};
 
 // Custom metrics
 

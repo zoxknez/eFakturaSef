@@ -188,6 +188,11 @@ export const advancedRateLimit = (options: {
       return next();
     }
 
+    // Skip in test environment
+    if (process.env.NODE_ENV === 'test') {
+      return next();
+    }
+
     const context = getContext(req);
     const user = (req as any).user;
     

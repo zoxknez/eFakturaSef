@@ -15,13 +15,13 @@ export class AppError extends Error {
   public readonly statusCode: number;
   public readonly code: string;
   public readonly isOperational: boolean;
-  public readonly details?: any;
+  public readonly details?: unknown;
 
   constructor(
     message: string,
     statusCode: number = 500,
     code: string = 'INTERNAL_ERROR',
-    details?: any
+    details?: unknown
   ) {
     super(message);
     this.statusCode = statusCode;
@@ -40,7 +40,7 @@ export const Errors = {
   notFound: (resource: string) => 
     new AppError(`${resource} not found`, 404, 'NOT_FOUND'),
   
-  badRequest: (message: string, details?: any) => 
+  badRequest: (message: string, details?: unknown) => 
     new AppError(message, 400, 'BAD_REQUEST', details),
   
   unauthorized: (message: string = 'Unauthorized') => 
@@ -52,7 +52,7 @@ export const Errors = {
   conflict: (message: string) => 
     new AppError(message, 409, 'CONFLICT'),
   
-  validationError: (errors: any) => 
+  validationError: (errors: unknown) => 
     new AppError('Validation failed', 400, 'VALIDATION_ERROR', errors),
   
   rateLimitExceeded: () => 
@@ -72,7 +72,7 @@ interface ErrorResponse {
   success: false;
   error: string;
   code: string;
-  details?: any;
+  details?: unknown;
   stack?: string;
 }
 

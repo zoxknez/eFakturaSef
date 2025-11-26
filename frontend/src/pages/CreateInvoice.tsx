@@ -108,6 +108,7 @@ export const CreateInvoice: React.FC = () => {
   const { user } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [lines, setLines] = useState<InvoiceLine[]>([
@@ -388,6 +389,63 @@ export const CreateInvoice: React.FC = () => {
       currency: watchedValues.currency || 'RSD',
       minimumFractionDigits: 2
     }).format(amount);
+  };
+
+  // Save as draft
+  const saveDraft = async () => {
+    if (!user?.company?.id) {
+      setError('Nedostaju podaci o kompaniji');
+      return;
+    }
+
+    setIsSavingDraft(true);
+    setError(null);
+
+    try {
+      const invoiceData: Record<string, unknown> = {
+        companyId: user.company.id,
+        invoiceNumber: watchedValues.invoiceNumber,
+        issueDate: watchedValues.issueDate,
+        dueDate: watchedValues.dueDate,
+        currency: watchedValues.currency,
+        note: watchedValues.note,
+        paymentMethod: watchedValues.paymentMethod,
+        status: 'DRAFT', // Explicitly set as draft
+        lines: lines.map((line, index) => ({
+          name: line.name || 'Stavka',
+          quantity: line.quantity || 1,
+          unitPrice: line.unitPrice || 0,
+          taxRate: line.taxRate || 20,
+          discount: line.discount || 0,
+          productId: selectedProducts.get(index)?.id || null
+        }))
+      };
+
+      if (selectedPartner?.id) {
+        invoiceData.partnerId = selectedPartner.id;
+      } else {
+        invoiceData.buyerName = watchedValues.buyerName || 'Nepoznat';
+        invoiceData.buyerPIB = watchedValues.buyerPIB || '000000000';
+        invoiceData.buyerAddress = watchedValues.buyerAddress;
+        invoiceData.buyerCity = watchedValues.buyerCity;
+        invoiceData.buyerPostalCode = watchedValues.buyerPostalCode;
+      }
+
+      const response = await api.createInvoice(invoiceData);
+      
+      if (response.success) {
+        setSuccess('Nacrt fakture uspešno sačuvan!');
+        setTimeout(() => {
+          window.location.href = '/invoices';
+        }, 1500);
+      } else {
+        setError(response.error || 'Greška pri čuvanju nacrta');
+      }
+    } catch {
+      setError('Greška pri čuvanju nacrta');
+    } finally {
+      setIsSavingDraft(false);
+    }
   };
 
   return (
@@ -1113,11 +1171,18 @@ export const CreateInvoice: React.FC = () => {
                 {currentStep === 4 && (
                   <button
                     type="button"
+                    onClick={saveDraft}
+                    disabled={isSavingDraft}
                     className="px-6 py-3 border-2 border-gray-300 text-gray-700 font-medium rounded-xl 
-                               hover:bg-gray-100 transition-all flex items-center gap-2"
+                               hover:bg-gray-100 transition-all flex items-center gap-2
+                               disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <Save className="w-5 h-5" />
-                    Sačuvaj nacrt
+                    {isSavingDraft ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <Save className="w-5 h-5" />
+                    )}
+                    {isSavingDraft ? 'Čuvanje...' : 'Sačuvaj nacrt'}
                   </button>
                 )}
 

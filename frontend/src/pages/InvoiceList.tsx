@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import api from '../services/api';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 
@@ -119,7 +120,13 @@ const StatusBadge = ({ status }: { status: string }) => {
   );
 };
 
-const InvoiceCard = ({ invoice, onPreview, onPDF }: { invoice: Invoice; onPreview: () => void; onPDF: () => void }) => {
+const InvoiceCard = ({ invoice, onPreview, onPDF, onEmail, isDownloading }: { 
+  invoice: Invoice; 
+  onPreview: () => void; 
+  onPDF: () => void;
+  onEmail: () => void;
+  isDownloading: boolean;
+}) => {
   const isOverdue = new Date(invoice.dueDate) < new Date() && invoice.status !== 'APPROVED';
   
   return (
@@ -200,14 +207,23 @@ const InvoiceCard = ({ invoice, onPreview, onPDF }: { invoice: Invoice; onPrevie
             </button>
             <button 
               onClick={onPDF}
-              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-              title="PDF"
+              disabled={isDownloading}
+              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+              title="Preuzmi PDF"
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-              </svg>
+              {isDownloading ? (
+                <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              ) : (
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                </svg>
+              )}
             </button>
             <button 
+              onClick={onEmail}
               className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
               title="Pošalji email"
             >
@@ -231,7 +247,15 @@ const InvoiceCard = ({ invoice, onPreview, onPDF }: { invoice: Invoice; onPrevie
   );
 };
 
+interface InvoiceParams {
+  page: number;
+  limit: number;
+  direction?: string;
+  status?: string;
+}
+
 export const InvoiceList: React.FC = () => {
+  const navigate = useNavigate();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('all');
@@ -242,6 +266,57 @@ export const InvoiceList: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  const [downloadingPdf, setDownloadingPdf] = useState<string | null>(null);
+
+  // Handle invoice preview - navigate to invoice detail page
+  const handlePreview = (invoice: Invoice) => {
+    navigate(`/invoices/${invoice.id}`);
+  };
+
+  // Handle PDF download
+  const handlePDFDownload = async (invoice: Invoice) => {
+    try {
+      setDownloadingPdf(invoice.id);
+      
+      // Call the PDF export endpoint
+      const response = await fetch(`/api/invoices/${invoice.id}/pdf`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate PDF');
+      }
+
+      // Get the blob from response
+      const blob = await response.blob();
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `faktura-${invoice.invoiceNumber}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('PDF uspešno preuzet');
+    } catch (error) {
+      console.error('PDF download error:', error);
+      toast.error('Greška pri preuzimanju PDF-a');
+    } finally {
+      setDownloadingPdf(null);
+    }
+  };
+
+  // Handle email send
+  const handleSendEmail = async (invoice: Invoice) => {
+    // TODO: Implement email modal for recipient selection
+    toast('Slanje email-a će biti implementirano', { icon: '📧' });
+  };
 
   useEffect(() => {
     fetchInvoices();
@@ -250,7 +325,7 @@ export const InvoiceList: React.FC = () => {
   const fetchInvoices = async () => {
     try {
       setLoading(true);
-      const params: any = { page: currentPage, limit: 12 };
+      const params: InvoiceParams = { page: currentPage, limit: 12 };
       
       if (directionFilter) params.direction = directionFilter;
       if (activeTab !== 'all') {
@@ -560,8 +635,10 @@ export const InvoiceList: React.FC = () => {
                 <InvoiceCard
                   key={invoice.id}
                   invoice={invoice}
-                  onPreview={() => {}}
-                  onPDF={() => {}}
+                  onPreview={() => handlePreview(invoice)}
+                  onPDF={() => handlePDFDownload(invoice)}
+                  onEmail={() => handleSendEmail(invoice)}
+                  isDownloading={downloadingPdf === invoice.id}
                 />
               ))}
             </div>

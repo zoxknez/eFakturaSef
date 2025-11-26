@@ -327,7 +327,7 @@ const AgingReports: React.FC = () => {
             <select
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               value={reportType}
-              onChange={(e) => setReportType(e.target.value as any)}
+              onChange={(e) => setReportType(e.target.value as 'receivables' | 'payables')}
             >
               <option value="receivables">Potraživanja (kupci)</option>
               <option value="payables">Obaveze (dobavljači)</option>
@@ -338,7 +338,7 @@ const AgingReports: React.FC = () => {
             <select
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               value={viewMode}
-              onChange={(e) => setViewMode(e.target.value as any)}
+              onChange={(e) => setViewMode(e.target.value as 'summary' | 'detail' | 'partner')}
             >
               <option value="summary">Sumarni pregled</option>
               <option value="detail">Detaljni pregled</option>

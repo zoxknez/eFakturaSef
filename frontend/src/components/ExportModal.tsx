@@ -8,7 +8,7 @@ import { toast } from 'react-hot-toast';
 import axios from 'axios';
 
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3001',
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3001/api',
   headers: { 'Content-Type': 'application/json' }
 });
 
@@ -63,28 +63,28 @@ export default function ExportModal({ isOpen, onClose, exportType, filters = {},
       switch (exportType) {
         case 'invoices':
           endpoint = options.format === 'pdf' 
-            ? `/api/exports/report/excel` 
-            : `/api/exports/invoices/excel`;
+            ? `/exports/report/excel` 
+            : `/exports/invoices/excel`;
           filename = `fakture-${new Date().toISOString().split('T')[0]}`;
           break;
         case 'partners':
-          endpoint = `/api/partners/export`;
+          endpoint = `/partners/export`;
           filename = `partneri-${new Date().toISOString().split('T')[0]}`;
           break;
         case 'products':
-          endpoint = `/api/products/export`;
+          endpoint = `/products/export`;
           filename = `proizvodi-${new Date().toISOString().split('T')[0]}`;
           break;
         case 'payments':
-          endpoint = `/api/payments/export`;
+          endpoint = `/payments/export`;
           filename = `placanja-${new Date().toISOString().split('T')[0]}`;
           break;
         case 'vat':
-          endpoint = `/api/vat/export`;
+          endpoint = `/vat/export`;
           filename = `pdv-${new Date().toISOString().split('T')[0]}`;
           break;
         case 'journal':
-          endpoint = `/api/accounting/journal/export`;
+          endpoint = `/accounting/journal/export`;
           filename = `dnevnik-${new Date().toISOString().split('T')[0]}`;
           break;
       }
@@ -115,8 +115,12 @@ export default function ExportModal({ isOpen, onClose, exportType, filters = {},
       toast.success('Izvoz uspešno završen!');
       onClose();
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Greška pri izvozu');
+    onError: (error: unknown) => {
+      if (axios.isAxiosError(error)) {
+        toast.error(error.response?.data?.error || 'Greška pri izvozu');
+      } else {
+        toast.error('Greška pri izvozu');
+      }
     }
   });
 

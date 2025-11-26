@@ -4,6 +4,7 @@ import { LoadingSpinner } from '../components/LoadingSpinner';
 import { logger } from '../utils/logger';
 import ImportModal from '../components/ImportModal';
 import ExportModal from '../components/ExportModal';
+import InventoryHistory from '../components/InventoryHistory';
 
 interface Product {
   id: string;
@@ -40,14 +41,44 @@ interface PaginatedResponse {
   };
 }
 
+interface ProductParams {
+  page: number;
+  limit: number;
+  search?: string;
+  category?: string;
+  trackInventory?: string;
+  isActive?: string;
+}
+
+interface ProductPayload {
+  code: string;
+  barcode?: string;
+  name: string;
+  description?: string;
+  category?: string;
+  subcategory?: string;
+  unitPrice: number;
+  costPrice?: number;
+  vatRate: number;
+  unit: string;
+  trackInventory: boolean;
+  currentStock?: number;
+  minStock?: number;
+  maxStock?: number;
+  supplier?: string;
+  manufacturer?: string;
+  note?: string;
+}
+
 // Product Card Component
 const ProductCard: React.FC<{
   product: Product;
   onEdit: () => void;
   onDelete: () => void;
   onStockAdjust: () => void;
+  onViewHistory: () => void;
   getStockStatus: (product: Product) => { label: string; class: string; bg: string } | null;
-}> = ({ product, onEdit, onDelete, onStockAdjust, getStockStatus }) => {
+}> = ({ product, onEdit, onDelete, onStockAdjust, onViewHistory, getStockStatus }) => {
   const stockStatus = getStockStatus(product);
   const margin = product.costPrice ? ((product.unitPrice - product.costPrice) / product.unitPrice * 100).toFixed(1) : null;
   
@@ -153,6 +184,13 @@ const ProductCard: React.FC<{
               >
                 Prilagodi
               </button>
+              <button 
+                onClick={onViewHistory}
+                className="ml-1 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
+                title="Istorija promena"
+              >
+                🕒
+              </button>
             </div>
           ) : (
             <div className="flex items-center gap-2 text-gray-400">
@@ -189,6 +227,8 @@ const Products: React.FC = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [showModal, setShowModal] = useState(false);
   const [showStockModal, setShowStockModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyProductId, setHistoryProductId] = useState<string | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -230,7 +270,7 @@ const Products: React.FC = () => {
   const fetchProducts = async () => {
     try {
       setLoading(true);
-      const params: any = {
+      const params: ProductParams = {
         page: currentPage,
         limit: 20,
       };
@@ -274,7 +314,7 @@ const Products: React.FC = () => {
     e.preventDefault();
     
     try {
-      const payload = {
+      const payload: ProductPayload = {
         ...formData,
         unitPrice: parseFloat(formData.unitPrice),
         costPrice: formData.costPrice ? parseFloat(formData.costPrice) : undefined,
@@ -309,7 +349,7 @@ const Products: React.FC = () => {
       setShowModal(false);
       resetForm();
       fetchProducts();
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error('Failed to save product', error);
       alert('Greška pri čuvanju proizvoda');
     }
@@ -353,7 +393,7 @@ const Products: React.FC = () => {
       } else {
         alert(response.error || 'Greška pri brisanju proizvoda');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error('Failed to delete product', error);
       alert('Greška pri brisanju proizvoda');
     }
@@ -386,6 +426,11 @@ const Products: React.FC = () => {
   const openStockModal = (product: Product) => {
     setStockAdjustment({ productId: product.id, adjustment: 0, note: '' });
     setShowStockModal(true);
+  };
+
+  const openHistoryModal = (product: Product) => {
+    setHistoryProductId(product.id);
+    setShowHistoryModal(true);
   };
 
   const resetForm = () => {
@@ -650,6 +695,7 @@ const Products: React.FC = () => {
               onEdit={() => openEditModal(product)}
               onDelete={() => handleDelete(product.id)}
               onStockAdjust={() => openStockModal(product)}
+              onViewHistory={() => openHistoryModal(product)}
               getStockStatus={getStockStatus}
             />
           ))}
@@ -714,6 +760,9 @@ const Products: React.FC = () => {
                           )}
                           <button onClick={() => openStockModal(product)} className="block text-xs text-violet-600 hover:text-violet-700 mt-1 mx-auto">
                             Prilagodi
+                          </button>
+                          <button onClick={() => openHistoryModal(product)} className="block text-xs text-gray-500 hover:text-gray-700 mt-1 mx-auto">
+                            Istorija
                           </button>
                         </div>
                       ) : (
@@ -1117,6 +1166,37 @@ const Products: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Inventory History Modal */}
+      {showHistoryModal && historyProductId && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="bg-gradient-to-r from-gray-700 to-gray-900 px-6 py-5 rounded-t-2xl flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                  <span className="text-2xl">🕒</span>
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white">Istorija Promena Zaliha</h2>
+                  <p className="text-white/70 text-sm">Pregled svih transakcija za proizvod</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowHistoryModal(false)}
+                className="text-white/70 hover:text-white transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="p-6">
+              <InventoryHistory productId={historyProductId} />
+            </div>
           </div>
         </div>
       )}

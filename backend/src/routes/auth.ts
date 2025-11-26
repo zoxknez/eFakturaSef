@@ -152,4 +152,69 @@ router.post('/logout', AuthController.logout);
  */
 router.get('/me', authMiddleware, AuthController.me);
 
+/**
+ * @openapi
+ * /api/auth/forgot-password:
+ *   post:
+ *     summary: Request password reset
+ *     description: Send a password reset link to the user's email
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 description: Email address of the account
+ *     responses:
+ *       200:
+ *         description: Reset link sent (always returns success to prevent email enumeration)
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+router.post('/forgot-password', AuthController.forgotPassword);
+
+/**
+ * @openapi
+ * /api/auth/reset-password:
+ *   post:
+ *     summary: Reset password with token
+ *     description: Set a new password using the reset token from email
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - token
+ *               - password
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 description: Reset token from email link
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 minLength: 8
+ *                 description: New password (must contain uppercase, lowercase, number, and special character)
+ *     responses:
+ *       200:
+ *         description: Password successfully reset
+ *       400:
+ *         description: Invalid or expired token, or password doesn't meet requirements
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+router.post('/reset-password', AuthController.resetPassword);
+
 export default router;

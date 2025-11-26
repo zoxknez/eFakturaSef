@@ -241,6 +241,35 @@ export const emailTemplates = {
       data,
     });
   },
+
+  /**
+   * Password reset request email
+   */
+  async passwordReset(to: string, data: {
+    firstName: string;
+    resetUrl: string;
+  }): Promise<boolean> {
+    return sendEmail({
+      to,
+      subject: 'Resetovanje lozinke - SEF eFakture',
+      template: 'password-reset',
+      data,
+    });
+  },
+
+  /**
+   * Password changed confirmation email
+   */
+  async passwordChanged(to: string, data: {
+    firstName: string;
+  }): Promise<boolean> {
+    return sendEmail({
+      to,
+      subject: 'Lozinka uspešno promenjena - SEF eFakture',
+      template: 'password-changed',
+      data,
+    });
+  },
 };
 
 export default {

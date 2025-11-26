@@ -1,45 +1,84 @@
-# SEF eFakture Application - TypeScript Full Stack
+# SEF eFakture - AI Coding Instructions
 
-## Project Overview
-Full-stack TypeScript aplikacija za integraciju sa srpskim SEF (Sistem Elektronskih Faktura) API-jem.
+## Project Context
+Full-stack TypeScript application for integration with the Serbian SEF (Sistem Elektronskih Faktura) API.
+The system handles invoice creation, UBL 2.1 XML generation, SEF API communication (with retries/night pause), and local PDF/XML management.
 
-## Architecture
-- **Frontend**: React 18 + TypeScript + Tailwind CSS + shadcn/ui
-- **Backend**: Node.js + Express + TypeScript + Prisma ORM
-- **Database**: PostgreSQL
-- **Queue System**: Bull Queue + Redis
-- **Authentication**: JWT + Passport.js
+## Architecture & Structure
+**Monorepo** with three main workspaces:
+- **`frontend/`**: React 18 (Vite) + Tailwind + shadcn/ui.
+- **`backend/`**: Node.js (Express) + Prisma + Bull (Queues).
+- **`shared/`**: Common types, Zod schemas, and utilities.
 
-## Key Features
-- SEF API integracija (demo i produkcija)
-- UBL 2.1 validacija i kreiranje
-- Webhook callback handling
-- Izlazne i ulazne fakture
-- CRF reklamacije
-- Elektronska evidencija PDV-a
-- Uvozne carinske deklaracije
-- Multi-role sistem (Admin, Računovođa, Revizor, Operater)
+### Key Directories
+- `frontend/src/services/api.ts`: **CRITICAL**. Singleton `apiClient` for all HTTP requests.
+- `backend/src/queue/`: Bull queues for async SEF operations (`invoiceQueue.ts`).
+- `backend/src/services/sefService.ts`: Core SEF API wrapper.
+- `backend/src/prisma/schema.prisma`: Database source of truth.
 
-## Development Guidelines
-- Koristi TypeScript striktno tipiziran kod
-- Prati Serbian government API specifikacije
-- Implementiraj idempotentne operacije
-- Koristi proper error handling sa retry logikom
-- Sve callback operacije moraju biti sigurne i verifikovane
+## Development Workflow
+- **Build**: Run builds from specific directories: `cd frontend && npm run build`.
+- **Database**: `cd backend && npx prisma migrate dev`.
+- **Queues**: Redis is required for `invoiceQueue`.
+- **Shared Lib**: Imports should look like `import { ... } from '@sef-app/shared'`.
 
-## API Integration
-- Base URLs: `efaktura.mfin.gov.rs` (prod), `demoefaktura.mfin.gov.rs` (demo)
-- Swagger dokumentacija dostupna na API endpointima
-- Koristi eksponencijalni backoff za retry logiku
-- Implementiraj "noćna pauza" handling
+## Coding Conventions
 
-## Checklist Progress
-- [x] ✅ Verify copilot-instructions.md created
-- [x] ✅ Clarify Project Requirements - Full-stack TypeScript SEF eFakture app
-- [x] ✅ Scaffold the Project - Created monorepo structure with frontend/backend/shared
-- [x] ✅ Customize the Project - Added TypeScript configs, Prisma schema, basic structure
-- [ ] Install Required Extensions
-- [x] ✅ Compile the Project - Dependencies installed successfully
-- [x] ✅ Create and Run Task - Created install task 
-- [x] ✅ Launch the Project
-- [ ] Ensure Documentation is Complete
+### General
+- **Strict TypeScript**: No `any`. Use `unknown` for catch blocks and type guards (`isAxiosError`, `instanceof Error`).
+- **Validation**: Use Zod schemas from `shared/` for both frontend forms and backend request validation.
+
+### Frontend
+- **API Calls**: ALWAYS use `apiClient` (e.g., `apiClient.get<T>('/endpoint')`).
+  - Return type is `Promise<ApiResponse<T>>`.
+  - Handle errors using `if (!response.success)`.
+- **UI Components**: Use shadcn/ui components from `src/components/ui`.
+- **State**: Use React Context for global state (Auth, Theme) and local state for forms.
+
+### Backend
+- **Pattern**: Controller -> Service -> Repository (Prisma).
+- **Async Tasks**: Heavy SEF operations MUST go through `invoiceQueue`.
+  - **Retries**: `SEFNetworkError` and `SEFServerError` trigger retries.
+  - **Failures**: `SEFValidationError` marks invoice as `DRAFT` with error note (no retry).
+  - **Night Pause**: Check `isNightPause()` before sending.
+- **Database**: Use `prisma` singleton. Avoid raw SQL unless necessary for performance.
+- **ERP Modules**:
+  - **Calculations**: Use `Calculation` model for linking `IncomingInvoice` to inventory.
+  - **Fixed Assets**: Use `FixedAsset` for depreciation tracking.
+  - **Petty Cash**: Use `PettyCashAccount` and `PettyCashEntry`.
+  - **Travel Orders**: Use `TravelOrder` for employee expenses.
+  - **SEF VAT**: Use `SefVatEvidence` for individual/summary VAT recording.
+
+### SEF Integration Rules
+1. **UBL Generation**: Use `UBLGenerator` service. Do not manually construct XML strings.
+2. **Idempotency**: Check if invoice exists in SEF before sending (if applicable).
+3. **Error Handling**:
+   - **Network/5xx**: Retry with exponential backoff.
+   - **400/Validation**: Fail immediately, log error, update invoice status to `DRAFT`.
+   - **Rate Limits**: Respect `Retry-After` headers.
+
+## Common Patterns
+**Frontend Error Handling**:
+```typescript
+try {
+  const res = await apiClient.get<MyData>('/data');
+  if (res.success) {
+    setData(res.data);
+  } else {
+    toast.error(res.error || 'Operation failed');
+  }
+} catch (error: unknown) {
+  if (axios.isAxiosError(error)) { ... }
+}
+```
+
+**Backend Queue Processing**:
+```typescript
+// backend/src/queue/invoiceQueue.ts
+if (error instanceof SEFNetworkError) {
+  throw new RetryableError(error.message); // Bull will retry
+} else if (error instanceof SEFValidationError) {
+  // Update DB to failed state, do NOT retry
+  throw new NonRetryableError(error.message);
+}
+```

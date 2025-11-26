@@ -1,24 +1,119 @@
 // Enhanced webhook signature verification middleware
 import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
+import { createClient, RedisClientType } from 'redis';
 import { config } from '../config';
 import { logger } from '../utils/logger';
-// import { prisma } from '../db/prisma';
 
-// Store nonces in-memory (for production, use Redis)
+// Redis client for nonce storage
+let redisClient: RedisClientType | null = null;
+let redisConnected = false;
+
+// Fallback: In-memory nonce storage (used when Redis is unavailable)
 const nonceCache = new Map<string, number>();
 
-// Cleanup old nonces periodically (every 5 minutes)
+// Initialize Redis connection
+async function initRedis(): Promise<void> {
+  try {
+    redisClient = createClient({
+      url: config.REDIS_URL,
+      socket: {
+        reconnectStrategy: (retries) => {
+          if (retries > 10) {
+            logger.warn('Redis reconnection failed after 10 attempts, using in-memory fallback');
+            return false;
+          }
+          return Math.min(retries * 100, 3000);
+        },
+      },
+    });
+
+    redisClient.on('error', (err) => {
+      logger.warn('Redis connection error, using in-memory fallback:', err.message);
+      redisConnected = false;
+    });
+
+    redisClient.on('connect', () => {
+      logger.info('Redis connected for webhook nonce storage');
+      redisConnected = true;
+    });
+
+    redisClient.on('disconnect', () => {
+      logger.warn('Redis disconnected, using in-memory fallback');
+      redisConnected = false;
+    });
+
+    await redisClient.connect();
+  } catch (error) {
+    logger.warn('Failed to initialize Redis for webhook nonces, using in-memory fallback:', error);
+    redisClient = null;
+    redisConnected = false;
+  }
+}
+
+// Initialize Redis on module load
+initRedis();
+
+// Cleanup old nonces from in-memory cache periodically (every 5 minutes)
 setInterval(() => {
-  const now = Date.now();
-  const FIVE_MINUTES = 5 * 60 * 1000;
-  
-  for (const [nonce, timestamp] of nonceCache.entries()) {
-    if (now - timestamp > FIVE_MINUTES) {
-      nonceCache.delete(nonce);
+  if (!redisConnected) {
+    const now = Date.now();
+    const FIVE_MINUTES = 5 * 60 * 1000;
+    
+    for (const [nonce, timestamp] of nonceCache.entries()) {
+      if (now - timestamp > FIVE_MINUTES) {
+        nonceCache.delete(nonce);
+      }
+    }
+    
+    if (nonceCache.size > 0) {
+      logger.debug(`Cleaned up in-memory nonce cache, remaining: ${nonceCache.size}`);
     }
   }
 }, 5 * 60 * 1000);
+
+/**
+ * Check if nonce exists (Redis or in-memory fallback)
+ */
+async function checkAndStoreNonce(nonce: string): Promise<boolean> {
+  const nonceKey = `webhook:nonce:${nonce}`;
+  
+  // Try Redis first
+  if (redisConnected && redisClient) {
+    try {
+      const exists = await redisClient.exists(nonceKey);
+      
+      if (exists) {
+        return true; // Nonce already used
+      }
+      
+      // Store nonce with 5-minute expiration
+      await redisClient.setEx(nonceKey, 300, Date.now().toString());
+      return false; // Nonce is new
+    } catch (error) {
+      logger.warn('Redis nonce check failed, falling back to in-memory:', error);
+      // Fall through to in-memory
+    }
+  }
+  
+  // In-memory fallback
+  if (nonceCache.has(nonce)) {
+    return true; // Nonce already used
+  }
+  
+  // Store nonce with timestamp
+  nonceCache.set(nonce, Date.now());
+  
+  // Limit cache size (prevent memory exhaustion)
+  if (nonceCache.size > 10000) {
+    const firstKey = nonceCache.keys().next().value;
+    if (firstKey !== undefined) {
+      nonceCache.delete(firstKey);
+    }
+  }
+  
+  return false; // Nonce is new
+}
 
 export interface WebhookPayload {
   timestamp?: string | number;
@@ -83,23 +178,14 @@ export const verifyWebhookSignature = async (
     // 3. Check nonce for replay protection
     const nonce = nonceHeader || req.body.nonce;
     if (nonce) {
-      if (nonceCache.has(nonce)) {
+      const isDuplicate = await checkAndStoreNonce(nonce);
+      
+      if (isDuplicate) {
         logger.warn('Duplicate webhook nonce detected - possible replay attack', { nonce });
         return res.status(401).json({ 
           success: false, 
           error: 'Duplicate request detected' 
         });
-      }
-      
-      // Store nonce with timestamp
-      nonceCache.set(nonce, Date.now());
-      
-      // Limit cache size (prevent memory exhaustion)
-      if (nonceCache.size > 10000) {
-        const firstKey = nonceCache.keys().next().value;
-        if (firstKey !== undefined) {
-          nonceCache.delete(firstKey);
-        }
       }
     }
 
@@ -148,49 +234,16 @@ export const verifyWebhookSignature = async (
 };
 
 /**
- * Alternative: Redis-backed nonce tracking for distributed systems
- * Uncomment and use this if you have Redis available
+ * Graceful shutdown - close Redis connection
  */
-/*
-import { Redis } from 'ioredis';
-
-const redis = new Redis({
-  host: config.redis.host,
-  port: config.redis.port,
-  password: config.redis.password,
-});
-
-export const verifyWebhookSignatureWithRedis = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    // ... same timestamp and signature validation as above ...
-
-    // Redis-backed nonce tracking
-    const nonce = nonceHeader || req.body.nonce;
-    if (nonce) {
-      const nonceKey = `webhook:nonce:${nonce}`;
-      const exists = await redis.exists(nonceKey);
-      
-      if (exists) {
-        logger.warn('Duplicate webhook nonce detected', { nonce });
-        return res.status(401).json({ 
-          success: false, 
-          error: 'Duplicate request detected' 
-        });
-      }
-      
-      // Store nonce with 5-minute expiration
-      await redis.setex(nonceKey, 300, Date.now().toString());
+export async function closeWebhookRedis(): Promise<void> {
+  if (redisClient && redisConnected) {
+    try {
+      await redisClient.quit();
+      logger.info('Webhook Redis connection closed');
+    } catch (error) {
+      logger.warn('Error closing webhook Redis connection:', error);
     }
-
-    next();
-  } catch (error: any) {
-    logger.error('Webhook verification error', error);
-    return res.status(500).json({ success: false, error: 'Verification failed' });
   }
-};
-*/
+}
 

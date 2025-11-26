@@ -1,5 +1,33 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import api from '../services/api';
+import { logger } from '../utils/logger';
+
+interface Activity {
+  id: string;
+  invoiceNumber: string;
+  partnerName: string;
+  totalAmount: number;
+  createdAt: string;
+  status: string;
+}
+
+interface ChartData {
+  month: string;
+  revenue: number;
+}
+
+interface OverviewData {
+  totalInvoices: number;
+  acceptedInvoices: number;
+  pendingInvoices: number;
+  totalRevenue: number;
+  acceptanceRate: number;
+  trends: {
+    invoices: { value: number; positive: boolean };
+    revenue: { value: number; positive: boolean };
+  };
+}
 
 // Animated counter hook
 const useAnimatedCounter = (target: number, duration: number = 1500) => {
@@ -175,10 +203,36 @@ const SystemStatus = ({ name, status, description }: {
 
 export const Dashboard: React.FC = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [overview, setOverview] = useState<OverviewData | null>(null);
+  const [recentActivity, setRecentActivity] = useState<Activity[]>([]);
+  const [charts, setCharts] = useState<{ revenueByMonth: ChartData[] } | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [overviewRes, recentRes, chartsRes] = await Promise.all([
+          api.get('/dashboard/overview'),
+          api.get('/dashboard/recent'),
+          api.get('/dashboard/charts')
+        ]);
+
+        setOverview(overviewRes.data.data);
+        setRecentActivity(recentRes.data.data);
+        setCharts(chartsRes.data.data);
+      } catch (error) {
+        logger.error('Failed to fetch dashboard data', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
   }, []);
 
   const greeting = () => {
@@ -186,6 +240,36 @@ export const Dashboard: React.FC = () => {
     if (hour < 12) return 'Dobro jutro';
     if (hour < 18) return 'Dobar dan';
     return 'Dobro veče';
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('sr-RS', {
+      style: 'currency',
+      currency: 'RSD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  const formatTimeAgo = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    
+    if (diffInSeconds < 60) return 'Upravo sada';
+    if (diffInSeconds < 3600) return `Pre ${Math.floor(diffInSeconds / 60)} min`;
+    if (diffInSeconds < 86400) return `Pre ${Math.floor(diffInSeconds / 3600)} sati`;
+    return `Pre ${Math.floor(diffInSeconds / 86400)} dana`;
+  };
+
+  const getStatusType = (status: string) => {
+    switch (status) {
+      case 'ACCEPTED': return 'success';
+      case 'SENT': return 'warning';
+      case 'DRAFT': return 'info';
+      case 'REJECTED': return 'error';
+      default: return 'info';
+    }
   };
 
   return (
@@ -241,11 +325,11 @@ export const Dashboard: React.FC = () => {
           {/* Mini stats in banner */}
           <div className="grid grid-cols-2 gap-4 lg:w-80">
             <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/10">
-              <p className="text-3xl font-black">127</p>
+              <p className="text-3xl font-black">{overview?.totalInvoices || 0}</p>
               <p className="text-sm text-blue-200/70">Faktura danas</p>
             </div>
             <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/10">
-              <p className="text-3xl font-black text-emerald-400">98%</p>
+              <p className="text-3xl font-black text-emerald-400">{overview?.acceptanceRate || 0}%</p>
               <p className="text-sm text-blue-200/70">Prihvaćeno</p>
             </div>
           </div>
@@ -256,38 +340,44 @@ export const Dashboard: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
         <StatCard
           title="Poslate fakture"
-          value={127}
+          value={overview?.totalInvoices || 0}
           subtitle="Ovaj mesec"
           icon={<svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>}
           gradient="bg-gradient-to-br from-blue-500 to-cyan-500"
-          trend={{ value: "+12%", positive: true }}
+          trend={overview?.trends?.invoices ? { 
+            value: `${overview.trends.invoices.positive ? '+' : ''}${overview.trends.invoices.value}%`, 
+            positive: overview.trends.invoices.positive 
+          } : undefined}
           delay={100}
         />
         <StatCard
           title="Prihvaćene fakture"
-          value={98}
-          subtitle="77% stopa prihvatanja"
+          value={overview?.acceptedInvoices || 0}
+          subtitle={`${overview?.acceptanceRate || 0}% stopa prihvatanja`}
           icon={<svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
           gradient="bg-gradient-to-br from-emerald-500 to-green-500"
-          trend={{ value: "+8%", positive: true }}
+          trend={{ value: "+0%", positive: true }} // Backend doesn't provide trend for accepted yet
           delay={200}
         />
         <StatCard
           title="Na čekanju"
-          value={15}
+          value={overview?.pendingInvoices || 0}
           subtitle="Čeka odluku"
           icon={<svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
           gradient="bg-gradient-to-br from-amber-500 to-orange-500"
-          trend={{ value: "-3%", positive: false }}
+          trend={{ value: "0%", positive: true }}
           delay={300}
         />
         <StatCard
           title="Ukupan promet"
-          value="24"
+          value={formatCurrency(overview?.totalRevenue || 0)}
           subtitle="RSD ovaj mesec"
           icon={<svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
           gradient="bg-gradient-to-br from-violet-500 to-purple-500"
-          trend={{ value: "+15%", positive: true }}
+          trend={overview?.trends?.revenue ? { 
+            value: `${overview.trends.revenue.positive ? '+' : ''}${overview.trends.revenue.value}%`, 
+            positive: overview.trends.revenue.positive 
+          } : undefined}
           delay={400}
         />
       </div>
@@ -310,34 +400,20 @@ export const Dashboard: React.FC = () => {
               </Link>
             </div>
             <div className="space-y-2">
-              <ActivityItem
-                title="Faktura #2024-001 uspešno poslata"
-                description="Kupac: ABC Solutions d.o.o."
-                time="Pre 2 sata"
-                status="success"
-                icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>}
-              />
-              <ActivityItem
-                title="Nova ulazna faktura od ABC d.o.o."
-                description="Iznos: 125,000.00 RSD"
-                time="Pre 4 sata"
-                status="info"
-                icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>}
-              />
-              <ActivityItem
-                title="Faktura #2024-002 čeka odobrenje"
-                description="Status: Na čekanju kod kupca"
-                time="Pre 6 sati"
-                status="warning"
-                icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
-              />
-              <ActivityItem
-                title="SEF API konekcija obnovljena"
-                description="Veza sa SEF serverom uspostavljena"
-                time="Pre 1 dan"
-                status="success"
-                icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>}
-              />
+              {recentActivity.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">Nema nedavnih aktivnosti</div>
+              ) : (
+                recentActivity.map((activity) => (
+                  <ActivityItem
+                    key={activity.id}
+                    title={`Faktura #${activity.invoiceNumber}`}
+                    description={`Partner: ${activity.partnerName} • Iznos: ${formatCurrency(activity.totalAmount)}`}
+                    time={formatTimeAgo(activity.createdAt)}
+                    status={getStatusType(activity.status) as any}
+                    icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+                  />
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -394,20 +470,34 @@ export const Dashboard: React.FC = () => {
           {/* Mini Chart Placeholder */}
           <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl p-6 text-white">
             <h3 className="text-lg font-bold mb-2">Mesečni pregled</h3>
-            <p className="text-sm text-slate-400 mb-4">Fakture po danima</p>
+            <p className="text-sm text-slate-400 mb-4">Prihod po mesecima</p>
             <div className="flex items-end justify-between h-24 gap-1">
-              {[40, 65, 45, 80, 55, 70, 90, 60, 75, 85, 95, 70].map((height, i) => (
-                <div 
-                  key={i} 
-                  className="flex-1 bg-gradient-to-t from-blue-500 to-cyan-400 rounded-t-sm opacity-80 hover:opacity-100 transition-opacity cursor-pointer"
-                  style={{ height: `${height}%` }}
-                  title={`Dan ${i + 1}`}
-                ></div>
-              ))}
+              {charts?.revenueByMonth ? (
+                charts.revenueByMonth.map((item, i) => {
+                  const maxRevenue = Math.max(...charts.revenueByMonth.map((r) => r.revenue));
+                  const height = maxRevenue > 0 ? (item.revenue / maxRevenue) * 100 : 0;
+                  return (
+                    <div 
+                      key={i} 
+                      className="flex-1 bg-gradient-to-t from-blue-500 to-cyan-400 rounded-t-sm opacity-80 hover:opacity-100 transition-opacity cursor-pointer"
+                      style={{ height: `${Math.max(height, 5)}%` }}
+                      title={`${item.month}: ${formatCurrency(item.revenue)}`}
+                    ></div>
+                  );
+                })
+              ) : (
+                [40, 65, 45, 80, 55, 70, 90, 60, 75, 85, 95, 70].map((height, i) => (
+                  <div 
+                    key={i} 
+                    className="flex-1 bg-gradient-to-t from-blue-500 to-cyan-400 rounded-t-sm opacity-80 hover:opacity-100 transition-opacity cursor-pointer"
+                    style={{ height: `${height}%` }}
+                  ></div>
+                ))
+              )}
             </div>
             <div className="flex justify-between mt-3 text-xs text-slate-500">
-              <span>Nov 1</span>
-              <span>Nov 12</span>
+              <span>{charts?.revenueByMonth?.[0]?.month || 'Jan'}</span>
+              <span>{charts?.revenueByMonth?.[charts.revenueByMonth.length - 1]?.month || 'Dec'}</span>
             </div>
           </div>
         </div>

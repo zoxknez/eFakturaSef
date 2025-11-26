@@ -68,12 +68,6 @@ export const errorHandler = (
     timestamp: new Date().toISOString()
   });
 
-  // Mongoose validation error
-  if (err.name === 'ValidationError') {
-    const message = Object.values(err.errors).map((val: any) => val.message);
-    error = new ValidationError(message.join(', '));
-  }
-
   // Prisma validation error
   if (err instanceof Prisma.PrismaClientValidationError) {
     error = new ValidationError('Invalid data provided');
@@ -109,16 +103,6 @@ export const errorHandler = (
   // Custom AppError
   if (err instanceof AppError) {
     error = err;
-  }
-
-  // Duplicate key error (MongoDB)
-  if (err.code === 11000) {
-    error = new ConflictError('Duplicate field value entered');
-  }
-
-  // Cast error (MongoDB)
-  if (err.name === 'CastError') {
-    error = new ValidationError('Invalid ID format');
   }
 
   // Rate limit error

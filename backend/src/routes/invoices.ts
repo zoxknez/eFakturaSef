@@ -349,4 +349,37 @@ router.get('/:id/status', InvoiceController.getStatus);
  */
 router.post('/:id/cancel', idempotency({ ttl: 3600, required: true }), InvoiceController.cancel);
 
+/**
+ * @openapi
+ * /api/invoices/{id}/pdf:
+ *   get:
+ *     summary: Generate PDF for invoice
+ *     description: Generate and download a PDF version of the invoice
+ *     tags:
+ *       - Invoices
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Invoice ID
+ *     responses:
+ *       200:
+ *         description: PDF generated successfully
+ *         content:
+ *           application/pdf:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       404:
+ *         $ref: '#/components/responses/NotFoundError'
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ */
+router.get('/:id/pdf', InvoiceController.exportPDF);
+
 export default router;

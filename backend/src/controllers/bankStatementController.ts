@@ -1,15 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { bankStatementService } from '../services/bankStatementService';
 import { AppError } from '../utils/errorHandler';
+import { AuthenticatedRequest } from '../middleware/auth';
 import multer from 'multer';
-
-interface AuthenticatedRequest extends Request {
-  user?: {
-    id: string;
-    companyId?: string;
-    role?: string;
-  };
-}
 
 // Helper to get authenticated companyId
 function getCompanyId(req: Request): string {
@@ -103,10 +96,15 @@ export const bankStatementController = {
         format
       );
       
+      // Statement includes transactions from Prisma query
+      const statementWithTransactions = statement as typeof statement & { 
+        transactions?: Array<{ id: string }> 
+      };
+      
       res.status(201).json({
         success: true,
         data: statement,
-        message: `Uspešno uvezen izvod sa ${(statement as any).transactions?.length ?? 0} transakcija`,
+        message: `Uspešno uvezen izvod sa ${statementWithTransactions.transactions?.length ?? 0} transakcija`,
       });
     } catch (error) {
       next(error);

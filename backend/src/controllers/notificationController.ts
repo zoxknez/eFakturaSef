@@ -6,13 +6,15 @@ import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../db/prisma';
 import { logger } from '../utils/logger';
 import { UserRole } from '@prisma/client';
+import { AuthenticatedRequest } from '../middleware/auth';
 
 /**
  * Get user notifications
  */
 export async function getNotifications(req: Request, res: Response, next: NextFunction) {
   try {
-    const userId = (req as any).user?.id;
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user?.id;
     
     if (!userId) {
       res.status(401).json({ message: 'Unauthorized' });
@@ -37,7 +39,8 @@ export async function getNotifications(req: Request, res: Response, next: NextFu
  */
 export async function getUnreadCount(req: Request, res: Response, next: NextFunction) {
   try {
-    const userId = (req as any).user?.id;
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user?.id;
     
     if (!userId) {
       res.status(401).json({ message: 'Unauthorized' });
@@ -60,7 +63,8 @@ export async function getUnreadCount(req: Request, res: Response, next: NextFunc
  */
 export async function markAsRead(req: Request, res: Response, next: NextFunction) {
   try {
-    const userId = (req as any).user?.id;
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user?.id;
     const { ids } = req.body;
     
     if (!userId) {
@@ -93,7 +97,8 @@ export async function markAsRead(req: Request, res: Response, next: NextFunction
  */
 export async function markAllAsRead(req: Request, res: Response, next: NextFunction) {
   try {
-    const userId = (req as any).user?.id;
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user?.id;
     
     if (!userId) {
       res.status(401).json({ message: 'Unauthorized' });
@@ -117,7 +122,8 @@ export async function markAllAsRead(req: Request, res: Response, next: NextFunct
  */
 export async function deleteNotifications(req: Request, res: Response, next: NextFunction) {
   try {
-    const userId = (req as any).user?.id;
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user?.id;
     const { ids } = req.body;
     
     if (!userId) {

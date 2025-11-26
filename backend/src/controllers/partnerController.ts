@@ -3,6 +3,8 @@ import { logger } from '../utils/logger';
 import { PartnerService, CreatePartnerSchema, UpdatePartnerSchema } from '../services/partnerService';
 import { z } from 'zod';
 import { PartnerType } from '@prisma/client';
+import { AuthenticatedRequest } from '../middleware/auth';
+import { getErrorMessage } from '../types/common';
 
 const ListPartnersQuerySchema = z.object({
   page: z.string().optional().default('1'),
@@ -21,7 +23,8 @@ export class PartnerController {
    */
   static async list(req: Request, res: Response) {
     try {
-      const user = (req as any).user;
+      const authReq = req as AuthenticatedRequest;
+      const user = authReq.user;
       if (!user?.companyId) {
         return res.status(403).json({ error: 'User not associated with a company' });
       }
@@ -48,7 +51,7 @@ export class PartnerController {
       });
 
       return res.json(result);
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error('Failed to list partners:', error);
       return res.status(500).json({ error: 'Failed to fetch partners' });
     }
@@ -60,7 +63,8 @@ export class PartnerController {
    */
   static async get(req: Request, res: Response) {
     try {
-      const user = (req as any).user;
+      const authReq = req as AuthenticatedRequest;
+      const user = authReq.user;
       const id = req.params.id as string;
 
       if (!user?.companyId) {
@@ -69,10 +73,11 @@ export class PartnerController {
 
       const partner = await PartnerService.getPartner(id, user.companyId);
       return res.json(partner);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
       logger.error('Failed to get partner:', error);
-      if (error.message === 'Partner not found') {
-        return res.status(404).json({ error: error.message });
+      if (message === 'Partner not found') {
+        return res.status(404).json({ error: message });
       }
       return res.status(500).json({ error: 'Failed to fetch partner' });
     }
@@ -84,7 +89,8 @@ export class PartnerController {
    */
   static async create(req: Request, res: Response) {
     try {
-      const user = (req as any).user;
+      const authReq = req as AuthenticatedRequest;
+      const user = authReq.user;
       if (!user?.companyId) {
         return res.status(403).json({ error: 'User not associated with a company' });
       }
@@ -100,10 +106,11 @@ export class PartnerController {
 
       const partner = await PartnerService.createPartner(user.companyId, validationResult.data, user.id);
       return res.status(201).json(partner);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
       logger.error('Failed to create partner:', error);
-      if (error.message.includes('already exists')) {
-        return res.status(409).json({ error: error.message });
+      if (message.includes('already exists')) {
+        return res.status(409).json({ error: message });
       }
       return res.status(500).json({ error: 'Failed to create partner' });
     }
@@ -115,7 +122,8 @@ export class PartnerController {
    */
   static async update(req: Request, res: Response) {
     try {
-      const user = (req as any).user;
+      const authReq = req as AuthenticatedRequest;
+      const user = authReq.user;
       const id = req.params.id as string;
 
       if (!user?.companyId) {
@@ -133,13 +141,14 @@ export class PartnerController {
 
       const partner = await PartnerService.updatePartner(id, user.companyId, validationResult.data, user.id);
       return res.json(partner);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
       logger.error('Failed to update partner:', error);
-      if (error.message === 'Partner not found') {
-        return res.status(404).json({ error: error.message });
+      if (message === 'Partner not found') {
+        return res.status(404).json({ error: message });
       }
-      if (error.message.includes('already exists')) {
-        return res.status(409).json({ error: error.message });
+      if (message.includes('already exists')) {
+        return res.status(409).json({ error: message });
       }
       return res.status(500).json({ error: 'Failed to update partner' });
     }
@@ -151,7 +160,8 @@ export class PartnerController {
    */
   static async delete(req: Request, res: Response) {
     try {
-      const user = (req as any).user;
+      const authReq = req as AuthenticatedRequest;
+      const user = authReq.user;
       const id = req.params.id as string;
 
       if (!user?.companyId) {
@@ -160,10 +170,11 @@ export class PartnerController {
 
       const result = await PartnerService.deletePartner(id, user.companyId, user.id);
       return res.json(result);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
       logger.error('Failed to delete partner:', error);
-      if (error.message === 'Partner not found') {
-        return res.status(404).json({ error: error.message });
+      if (message === 'Partner not found') {
+        return res.status(404).json({ error: message });
       }
       return res.status(500).json({ error: 'Failed to delete partner' });
     }
@@ -175,7 +186,8 @@ export class PartnerController {
    */
   static async autocomplete(req: Request, res: Response) {
     try {
-      const user = (req as any).user;
+      const authReq = req as AuthenticatedRequest;
+      const user = authReq.user;
       const { q, type } = req.query;
 
       if (!q || typeof q !== 'string') {
@@ -192,7 +204,7 @@ export class PartnerController {
         type as PartnerType | undefined
       );
       return res.json(partners);
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error('Failed to autocomplete partners:', error);
       return res.status(500).json({ error: 'Failed to search partners' });
     }
@@ -204,7 +216,8 @@ export class PartnerController {
    */
   static async stats(req: Request, res: Response) {
     try {
-      const user = (req as any).user;
+      const authReq = req as AuthenticatedRequest;
+      const user = authReq.user;
       const id = req.params.id as string;
 
       if (!user?.companyId) {
@@ -213,10 +226,11 @@ export class PartnerController {
 
       const stats = await PartnerService.getStats(id, user.companyId);
       return res.json(stats);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
       logger.error('Failed to get partner stats:', error);
-      if (error.message === 'Partner not found') {
-        return res.status(404).json({ error: error.message });
+      if (message === 'Partner not found') {
+        return res.status(404).json({ error: message });
       }
       return res.status(500).json({ error: 'Failed to fetch partner statistics' });
     }

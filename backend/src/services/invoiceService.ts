@@ -1,9 +1,10 @@
-import { Prisma, InvoiceStatus, InvoiceType, Product } from '@prisma/client';
+import { Prisma, InvoiceStatus, InvoiceType, Product, InventoryTransactionType } from '@prisma/client';
 import { prisma } from '../db/prisma';
 import { logger } from '../utils/logger';
 import { UBLGenerator } from './ublGenerator';
 import { queueInvoice } from '../queue/invoiceQueue';
 import { SEFService } from './sefService';
+import { InventoryService } from './inventoryService';
 import { 
   toDecimal, 
   toNumber, 
@@ -164,7 +165,7 @@ export class InvoiceService {
   /**
    * Create a new invoice
    */
-  static async createInvoice(data: CreateInvoiceDTO) {
+  static async createInvoice(data: CreateInvoiceDTO, userId: string) {
     const {
       companyId,
       partnerId,
@@ -305,7 +306,7 @@ export class InvoiceService {
       });
 
       if (company.autoStockDeduction && invoiceLinesData.productIds.length > 0) {
-        await this.deductStock(tx, lines);
+        await this.deductStock(tx, lines, created.id, userId, companyId);
       }
 
       logger.info(`Invoice created: ${created.id}`, { companyId, invoiceNumber });
@@ -357,7 +358,7 @@ export class InvoiceService {
   /**
    * Delete an invoice
    */
-  static async deleteInvoice(id: string) {
+  static async deleteInvoice(id: string, userId: string) {
     const invoice = await prisma.invoice.findUnique({ 
       where: { id },
       include: {
@@ -376,7 +377,7 @@ export class InvoiceService {
 
     await prisma.$transaction(async (tx) => {
       if (invoice.company?.autoStockDeduction) {
-        await this.restoreStock(tx, invoice.lines);
+        await this.restoreStock(tx, invoice.lines, invoice.id, userId, invoice.companyId);
       }
       await tx.invoice.delete({ where: { id } });
     });
@@ -411,7 +412,13 @@ export class InvoiceService {
   /**
    * Deduct stock
    */
-  private static async deductStock(tx: Prisma.TransactionClient, lines: InvoiceLineInput[]) {
+  private static async deductStock(
+    tx: Prisma.TransactionClient, 
+    lines: InvoiceLineInput[], 
+    invoiceId: string, 
+    userId: string,
+    companyId: string
+  ) {
     const lineQuantities = new Map<string, number>();
     lines.forEach((line) => {
       if (line.productId) {
@@ -421,24 +428,34 @@ export class InvoiceService {
     });
 
     for (const [productId, quantity] of lineQuantities.entries()) {
-      await tx.product.updateMany({
-        where: {
-          id: productId,
-          trackInventory: true,
-        },
-        data: {
-          currentStock: {
-            decrement: quantity,
-          },
-        },
-      });
+      // Use InventoryService to create transaction and update stock
+      // Note: We pass negative quantity for deduction
+      await InventoryService.createTransaction(
+        companyId,
+        productId,
+        InventoryTransactionType.SALE,
+        -quantity,
+        userId,
+        {
+          referenceType: 'invoice',
+          referenceId: invoiceId,
+          note: 'Invoice creation (auto-deduction)',
+          tx
+        }
+      );
     }
   }
 
   /**
    * Restore stock
    */
-  private static async restoreStock(tx: Prisma.TransactionClient, lines: any[]) {
+  private static async restoreStock(
+    tx: Prisma.TransactionClient, 
+    lines: any[], 
+    invoiceId: string, 
+    userId: string,
+    companyId: string
+  ) {
     const productQuantities = new Map<string, number>();
     
     lines.forEach((line) => {
@@ -449,17 +466,21 @@ export class InvoiceService {
     });
 
     for (const [productId, quantity] of productQuantities.entries()) {
-      await tx.product.updateMany({
-        where: {
-          id: productId,
-          trackInventory: true,
-        },
-        data: {
-          currentStock: {
-            increment: quantity,
-          },
-        },
-      });
+      // Use InventoryService to create transaction and update stock
+      // Note: We pass positive quantity for restoration
+      await InventoryService.createTransaction(
+        companyId,
+        productId,
+        InventoryTransactionType.ADJUSTMENT,
+        quantity,
+        userId,
+        {
+          referenceType: 'invoice',
+          referenceId: invoiceId,
+          note: 'Invoice cancellation/deletion (stock restore)',
+          tx
+        }
+      );
     }
   }
 
@@ -556,7 +577,7 @@ export class InvoiceService {
   /**
    * Cancel invoice in SEF
    */
-  static async cancelInvoice(id: string, reason?: string) {
+  static async cancelInvoice(id: string, userId: string, reason?: string) {
     const invoice = await prisma.invoice.findUnique({ 
       where: { id },
       include: {
@@ -594,7 +615,7 @@ export class InvoiceService {
       });
 
       if (invoice.company?.autoStockDeduction) {
-        await this.restoreStock(tx, invoice.lines);
+        await this.restoreStock(tx, invoice.lines, invoice.id, userId, invoice.companyId);
       }
 
       return updatedInvoice;
@@ -692,6 +713,7 @@ export class InvoiceService {
         include: {
           lines: true,
           company: true,
+          partner: true,
         },
       });
       
@@ -704,6 +726,7 @@ export class InvoiceService {
       include: {
         lines: true,
         company: true,
+        partner: true,
       },
     });
 

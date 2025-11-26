@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import { logger } from '../utils/logger';
+import { AuthenticatedRequest } from '../middleware/auth';
+import { getErrorMessage } from '../types/common';
 import { 
   BulkService, 
   BulkSendSchema, 
@@ -15,7 +17,8 @@ export class BulkController {
    */
   static async bulkSend(req: Request, res: Response) {
     try {
-      const user = (req as any).user;
+      const authReq = req as AuthenticatedRequest;
+      const user = authReq.user;
       if (!user?.companyId) {
         return res.status(403).json({ error: 'User not associated with a company' });
       }
@@ -36,10 +39,11 @@ export class BulkController {
 
       const result = await BulkService.bulkSend(user.companyId, user.id, validation.data);
       return res.json({ success: true, ...result });
-    } catch (error: any) {
-      logger.error('Bulk send failed', { error: error.message });
-      if (error.message.includes('No eligible invoices') || error.message.includes('API key')) {
-        return res.status(400).json({ error: error.message });
+    } catch (error) {
+      const message = getErrorMessage(error);
+      logger.error('Bulk send failed', { error: message });
+      if (message.includes('No eligible invoices') || message.includes('API key')) {
+        return res.status(400).json({ error: message });
       }
       return res.status(500).json({ error: 'Bulk send failed' });
     }
@@ -51,7 +55,8 @@ export class BulkController {
    */
   static async bulkDelete(req: Request, res: Response) {
     try {
-      const user = (req as any).user;
+      const authReq = req as AuthenticatedRequest;
+      const user = authReq.user;
       if (!user?.companyId) {
         return res.status(403).json({ error: 'User not associated with a company' });
       }
@@ -72,8 +77,9 @@ export class BulkController {
 
       const result = await BulkService.bulkDelete(user.companyId, user.id, validation.data);
       return res.json({ success: true, ...result });
-    } catch (error: any) {
-      logger.error('Bulk delete failed', { error: error.message });
+    } catch (error) {
+      const message = getErrorMessage(error);
+      logger.error('Bulk delete failed', { error: message });
       return res.status(500).json({ error: 'Bulk delete failed' });
     }
   }
@@ -84,7 +90,8 @@ export class BulkController {
    */
   static async bulkUpdateStatus(req: Request, res: Response) {
     try {
-      const user = (req as any).user;
+      const authReq = req as AuthenticatedRequest;
+      const user = authReq.user;
       if (!user?.companyId) {
         return res.status(403).json({ error: 'User not associated with a company' });
       }
@@ -105,10 +112,11 @@ export class BulkController {
 
       const result = await BulkService.bulkUpdateStatus(user.companyId, user.id, validation.data);
       return res.json({ success: true, ...result });
-    } catch (error: any) {
-      logger.error('Bulk status update failed', { error: error.message });
-      if (error.message.includes('only allowed to')) {
-        return res.status(400).json({ error: error.message });
+    } catch (error) {
+      const message = getErrorMessage(error);
+      logger.error('Bulk status update failed', { error: message });
+      if (message.includes('only allowed to')) {
+        return res.status(400).json({ error: message });
       }
       return res.status(500).json({ error: 'Bulk status update failed' });
     }
@@ -120,7 +128,8 @@ export class BulkController {
    */
   static async bulkExport(req: Request, res: Response) {
     try {
-      const user = (req as any).user;
+      const authReq = req as AuthenticatedRequest;
+      const user = authReq.user;
       if (!user?.companyId) {
         return res.status(403).json({ error: 'User not associated with a company' });
       }
@@ -141,13 +150,14 @@ export class BulkController {
 
       await BulkService.bulkExport(user.companyId, user.id, validation.data, res);
       return;
-    } catch (error: any) {
-      logger.error('Bulk export failed', { error: error.message });
-      if (error.message === 'No invoices found for export') {
-        return res.status(404).json({ error: error.message });
+    } catch (error) {
+      const message = getErrorMessage(error);
+      logger.error('Bulk export failed', { error: message });
+      if (message === 'No invoices found for export') {
+        return res.status(404).json({ error: message });
       }
-      if (error.message.includes('not yet supported')) {
-        return res.status(400).json({ error: error.message });
+      if (message.includes('not yet supported')) {
+        return res.status(400).json({ error: message });
       }
       return res.status(500).json({ error: 'Bulk export failed' });
     }

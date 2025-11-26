@@ -30,6 +30,8 @@ interface ColumnMapping {
   targetField: string;
 }
 
+type ImportRow = Record<string, string | number | undefined>;
+
 const ImportModal: React.FC<ImportModalProps> = ({
   isOpen,
   onClose,
@@ -39,7 +41,7 @@ const ImportModal: React.FC<ImportModalProps> = ({
 }) => {
   const [step, setStep] = useState<'upload' | 'mapping' | 'preview' | 'importing' | 'result'>('upload');
   const [file, setFile] = useState<File | null>(null);
-  const [fileData, setFileData] = useState<any[]>([]);
+  const [fileData, setFileData] = useState<ImportRow[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
   const [columnMappings, setColumnMappings] = useState<ColumnMapping[]>([]);
   const [importing, setImporting] = useState(false);
@@ -111,7 +113,7 @@ const ImportModal: React.FC<ImportModalProps> = ({
     'bank-statements': 'izvoda'
   };
 
-  const parseCSV = (text: string): { headers: string[]; data: any[] } => {
+  const parseCSV = (text: string): { headers: string[]; data: ImportRow[] } => {
     const lines = text.trim().split('\n');
     if (lines.length < 2) {
       throw new Error('Fajl mora sadržati zaglavlje i najmanje jedan red podataka');
@@ -149,7 +151,7 @@ const ImportModal: React.FC<ImportModalProps> = ({
     const headers = parseRow(lines[0]);
     const data = lines.slice(1).filter(line => line.trim()).map((line, index) => {
       const values = parseRow(line);
-      const row: Record<string, any> = { _rowIndex: index + 2 };
+      const row: ImportRow = { _rowIndex: index + 2 };
       headers.forEach((header, i) => {
         row[header] = values[i] || '';
       });
@@ -159,7 +161,7 @@ const ImportModal: React.FC<ImportModalProps> = ({
     return { headers, data };
   };
 
-  const parseExcel = async (file: File): Promise<{ headers: string[]; data: any[] }> => {
+  const parseExcel = async (file: File): Promise<{ headers: string[]; data: ImportRow[] }> => {
     // For now, just show a message that Excel parsing requires additional setup
     throw new Error('Za Excel fajlove koristite CSV format. Excel podrška dolazi uskoro.');
   };
@@ -169,7 +171,7 @@ const ImportModal: React.FC<ImportModalProps> = ({
     setFile(selectedFile);
 
     try {
-      let parsedData: { headers: string[]; data: any[] };
+      let parsedData: { headers: string[]; data: ImportRow[] };
 
       if (selectedFile.name.endsWith('.csv') || selectedFile.name.endsWith('.txt')) {
         const text = await selectedFile.text();
@@ -198,8 +200,8 @@ const ImportModal: React.FC<ImportModalProps> = ({
       setColumnMappings(autoMappings);
 
       setStep('mapping');
-    } catch (err: any) {
-      setError(err.message || 'Greška pri čitanju fajla');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Greška pri čitanju fajla');
     }
   };
 
@@ -264,7 +266,7 @@ const ImportModal: React.FC<ImportModalProps> = ({
     try {
       // Transform data according to mappings
       const transformedData = fileData.map(row => {
-        const transformed: Record<string, any> = {};
+        const transformed: Record<string, unknown> = {};
         columnMappings.forEach(mapping => {
           transformed[mapping.targetField] = row[mapping.sourceColumn];
         });
@@ -283,9 +285,9 @@ const ImportModal: React.FC<ImportModalProps> = ({
       } else {
         throw new Error(response.data?.error || 'Import nije uspeo');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       logger.error('Import error', err);
-      setError(err.message || 'Greška pri importu');
+      setError(err instanceof Error ? err.message : 'Greška pri importu');
       setStep('preview');
     } finally {
       setImporting(false);
