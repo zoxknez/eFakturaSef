@@ -37,16 +37,36 @@ interface AuthContextType extends AuthState {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// DEV MODE: Automatski bypass login-a tokom razvoja
+const DEV_BYPASS_AUTH = import.meta.env.DEV;
+const DEV_USER: User = {
+  id: 'dev-user-id',
+  email: 'admin@demo-preduzece.rs',
+  firstName: 'Dev',
+  lastName: 'User',
+  role: 'ADMIN',
+  company: {
+    id: 'dev-company-id',
+    name: 'Demo Preduzeće',
+    pib: '123456789'
+  }
+};
+
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [authState, setAuthState] = useState<AuthState>({
-    user: null,
-    isAuthenticated: false,
-    isLoading: true,
+    user: DEV_BYPASS_AUTH ? DEV_USER : null,
+    isAuthenticated: DEV_BYPASS_AUTH,
+    isLoading: !DEV_BYPASS_AUTH,
     error: null
   });
 
   // Check if user is authenticated on app start
   useEffect(() => {
+    // U DEV modu, preskačemo proveru autentifikacije
+    if (DEV_BYPASS_AUTH) {
+      return;
+    }
+
     const checkAuth = async () => {
       try {
         const token = localStorage.getItem('accessToken');
