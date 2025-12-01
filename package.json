@@ -44,7 +44,7 @@
     "security:fix": "npm audit fix",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
-    "prepare": "husky install",
+    "prepare": "node -e \"try { require('husky').install() } catch (e) { if (e.code !== 'MODULE_NOT_FOUND') throw e }\"",
     "precommit": "lint-staged",
     "release": "standard-version",
     "release:minor": "standard-version --release-as minor",
