@@ -108,7 +108,11 @@ export const generateUUID = (): string => {
  * Delay function for retry logic
  */
 export const delay = (ms: number): Promise<void> => {
-  return new Promise(resolve => globalThis.setTimeout(resolve, ms));
+  return new Promise<void>((resolve) => {
+    // Use Function constructor to avoid TypeScript issues with setTimeout in different environments
+    const setTimeoutFn = Function('return setTimeout')() as (callback: () => void, ms: number) => unknown;
+    setTimeoutFn(() => resolve(), ms);
+  });
 };
 
 /**
