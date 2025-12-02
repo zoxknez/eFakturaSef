@@ -1,7 +1,7 @@
 {
   "version": 2,
   "installCommand": "npm install --workspaces --include-workspace-root",
-  "buildCommand": "npm run build --workspace=shared && npm run build --workspace=frontend",
+  "buildCommand": "npm run build --workspace=@sef-app/shared && npm run build --workspace=@sef-app/frontend",
   "outputDirectory": "frontend/dist",
   "framework": null,
   "rewrites": [
