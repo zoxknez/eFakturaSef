@@ -4,6 +4,7 @@
     "rootDir": "./src",
     "outDir": "./dist",
     "composite": true,
+    "types": ["node"],
     
     // Explicit strict mode settings (inherited from root, but explicit for clarity)
     "strict": true,
