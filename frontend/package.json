@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && node ../node_modules/vite/bin/vite.js build",
-    "build:vite": "node ../node_modules/vite/bin/vite.js build",
+    "build": "tsc && vite build",
+    "build:vite": "vite build",
     "preview": "vite preview",
     "type-check": "tsc --noEmit",
     "lint": "eslint src/**/*.{ts,tsx}",
