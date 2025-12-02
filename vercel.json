@@ -1,7 +1,7 @@
 {
   "version": 2,
   "installCommand": "cd /vercel/path0 && npm install && cd /vercel/path0/shared && npm install && cd /vercel/path0/frontend && npm install",
-  "buildCommand": "cd /vercel/path0/shared && npm run build && cd /vercel/path0/frontend && npm run build",
+  "buildCommand": "cd /vercel/path0/shared && npm run build && cd /vercel/path0/frontend && export PATH=$PATH:/vercel/path0/node_modules/.bin && npm run build",
   "outputDirectory": "frontend/dist",
   "framework": null,
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
