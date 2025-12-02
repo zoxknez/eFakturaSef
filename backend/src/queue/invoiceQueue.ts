@@ -153,7 +153,8 @@ invoiceQueue.process(async (job: Job<InvoiceJobData>) => {
         : 'https://demoefaktura.mfin.gov.rs'
     });
 
-    const sefResponse = await sefService.sendInvoice(ublXml);
+    const requestId = `INV-${invoiceId}-${Date.now()}`;
+    const sefResponse = await sefService.sendSalesInvoiceUBL(ublXml, requestId);
 
     // Update invoice status
     await prisma.invoice.update({

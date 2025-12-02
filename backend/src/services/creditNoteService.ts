@@ -250,7 +250,8 @@ export class CreditNoteService {
         : 'https://demoefaktura.mfin.gov.rs',
     });
 
-    const result = await sefService.sendInvoice(ublXml);
+    const requestId = `CN-${id}-${Date.now()}`;
+    const result = await sefService.sendSalesInvoiceUBL(ublXml, requestId);
 
     // Update credit note
     const updated = await prisma.creditNote.update({

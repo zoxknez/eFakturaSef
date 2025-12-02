@@ -603,7 +603,10 @@ export class InvoiceService {
         : 'https://demoefaktura.mfin.gov.rs'
     });
 
-    const sefResponse = await sefService.cancelInvoice(invoice.sefId, reason);
+    const sefResponse = await sefService.cancelSalesInvoice({
+      invoiceId: parseInt(invoice.sefId, 10),
+      cancelComments: reason,
+    });
 
     const updated = await prisma.$transaction(async (tx) => {
       const updatedInvoice = await tx.invoice.update({
@@ -761,12 +764,12 @@ export class InvoiceService {
         : 'https://demoefaktura.mfin.gov.rs'
     });
 
-    const sefStatus = await sefService.getInvoiceStatus(invoice.sefId);
+    const sefStatus = await sefService.getSalesInvoice(parseInt(invoice.sefId, 10));
 
-    if (sefStatus?.status && sefStatus.status !== invoice.sefStatus) {
+    if (sefStatus?.Status && sefStatus.Status !== invoice.sefStatus) {
       await prisma.invoice.update({
         where: { id },
-        data: { sefStatus: sefStatus.status },
+        data: { sefStatus: sefStatus.Status },
       });
     }
 

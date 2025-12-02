@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "installCommand": "npm install --ignore-scripts",
+  "installCommand": "npm install",
   "buildCommand": "npm run build:shared && npm run build:frontend",
   "outputDirectory": "frontend/dist",
   "framework": "vite",

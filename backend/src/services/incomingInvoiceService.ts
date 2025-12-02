@@ -269,7 +269,7 @@ export class IncomingInvoiceService {
     const dateFrom = new Date();
     dateFrom.setDate(dateFrom.getDate() - 30);
     
-    const sefInvoices = await sefService.getPurchaseInvoices({
+    const sefInvoices = await sefService.getPurchaseInvoiceIds({
       dateFrom: dateFrom.toISOString().split('T')[0]
     });
 
