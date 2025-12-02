@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "installCommand": "npm install && cd shared && npm install && cd ../frontend && npm install",
-  "buildCommand": "cd shared && npm run build && cd ../frontend && npm run build && npx vite build",
+  "installCommand": "npm install && npm install --prefix shared && npm install --prefix frontend",
+  "buildCommand": "npm run build --prefix shared && npm run build --prefix frontend && npm run vite:build --prefix frontend",
   "outputDirectory": "frontend/dist",
   "framework": null,
   "rewrites": [
