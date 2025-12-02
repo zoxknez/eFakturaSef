@@ -108,7 +108,7 @@ export const generateUUID = (): string => {
  * Delay function for retry logic
  */
 export const delay = (ms: number): Promise<void> => {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise(resolve => globalThis.setTimeout(resolve, ms));
 };
 
 /**
