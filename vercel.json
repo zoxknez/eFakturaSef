@@ -1,8 +1,8 @@
 {
   "version": 2,
   "installCommand": "cd /vercel/path0 && npm install --include=dev && cd /vercel/path0/shared && npm install --include=dev && cd /vercel/path0/frontend && npm install --include=dev",
-  "buildCommand": "cd /vercel/path0/shared && npm run build && cd /vercel/path0/frontend && npm run build && cd /vercel/path0",
-  "outputDirectory": "frontend/dist",
+  "buildCommand": "cd /vercel/path0/shared && npm run build && cd /vercel/path0/frontend && npm run build && cp -r /vercel/path0/frontend/dist /vercel/path0/dist",
+  "outputDirectory": "dist",
   "framework": null,
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
   "headers": [
