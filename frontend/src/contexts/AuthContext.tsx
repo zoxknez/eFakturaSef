@@ -37,8 +37,8 @@ interface AuthContextType extends AuthState {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// DEV MODE: Automatski bypass login-a tokom razvoja
-const DEV_BYPASS_AUTH = import.meta.env.DEV;
+// DEV MODE: Automatski bypass login-a tokom razvoja ili kada je VITE_BYPASS_AUTH=true
+const DEV_BYPASS_AUTH = import.meta.env.DEV || import.meta.env.VITE_BYPASS_AUTH === 'true';
 const DEV_USER: User = {
   id: 'dev-user-id',
   email: 'admin@demo-preduzece.rs',
