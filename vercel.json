@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "installCommand": "npm install --prefix /vercel/path0 && npm install --prefix /vercel/path0/shared && npm install --prefix /vercel/path0/frontend",
-  "buildCommand": "npm run build --prefix /vercel/path0/shared && npm run build --prefix /vercel/path0/frontend && npm run vite:build --prefix /vercel/path0/frontend",
+  "installCommand": "npm install && cd shared && npm install && cd ../frontend && npm install",
+  "buildCommand": "cd shared && npm run build && cd ../frontend && npm run build && npm run vite:build",
   "outputDirectory": "frontend/dist",
   "framework": null,
   "rewrites": [
