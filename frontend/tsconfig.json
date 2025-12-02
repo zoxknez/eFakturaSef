@@ -23,8 +23,7 @@
       "@/utils/*": ["./src/utils/*"],
       "@/types/*": ["./src/types/*"],
       "@sef-app/shared": ["../shared/src/index.ts"]
-    },
-    "types": ["vite/client"]
+    }
   },
   "include": [
     "src/**/*"
