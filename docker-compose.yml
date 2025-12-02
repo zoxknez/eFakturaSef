@@ -28,7 +28,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3001
-      DATABASE_URL: postgresql://neondb_owner:npg_A8oWh9TKVDkb@ep-lingering-tree-ag7nbiqc-pooler.c-2.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+      DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET}
       WEBHOOK_SECRET: ${WEBHOOK_SECRET}
