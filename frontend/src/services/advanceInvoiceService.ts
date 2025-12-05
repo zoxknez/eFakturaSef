@@ -4,81 +4,32 @@
  */
 
 import apiClient from './api';
+import type {
+  AdvanceInvoiceListItem,
+  AdvanceInvoiceDetail,
+  CreateAdvanceInvoiceDTO,
+  UseAdvanceDTO,
+  AdvanceInvoiceListResponse,
+  AdvanceInvoiceFilterParams,
+  AdvanceInvoiceSummary
+} from '@sef-app/shared';
 
-export interface AdvanceInvoice {
-  id: string;
-  companyId: string;
-  invoiceNumber: string;
-  
-  // Partner
-  partnerId?: string;
-  partnerName: string;
-  partnerPIB: string;
-  partnerAddress?: string;
-  
-  // Dates
-  issueDate: string;
-  dueDate?: string;
-  paymentDate?: string;
-  
-  // Amounts
-  netAmount: number;
-  vatAmount: number;
-  vatRate: number;
-  totalAmount: number;
-  paidAmount: number;
-  usedAmount: number;
-  remainingAmount: number;
-  
-  currency: string;
-  
-  // Status
-  status: 'DRAFT' | 'ISSUED' | 'PAID' | 'PARTIALLY_USED' | 'FULLY_USED' | 'CANCELLED';
-  
-  // SEF
-  sefId?: string;
-  sefStatus?: string;
-  ublXml?: string;
-  
-  // Linked invoices
-  linkedInvoiceIds?: string[];
-  
-  description?: string;
-  notes?: string;
-  
-  createdAt: string;
-  updatedAt: string;
-  
-  // Relations
-  partner?: {
-    id: string;
-    name: string;
-    pib: string;
-  };
-  linkedInvoices?: {
-    id: string;
-    invoiceNumber: string;
-    amount: number;
-  }[];
-}
+// Re-export types for backwards compatibility
+export type AdvanceInvoice = AdvanceInvoiceListItem;
+export type { AdvanceInvoiceDetail, CreateAdvanceInvoiceDTO, UseAdvanceDTO };
 
-export interface CreateAdvanceInvoiceData {
+// Legacy form data interface (maps to CreateAdvanceInvoiceDTO)
+export interface CreateAdvanceInvoiceFormData {
   partnerId?: string;
-  partnerName: string;
-  partnerPIB: string;
+  partnerName?: string;  // For display only
+  partnerPIB?: string;   // For display only
   partnerAddress?: string;
   issueDate: string;
   dueDate?: string;
-  netAmount: number;
-  vatRate: number;
+  advanceAmount: number;
+  taxRate: number;
   currency?: string;
   description?: string;
-  notes?: string;
-}
-
-export interface UseAdvanceData {
-  invoiceId: string;
-  amount: number;
   notes?: string;
 }
 
@@ -88,15 +39,7 @@ class AdvanceInvoiceService {
   /**
    * Get all advance invoices
    */
-  async getAll(companyId: string, params?: {
-    status?: string;
-    partnerId?: string;
-    fromDate?: string;
-    toDate?: string;
-    hasRemaining?: boolean;
-    page?: number;
-    limit?: number;
-  }) {
+  async getAll(companyId: string, params?: AdvanceInvoiceFilterParams) {
     const queryParams = new URLSearchParams();
     if (params?.status) queryParams.append('status', params.status);
     if (params?.partnerId) queryParams.append('partnerId', params.partnerId);
@@ -107,7 +50,7 @@ class AdvanceInvoiceService {
     if (params?.limit) queryParams.append('limit', params.limit.toString());
     
     const query = queryParams.toString();
-    return apiClient.get<{ data: AdvanceInvoice[]; pagination: any }>(
+    return apiClient.get<AdvanceInvoiceListResponse>(
       `${this.basePath}/companies/${companyId}${query ? `?${query}` : ''}`
     );
   }
@@ -116,7 +59,7 @@ class AdvanceInvoiceService {
    * Get single advance invoice
    */
   async getById(companyId: string, advanceId: string) {
-    return apiClient.get<AdvanceInvoice>(
+    return apiClient.get<AdvanceInvoiceDetail>(
       `${this.basePath}/companies/${companyId}/${advanceId}`
     );
   }
@@ -125,7 +68,7 @@ class AdvanceInvoiceService {
    * Get available advances for partner (with remaining amount)
    */
   async getAvailableForPartner(companyId: string, partnerId: string) {
-    return apiClient.get<AdvanceInvoice[]>(
+    return apiClient.get<AdvanceInvoiceListItem[]>(
       `${this.basePath}/companies/${companyId}/partner/${partnerId}/available`
     );
   }
@@ -133,18 +76,18 @@ class AdvanceInvoiceService {
   /**
    * Create advance invoice
    */
-  async create(companyId: string, data: CreateAdvanceInvoiceData) {
-    return apiClient.post<AdvanceInvoice>(
+  async create(companyId: string, data: CreateAdvanceInvoiceDTO) {
+    return apiClient.post<AdvanceInvoiceDetail>(
       `${this.basePath}/companies/${companyId}`,
       data
     );
   }
 
   /**
-   * Update advance invoice
+   * Update advance invoice (only drafts)
    */
-  async update(companyId: string, advanceId: string, data: Partial<CreateAdvanceInvoiceData>) {
-    return apiClient.put<AdvanceInvoice>(
+  async update(companyId: string, advanceId: string, data: Partial<CreateAdvanceInvoiceDTO>) {
+    return apiClient.put<AdvanceInvoiceDetail>(
       `${this.basePath}/companies/${companyId}/${advanceId}`,
       data
     );
@@ -158,7 +101,7 @@ class AdvanceInvoiceService {
     amount: number;
     notes?: string;
   }) {
-    return apiClient.post<AdvanceInvoice>(
+    return apiClient.post<AdvanceInvoiceDetail>(
       `${this.basePath}/companies/${companyId}/${advanceId}/pay`,
       data
     );
@@ -167,8 +110,8 @@ class AdvanceInvoiceService {
   /**
    * Use advance against invoice
    */
-  async useAdvance(companyId: string, advanceId: string, data: UseAdvanceData) {
-    return apiClient.post<AdvanceInvoice>(
+  async useAdvance(companyId: string, advanceId: string, data: UseAdvanceDTO) {
+    return apiClient.post<AdvanceInvoiceDetail>(
       `${this.basePath}/companies/${companyId}/${advanceId}/use`,
       data
     );
@@ -178,7 +121,7 @@ class AdvanceInvoiceService {
    * Send to SEF
    */
   async sendToSEF(companyId: string, advanceId: string) {
-    return apiClient.post<AdvanceInvoice>(
+    return apiClient.post<AdvanceInvoiceDetail>(
       `${this.basePath}/companies/${companyId}/${advanceId}/send`
     );
   }
@@ -187,7 +130,7 @@ class AdvanceInvoiceService {
    * Cancel advance invoice
    */
   async cancel(companyId: string, advanceId: string, reason?: string) {
-    return apiClient.post<AdvanceInvoice>(
+    return apiClient.post<AdvanceInvoiceDetail>(
       `${this.basePath}/companies/${companyId}/${advanceId}/cancel`,
       { reason }
     );
@@ -205,10 +148,25 @@ class AdvanceInvoiceService {
   /**
    * Generate PDF
    */
-  async generatePDF(companyId: string, advanceId: string) {
-    return apiClient.get<Blob>(
-      `${this.basePath}/companies/${companyId}/${advanceId}/pdf`,
-      { responseType: 'blob' } as any
+  async generatePDF(companyId: string, advanceId: string): Promise<Blob> {
+    const response = await fetch(`/api${this.basePath}/companies/${companyId}/${advanceId}/pdf`, {
+      method: 'GET',
+      credentials: 'include',
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to generate PDF: ${response.statusText}`);
+    }
+    
+    return response.blob();
+  }
+
+  /**
+   * Get summary for date range
+   */
+  async getSummary(companyId: string, fromDate: string, toDate: string) {
+    return apiClient.get<AdvanceInvoiceSummary>(
+      `${this.basePath}/companies/${companyId}/summary?fromDate=${fromDate}&toDate=${toDate}`
     );
   }
 }

@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import { fixedAssetService } from '../../services/fixedAssetService';
 import { FixedAssetStatus } from '@sef-app/shared';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
+import { ArrowLeft, Save, Loader2 } from 'lucide-react';
 
 // Schema for the form
 const formSchema = z.object({
@@ -28,7 +29,7 @@ export const FixedAssetForm: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams();
   const isEditMode = !!id;
-  const [loading, setLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [initialLoading, setInitialLoading] = useState(isEditMode);
 
   const { register, handleSubmit, formState: { errors }, reset, setValue } = useForm<FormData>({
@@ -74,7 +75,7 @@ export const FixedAssetForm: React.FC = () => {
 
   const onSubmit = async (data: FormData) => {
     try {
-      setLoading(true);
+      setIsSubmitting(true);
       
       // Calculate current value (initially same as purchase value for new assets)
       // For edit, backend handles it or we keep existing logic
@@ -100,7 +101,7 @@ export const FixedAssetForm: React.FC = () => {
       console.error('Failed to save asset:', error);
       toast.error('Greška pri čuvanju podataka');
     } finally {
-      setLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -119,9 +120,7 @@ export const FixedAssetForm: React.FC = () => {
           onClick={() => navigate('/fixed-assets')}
           className="flex items-center text-gray-500 hover:text-gray-700 transition-colors mb-4"
         >
-          <svg className="w-5 h-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
+          <ArrowLeft className="w-5 h-5 mr-1" />
           Nazad na listu
         </button>
         <h1 className="text-3xl font-bold text-gray-900">
@@ -272,22 +271,26 @@ export const FixedAssetForm: React.FC = () => {
           <button
             type="button"
             onClick={() => navigate('/fixed-assets')}
-            className="px-6 py-2.5 border border-gray-200 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+            disabled={isSubmitting}
+            className="px-6 py-2.5 border border-gray-200 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
           >
             Otkaži
           </button>
           <button
             type="submit"
-            disabled={loading}
+            disabled={isSubmitting}
             className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 focus:ring-4 focus:ring-blue-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
-            {loading ? (
+            {isSubmitting ? (
               <>
-                <LoadingSpinner size="sm" />
+                <Loader2 className="w-4 h-4 animate-spin" />
                 Čuvanje...
               </>
             ) : (
-              'Sačuvaj'
+              <>
+                <Save className="w-4 h-4" />
+                Sačuvaj
+              </>
             )}
           </button>
         </div>

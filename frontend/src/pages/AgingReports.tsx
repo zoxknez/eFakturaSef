@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { logger } from '../utils/logger';
+import toast from 'react-hot-toast';
+import { BarChart3, TrendingUp, Download } from 'lucide-react';
 
 interface AgingBucket {
   label: string;
@@ -265,7 +267,7 @@ const AgingReports: React.FC = () => {
 
   const exportToExcel = () => {
     // Simulate Excel export
-    alert('Izvoz u Excel će biti implementiran sa pravim Excel bibliotekom');
+    toast('Izvoz u Excel će biti implementiran sa pravim Excel bibliotekom', { icon: 'ℹ️' });
   };
 
   return (
@@ -283,18 +285,14 @@ const AgingReports: React.FC = () => {
           
           {/* Chart icon pattern */}
           <div className="absolute top-8 right-16 opacity-10">
-            <svg className="w-24 h-24" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/>
-            </svg>
+            <BarChart3 className="w-24 h-24" />
           </div>
         </div>
         
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
           <div className="space-y-4">
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full text-sm font-medium">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
+              <TrendingUp className="w-4 h-4" />
               Analiza dospelosti • Potraživanja i obaveze
             </div>
             <h1 className="text-4xl lg:text-5xl font-black tracking-tight">
@@ -310,9 +308,7 @@ const AgingReports: React.FC = () => {
               onClick={exportToExcel}
               className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-rose-600 rounded-xl font-semibold shadow-lg shadow-black/10 hover:shadow-xl hover:-translate-y-0.5 transition-all"
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
+              <Download className="w-5 h-5" />
               Izvezi Excel
             </button>
           </div>

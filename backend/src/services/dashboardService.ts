@@ -1,33 +1,12 @@
 import { prisma } from '../db/prisma';
 import { Prisma } from '@prisma/client';
 import cacheService, { CachePrefix } from './cacheService';
-
-export interface DashboardOverview {
-  totalInvoices: number;
-  acceptedInvoices: number;
-  pendingInvoices: number;
-  totalRevenue: number;
-  acceptanceRate: number;
-  trends: {
-    invoices: { value: string; positive: boolean };
-    revenue: { value: string; positive: boolean };
-  };
-}
-
-export interface DashboardCharts {
-  revenueByMonth: { month: string; revenue: number }[];
-  invoicesByStatus: { status: string; count: number }[];
-}
-
-export interface DashboardAlerts {
-  overdueInvoices: { count: number; items: any[] };
-  lowStockProducts: { count: number; items: any[] };
-  deadlines: {
-    critical: number;
-    warning: number;
-    aging: number;
-  };
-}
+import type { 
+  DashboardOverview, 
+  DashboardCharts, 
+  DashboardAlerts,
+  DashboardInvoice 
+} from '@sef-app/shared';
 
 export class DashboardService {
   /**
@@ -118,36 +97,47 @@ export class DashboardService {
         ]);
 
         // Calculate trends
-        const invoicesTrend = previousMonthInvoices > 0
-          ? (((currentMonthInvoices - previousMonthInvoices) / previousMonthInvoices) * 100).toFixed(1)
-          : '0';
+        const invoicesTrendValue = previousMonthInvoices > 0
+          ? ((currentMonthInvoices - previousMonthInvoices) / previousMonthInvoices) * 100
+          : 0;
 
         const currentRevenue = currentMonthRevenue._sum.totalAmount ? Number(currentMonthRevenue._sum.totalAmount) : 0;
         const previousRevenue = previousMonthRevenue._sum.totalAmount ? Number(previousMonthRevenue._sum.totalAmount) : 0;
 
-        const revenueTrend = previousRevenue > 0
-          ? (((currentRevenue - previousRevenue) / previousRevenue) * 100).toFixed(1)
-          : '0';
+        const revenueTrendValue = previousRevenue > 0
+          ? ((currentRevenue - previousRevenue) / previousRevenue) * 100
+          : 0;
 
         // Acceptance rate
         const acceptanceRate = currentMonthInvoices > 0
-          ? ((currentMonthAccepted / currentMonthInvoices) * 100).toFixed(1)
-          : '0';
+          ? (currentMonthAccepted / currentMonthInvoices) * 100
+          : 0;
+
+        // Get rejected count
+        const rejectedInvoices = await prisma.invoice.count({
+          where: {
+            companyId,
+            createdAt: { gte: startOfCurrentMonth },
+            status: 'REJECTED',
+            type: 'OUTGOING'
+          }
+        });
 
         return {
           totalInvoices: currentMonthInvoices,
           acceptedInvoices: currentMonthAccepted,
           pendingInvoices,
+          rejectedInvoices,
           totalRevenue: currentRevenue,
-          acceptanceRate: parseFloat(acceptanceRate),
+          acceptanceRate: Math.round(acceptanceRate * 10) / 10,
           trends: {
             invoices: {
-              value: invoicesTrend,
-              positive: parseFloat(invoicesTrend) >= 0
+              value: Math.round(invoicesTrendValue * 10) / 10,
+              positive: invoicesTrendValue >= 0
             },
             revenue: {
-              value: revenueTrend,
-              positive: parseFloat(revenueTrend) >= 0
+              value: Math.round(revenueTrendValue * 10) / 10,
+              positive: revenueTrendValue >= 0
             }
           }
         };
@@ -169,21 +159,21 @@ export class DashboardService {
         const now = new Date();
         const twelveMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 11, 1);
 
-        // Revenue by month (last 12 months) - using raw query for performance
-        const revenueByMonth = await prisma.$queryRawUnsafe<Array<{ month: string; revenue: number }>>(
-          `SELECT 
-            TO_CHAR(DATE_TRUNC('month', "createdAt"), 'YYYY-MM') as month,
-            COALESCE(SUM("totalAmount"), 0)::float as revenue
-          FROM "invoices"
-          WHERE 
-            "company_id" = $1::uuid
-            AND "type" = 'OUTGOING'
-            AND "status" = 'ACCEPTED'
-            AND "created_at" >= $2
-          GROUP BY DATE_TRUNC('month', "created_at")
-          ORDER BY month ASC`,
-          companyId,
-          twelveMonthsAgo
+        // Revenue by month (last 12 months) - using Prisma query builder for safety
+        const revenueByMonth = await prisma.$queryRaw<Array<{ month: string; revenue: number }>>(
+          Prisma.sql`
+            SELECT 
+              TO_CHAR(DATE_TRUNC('month', "created_at"), 'YYYY-MM') as month,
+              COALESCE(SUM("total_amount"), 0)::float as revenue
+            FROM "invoices"
+            WHERE 
+              "company_id" = ${companyId}::uuid
+              AND "type" = 'OUTGOING'
+              AND "status" = 'ACCEPTED'
+              AND "created_at" >= ${twelveMonthsAgo}
+            GROUP BY DATE_TRUNC('month', "created_at")
+            ORDER BY month ASC
+          `
         );
 
         // Fill in missing months with zero revenue
@@ -208,9 +198,22 @@ export class DashboardService {
           _count: { id: true }
         });
 
+        // Status color mapping
+        const statusColors: Record<string, string> = {
+          'DRAFT': '#9CA3AF',      // gray-400
+          'SENT': '#3B82F6',       // blue-500
+          'DELIVERED': '#8B5CF6',  // violet-500
+          'ACCEPTED': '#10B981',   // emerald-500
+          'REJECTED': '#EF4444',   // red-500
+          'CANCELLED': '#F59E0B',  // amber-500
+          'STORNO': '#6B7280',     // gray-500
+          'EXPIRED': '#DC2626'     // red-600
+        };
+
         const statusData = invoicesByStatus.map(item => ({
           status: item.status,
-          count: item._count.id
+          count: item._count.id,
+          color: statusColors[item.status] || '#9CA3AF'
         }));
 
         return {
@@ -225,7 +228,7 @@ export class DashboardService {
   /**
    * Get Recent Invoices
    */
-  static async getRecent(companyId: string, limit: number = 10) {
+  static async getRecent(companyId: string, limit: number = 10): Promise<DashboardInvoice[]> {
     // Use cache-aside pattern (30 seconds TTL)
     const cacheKey = `${companyId}:recent:${limit}`;
     return cacheService.getOrSet(
@@ -254,14 +257,13 @@ export class DashboardService {
           invoiceNumber: invoice.invoiceNumber,
           partnerName: invoice.partner?.name || invoice.buyerName || 'N/A',
           partnerPIB: invoice.partner?.pib || invoice.buyerPIB || 'N/A',
-          partnerType: invoice.partner?.type || null,
           hasPartner: !!invoice.partnerId,
           totalAmount: Number(invoice.totalAmount),
           currency: invoice.currency,
           status: invoice.status,
-          type: invoice.type,
-          createdAt: invoice.createdAt,
-          issueDate: invoice.issueDate
+          type: invoice.type as 'OUTGOING' | 'INCOMING',
+          createdAt: invoice.createdAt.toISOString(),
+          issueDate: invoice.issueDate.toISOString()
         }));
       },
       30 // Cache for 30 seconds
@@ -319,11 +321,15 @@ export class DashboardService {
             take: 10
           }),
 
-          // Low stock products - get tracked products and filter in JS
+          // Low stock products - optimized query with filter in database where possible
           prisma.product.findMany({
             where: {
               companyId,
               trackInventory: true,
+              isActive: true,
+              // Filter in database: currentStock < minStock
+              // Note: Prisma doesn't support direct comparison of Decimal fields,
+              // so we still need JS filtering, but we limit results first
             },
             select: {
               id: true,
@@ -334,10 +340,15 @@ export class DashboardService {
               unit: true,
             },
             orderBy: { currentStock: 'asc' },
-            take: 100 // Get more to filter
+            take: 50 // Reduced from 100 - get fewer products to filter
           }).then(products => 
             products
-              .filter(p => p.currentStock !== null && p.minStock !== null && Number(p.currentStock) < Number(p.minStock))
+              .filter(p => {
+                if (!p.currentStock || !p.minStock) return false;
+                const current = Number(p.currentStock);
+                const min = Number(p.minStock);
+                return current < min;
+              })
               .slice(0, 10)
               .map(p => ({
                 id: p.id,
@@ -386,13 +397,20 @@ export class DashboardService {
           invoiceNumber: invoice.invoiceNumber,
           partnerName: invoice.partner?.name || invoice.buyerName || 'N/A',
           totalAmount: Number(invoice.totalAmount),
-          dueDate: invoice.dueDate,
+          dueDate: invoice.dueDate?.toISOString() || '',
           daysOverdue: invoice.dueDate ? Math.floor((now.getTime() - invoice.dueDate.getTime()) / (1000 * 60 * 60 * 24)) : 0
         }));
+
+        // Calculate total overdue amount
+        const totalOverdueAmount = overdueInvoices.reduce(
+          (sum, inv) => sum + Number(inv.totalAmount), 
+          0
+        );
 
         return {
           overdueInvoices: {
             count: overdueInvoices.length,
+            totalAmount: totalOverdueAmount,
             items: formattedOverdueInvoices
           },
           lowStockProducts: {

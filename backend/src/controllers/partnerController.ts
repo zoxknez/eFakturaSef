@@ -4,7 +4,7 @@ import { PartnerService, CreatePartnerSchema, UpdatePartnerSchema } from '../ser
 import { z } from 'zod';
 import { PartnerType } from '@prisma/client';
 import { AuthenticatedRequest } from '../middleware/auth';
-import { getErrorMessage } from '../types/common';
+import { AppError, Errors, handleControllerError, getAuthenticatedCompanyId } from '../utils/errorHandler';
 
 const ListPartnersQuerySchema = z.object({
   page: z.string().optional().default('1'),
@@ -24,23 +24,17 @@ export class PartnerController {
   static async list(req: Request, res: Response) {
     try {
       const authReq = req as AuthenticatedRequest;
-      const user = authReq.user;
-      if (!user?.companyId) {
-        return res.status(403).json({ error: 'User not associated with a company' });
-      }
+      const companyId = getAuthenticatedCompanyId(authReq.user);
 
       // Validate query params
       const queryResult = ListPartnersQuerySchema.safeParse(req.query);
       if (!queryResult.success) {
-        return res.status(400).json({ 
-          error: 'Invalid query parameters',
-          details: queryResult.error.format(),
-        });
+        throw Errors.validationError(queryResult.error.errors);
       }
 
       const { page, limit, search, type, isActive, sortBy, sortOrder } = queryResult.data;
 
-      const result = await PartnerService.listPartners(user.companyId, {
+      const result = await PartnerService.listPartners(companyId, {
         page: parseInt(page),
         limit: parseInt(limit),
         search,
@@ -50,10 +44,9 @@ export class PartnerController {
         sortOrder: sortOrder as 'asc' | 'desc',
       });
 
-      return res.json(result);
+      return res.json({ success: true, ...result });
     } catch (error: unknown) {
-      logger.error('Failed to list partners:', error);
-      return res.status(500).json({ error: 'Failed to fetch partners' });
+      return handleControllerError('PartnerController.list', error, res);
     }
   }
 
@@ -64,22 +57,17 @@ export class PartnerController {
   static async get(req: Request, res: Response) {
     try {
       const authReq = req as AuthenticatedRequest;
-      const user = authReq.user;
+      const companyId = getAuthenticatedCompanyId(authReq.user);
       const id = req.params.id as string;
 
-      if (!user?.companyId) {
-        return res.status(403).json({ error: 'User not associated with a company' });
+      if (!id) {
+        throw Errors.badRequest('Partner ID is required');
       }
 
-      const partner = await PartnerService.getPartner(id, user.companyId);
-      return res.json(partner);
+      const partner = await PartnerService.getPartner(id, companyId);
+      return res.json({ success: true, data: partner });
     } catch (error: unknown) {
-      const message = getErrorMessage(error);
-      logger.error('Failed to get partner:', error);
-      if (message === 'Partner not found') {
-        return res.status(404).json({ error: message });
-      }
-      return res.status(500).json({ error: 'Failed to fetch partner' });
+      return handleControllerError('PartnerController.get', error, res);
     }
   }
 
@@ -90,29 +78,22 @@ export class PartnerController {
   static async create(req: Request, res: Response) {
     try {
       const authReq = req as AuthenticatedRequest;
-      const user = authReq.user;
-      if (!user?.companyId) {
-        return res.status(403).json({ error: 'User not associated with a company' });
+      const companyId = getAuthenticatedCompanyId(authReq.user);
+      
+      if (!authReq.user?.id) {
+        throw Errors.unauthorized('User not authenticated');
       }
 
       // Validate request body
       const validationResult = CreatePartnerSchema.safeParse(req.body);
       if (!validationResult.success) {
-        return res.status(400).json({
-          error: 'Validation failed',
-          details: validationResult.error.format(),
-        });
+        throw Errors.validationError(validationResult.error.errors);
       }
 
-      const partner = await PartnerService.createPartner(user.companyId, validationResult.data, user.id);
-      return res.status(201).json(partner);
+      const partner = await PartnerService.createPartner(companyId, validationResult.data, authReq.user.id);
+      return res.status(201).json({ success: true, data: partner });
     } catch (error: unknown) {
-      const message = getErrorMessage(error);
-      logger.error('Failed to create partner:', error);
-      if (message.includes('already exists')) {
-        return res.status(409).json({ error: message });
-      }
-      return res.status(500).json({ error: 'Failed to create partner' });
+      return handleControllerError('PartnerController.create', error, res);
     }
   }
 
@@ -123,34 +104,27 @@ export class PartnerController {
   static async update(req: Request, res: Response) {
     try {
       const authReq = req as AuthenticatedRequest;
-      const user = authReq.user;
+      const companyId = getAuthenticatedCompanyId(authReq.user);
       const id = req.params.id as string;
-
-      if (!user?.companyId) {
-        return res.status(403).json({ error: 'User not associated with a company' });
+      
+      if (!id) {
+        throw Errors.badRequest('Partner ID is required');
+      }
+      
+      if (!authReq.user?.id) {
+        throw Errors.unauthorized('User not authenticated');
       }
 
       // Validate request body
       const validationResult = UpdatePartnerSchema.safeParse(req.body);
       if (!validationResult.success) {
-        return res.status(400).json({
-          error: 'Validation failed',
-          details: validationResult.error.format(),
-        });
+        throw Errors.validationError(validationResult.error.errors);
       }
 
-      const partner = await PartnerService.updatePartner(id, user.companyId, validationResult.data, user.id);
-      return res.json(partner);
+      const partner = await PartnerService.updatePartner(id, companyId, validationResult.data, authReq.user.id);
+      return res.json({ success: true, data: partner });
     } catch (error: unknown) {
-      const message = getErrorMessage(error);
-      logger.error('Failed to update partner:', error);
-      if (message === 'Partner not found') {
-        return res.status(404).json({ error: message });
-      }
-      if (message.includes('already exists')) {
-        return res.status(409).json({ error: message });
-      }
-      return res.status(500).json({ error: 'Failed to update partner' });
+      return handleControllerError('PartnerController.update', error, res);
     }
   }
 
@@ -161,52 +135,21 @@ export class PartnerController {
   static async delete(req: Request, res: Response) {
     try {
       const authReq = req as AuthenticatedRequest;
-      const user = authReq.user;
+      const companyId = getAuthenticatedCompanyId(authReq.user);
       const id = req.params.id as string;
-
-      if (!user?.companyId) {
-        return res.status(403).json({ error: 'User not associated with a company' });
+      
+      if (!id) {
+        throw Errors.badRequest('Partner ID is required');
       }
 
-      const result = await PartnerService.deletePartner(id, user.companyId, user.id);
-      return res.json(result);
+      if (!authReq.user?.id) {
+        throw Errors.unauthorized('User not authenticated');
+      }
+
+      await PartnerService.deletePartner(id, companyId, authReq.user.id);
+      return res.json({ success: true, message: 'Partner deleted successfully' });
     } catch (error: unknown) {
-      const message = getErrorMessage(error);
-      logger.error('Failed to delete partner:', error);
-      if (message === 'Partner not found') {
-        return res.status(404).json({ error: message });
-      }
-      return res.status(500).json({ error: 'Failed to delete partner' });
-    }
-  }
-
-  /**
-   * Autocomplete search for partner selection
-   * GET /api/partners/autocomplete?q=searchTerm&type=BUYER
-   */
-  static async autocomplete(req: Request, res: Response) {
-    try {
-      const authReq = req as AuthenticatedRequest;
-      const user = authReq.user;
-      const { q, type } = req.query;
-
-      if (!q || typeof q !== 'string') {
-        return res.status(400).json({ error: 'Query parameter "q" is required' });
-      }
-
-      if (!user?.companyId) {
-        return res.status(403).json({ error: 'User not associated with a company' });
-      }
-
-      const partners = await PartnerService.autocomplete(
-        user.companyId, 
-        q, 
-        type as PartnerType | undefined
-      );
-      return res.json(partners);
-    } catch (error: unknown) {
-      logger.error('Failed to autocomplete partners:', error);
-      return res.status(500).json({ error: 'Failed to search partners' });
+      return handleControllerError('PartnerController.delete', error, res);
     }
   }
 
@@ -217,22 +160,42 @@ export class PartnerController {
   static async stats(req: Request, res: Response) {
     try {
       const authReq = req as AuthenticatedRequest;
-      const user = authReq.user;
+      const companyId = getAuthenticatedCompanyId(authReq.user);
       const id = req.params.id as string;
-
-      if (!user?.companyId) {
-        return res.status(403).json({ error: 'User not associated with a company' });
+      
+      if (!id) {
+        throw Errors.badRequest('Partner ID is required');
       }
 
-      const stats = await PartnerService.getStats(id, user.companyId);
-      return res.json(stats);
+      const stats = await PartnerService.getStats(id, companyId);
+      return res.json({ success: true, data: stats });
     } catch (error: unknown) {
-      const message = getErrorMessage(error);
-      logger.error('Failed to get partner stats:', error);
-      if (message === 'Partner not found') {
-        return res.status(404).json({ error: message });
+      return handleControllerError('PartnerController.stats', error, res);
+    }
+  }
+
+  /**
+   * Autocomplete search for partner selection
+   * GET /api/partners/autocomplete?q=searchTerm&type=BUYER
+   */
+  static async autocomplete(req: Request, res: Response) {
+    try {
+      const authReq = req as AuthenticatedRequest;
+      const companyId = getAuthenticatedCompanyId(authReq.user);
+      const { q, type } = req.query;
+
+      if (!q || typeof q !== 'string') {
+        throw Errors.badRequest('Query parameter "q" is required');
       }
-      return res.status(500).json({ error: 'Failed to fetch partner statistics' });
+
+      const partners = await PartnerService.autocomplete(
+        companyId, 
+        q, 
+        type as PartnerType | undefined
+      );
+      return res.json({ success: true, data: partners });
+    } catch (error: unknown) {
+      return handleControllerError('PartnerController.autocomplete', error, res);
     }
   }
 }

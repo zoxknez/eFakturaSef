@@ -8,20 +8,7 @@ import { Autocomplete, AutocompleteOption } from '../components/Autocomplete';
 import { toast } from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, Trash2, Save } from 'lucide-react';
-
-// Types
-interface Partner {
-  id: string;
-  name: string;
-  pib: string;
-}
-
-interface Product {
-  id: string;
-  name: string;
-  unitPrice: number;
-  taxRate: number;
-}
+import type { PartnerAutocompleteItem, ProductAutocompleteItem } from '@sef-app/shared';
 
 interface InvoiceItem {
   name: string;
@@ -51,7 +38,7 @@ type CreateRecurringForm = z.infer<typeof createRecurringSchema>;
 
 export const CreateRecurringInvoice: React.FC = () => {
   const navigate = useNavigate();
-  const [selectedPartner, setSelectedPartner] = useState<Partner | null>(null);
+  const [selectedPartner, setSelectedPartner] = useState<PartnerAutocompleteItem | null>(null);
   const [items, setItems] = useState<InvoiceItem[]>([{ name: '', quantity: 1, price: 0, vatRate: 20, unit: 'kom' }]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -74,7 +61,7 @@ export const CreateRecurringInvoice: React.FC = () => {
     try {
       const response = await api.searchPartners(query);
       if (response.success && response.data) {
-        return response.data.map((partner: Partner) => ({
+        return response.data.map((partner) => ({
           id: partner.id,
           label: partner.name,
           sublabel: `PIB: ${partner.pib}`,
@@ -91,7 +78,7 @@ export const CreateRecurringInvoice: React.FC = () => {
     try {
       const response = await api.searchProducts(query);
       if (response.success && response.data) {
-        return response.data.map((product: Product) => ({
+        return response.data.map((product) => ({
           id: product.id,
           label: product.name,
           sublabel: `${product.unitPrice} RSD`,
@@ -105,17 +92,18 @@ export const CreateRecurringInvoice: React.FC = () => {
   };
 
   const handlePartnerSelect = (option: AutocompleteOption | null) => {
-    setSelectedPartner(option ? option.data : null);
+    setSelectedPartner(option ? option.data as PartnerAutocompleteItem : null);
   };
 
   const handleProductSelect = (index: number, option: AutocompleteOption | null) => {
     if (option) {
+      const product = option.data as ProductAutocompleteItem;
       const newItems = [...items];
       newItems[index] = {
         ...newItems[index],
-        name: option.data.name,
-        price: option.data.unitPrice,
-        vatRate: option.data.taxRate
+        name: product.name,
+        price: product.unitPrice,
+        vatRate: product.taxRate
       };
       setItems(newItems);
       setValue('items', newItems);

@@ -3,8 +3,11 @@
  * Serbian accounting standard chart of accounts management
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { toast } from 'react-hot-toast';
 import { LoadingSpinner } from '../components/LoadingSpinner';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import api from '../services/api';
 import { 
   Search, 
   Plus, 
@@ -16,8 +19,21 @@ import {
   Filter,
   RotateCcw,
   Settings,
-  AlertCircle
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
+
+// Debounce hook
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+  
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(handler);
+  }, [value, delay]);
+  
+  return debouncedValue;
+}
 
 // Account type colors
 const ACCOUNT_TYPE_COLORS: Record<string, string> = {
@@ -80,6 +96,11 @@ export const ChartOfAccounts: React.FC = () => {
   const [expandedClasses, setExpandedClasses] = useState<Set<string>>(new Set(['0', '1', '2', '3', '4', '5', '6']));
   const [showModal, setShowModal] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; account: Account | null }>({
+    isOpen: false,
+    account: null,
+  });
   const [formData, setFormData] = useState<AccountFormData>({
     code: '',
     name: '',
@@ -88,45 +109,44 @@ export const ChartOfAccounts: React.FC = () => {
     parentId: '',
   });
 
-  useEffect(() => {
-    fetchAccounts();
-  }, []);
+  // Debounced search
+  const debouncedSearch = useDebounce(searchTerm, 300);
 
-  const fetchAccounts = async () => {
+  const fetchAccounts = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/accounting/accounts?flat=true', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
+      const response = await api.getAccounts({ flat: true });
       
-      if (!response.ok) throw new Error('Failed to fetch accounts');
+      if (!response.success) throw new Error(response.error || 'Failed to fetch accounts');
       
-      const data = await response.json();
+      const data = response.data as { data?: Account[] };
       setAccounts(data.data || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Greška pri učitavanju');
+      const message = err instanceof Error ? err.message : 'Greška pri učitavanju';
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchAccounts();
+  }, [fetchAccounts]);
 
   const initializeAccounts = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/accounting/accounts/initialize', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
+      const response = await api.initializeAccounts();
       
-      if (!response.ok) throw new Error('Failed to initialize accounts');
+      if (!response.success) throw new Error(response.error || 'Failed to initialize accounts');
       
+      toast.success('Kontni plan uspešno inicijalizovan');
       await fetchAccounts();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Greška pri inicijalizaciji');
+      const message = err instanceof Error ? err.message : 'Greška pri inicijalizaciji';
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -135,27 +155,33 @@ export const ChartOfAccounts: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const url = editingAccount 
-        ? `/api/accounting/accounts/${editingAccount.id}`
-        : '/api/accounting/accounts';
+      setIsSubmitting(true);
       
-      const response = await fetch(url, {
-        method: editingAccount ? 'PUT' : 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      });
+      const accountData = {
+        code: formData.code,
+        name: formData.name,
+        type: formData.type,
+        description: formData.description || undefined,
+        parentId: formData.parentId || undefined
+      };
 
-      if (!response.ok) throw new Error('Failed to save account');
+      const response = editingAccount 
+        ? await api.updateAccount(editingAccount.id, accountData)
+        : await api.createAccount(accountData);
 
+      if (!response.success) throw new Error(response.error || 'Failed to save account');
+
+      toast.success(editingAccount ? 'Konto uspešno izmenjen' : 'Konto uspešno kreiran');
       setShowModal(false);
       setEditingAccount(null);
       setFormData({ code: '', name: '', type: 'ASSET', description: '', parentId: '' });
       await fetchAccounts();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Greška pri čuvanju');
+      const message = err instanceof Error ? err.message : 'Greška pri čuvanju';
+      setError(message);
+      toast.error(message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -171,22 +197,29 @@ export const ChartOfAccounts: React.FC = () => {
     setShowModal(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Da li ste sigurni da želite da obrišete ovaj konto?')) return;
+  const handleDeleteClick = (account: Account) => {
+    setDeleteDialog({ isOpen: true, account });
+  };
+
+  const handleDeleteConfirm = async () => {
+    const account = deleteDialog.account;
+    if (!account) return;
     
     try {
-      const response = await fetch(`/api/accounting/accounts/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
+      setIsSubmitting(true);
+      const response = await api.deleteAccount(account.id);
 
-      if (!response.ok) throw new Error('Failed to delete account');
+      if (!response.success) throw new Error(response.error || 'Failed to delete account');
       
+      toast.success(`Konto "${account.code} - ${account.name}" uspešno obrisan`);
+      setDeleteDialog({ isOpen: false, account: null });
       await fetchAccounts();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Greška pri brisanju');
+      const message = err instanceof Error ? err.message : 'Greška pri brisanju';
+      setError(message);
+      toast.error(message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -205,9 +238,9 @@ export const ChartOfAccounts: React.FC = () => {
   // Group accounts by class
   const groupedAccounts = useMemo(() => {
     const filtered = accounts.filter(account => {
-      const matchesSearch = searchTerm === '' || 
-        account.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        account.name.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesSearch = debouncedSearch === '' || 
+        account.code.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+        account.name.toLowerCase().includes(debouncedSearch.toLowerCase());
       const matchesType = selectedType === '' || account.type === selectedType;
       return matchesSearch && matchesType;
     });
@@ -225,7 +258,7 @@ export const ChartOfAccounts: React.FC = () => {
     });
 
     return groups;
-  }, [accounts, searchTerm, selectedType]);
+  }, [accounts, debouncedSearch, selectedType]);
 
   if (loading && accounts.length === 0) {
     return <LoadingSpinner />;
@@ -398,7 +431,7 @@ export const ChartOfAccounts: React.FC = () => {
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleDelete(account.id)}
+                          onClick={() => handleDeleteClick(account)}
                           className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-100 rounded-lg transition-all duration-200"
                           title="Obriši"
                         >
@@ -506,15 +539,24 @@ export const ChartOfAccounts: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setShowModal(false)}
-                    className="px-5 py-2.5 text-gray-700 hover:bg-gray-100 rounded-xl transition-all duration-200"
+                    disabled={isSubmitting}
+                    className="px-5 py-2.5 text-gray-700 hover:bg-gray-100 rounded-xl transition-all duration-200 disabled:opacity-50"
                   >
                     Otkaži
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-xl hover:from-indigo-600 hover:to-purple-600 transition-all duration-200 shadow-lg"
+                    disabled={isSubmitting}
+                    className="px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-xl hover:from-indigo-600 hover:to-purple-600 transition-all duration-200 shadow-lg disabled:opacity-50 flex items-center gap-2"
                   >
-                    {editingAccount ? 'Sačuvaj' : 'Kreiraj'}
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Čuvanje...
+                      </>
+                    ) : (
+                      editingAccount ? 'Sačuvaj' : 'Kreiraj'
+                    )}
                   </button>
                 </div>
               </form>
@@ -522,6 +564,26 @@ export const ChartOfAccounts: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={deleteDialog.isOpen}
+        onClose={() => setDeleteDialog({ isOpen: false, account: null })}
+        onConfirm={handleDeleteConfirm}
+        title="Brisanje konta"
+        message={
+          deleteDialog.account ? (
+            <span>
+              Da li ste sigurni da želite da obrišete konto{' '}
+              <strong>{deleteDialog.account.code} - {deleteDialog.account.name}</strong>?
+              Ova akcija je nepovratna.
+            </span>
+          ) : 'Da li ste sigurni?'
+        }
+        confirmText="Obriši"
+        variant="danger"
+        isLoading={isSubmitting}
+      />
     </div>
   );
 };

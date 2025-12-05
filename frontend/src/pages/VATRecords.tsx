@@ -3,8 +3,10 @@
  * KPO (Knjiga Primljenih Obračuna) and KPR (Knjiga Prometa) management
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { LoadingSpinner } from '../components/LoadingSpinner';
+import { toast } from 'react-hot-toast';
+import api from '../services/api';
 import {
   Receipt,
   Download,
@@ -16,7 +18,10 @@ import {
   Filter,
   RotateCcw,
   AlertCircle,
-  X
+  X,
+  RefreshCw,
+  Printer,
+  FileSpreadsheet
 } from 'lucide-react';
 
 const VAT_RECORD_TYPE_LABELS: Record<string, string> = {
@@ -86,111 +91,74 @@ export const VATRecords: React.FC = () => {
     fetchSummary();
   }, [filterType, dateFrom, dateTo]);
 
-  const fetchRecords = async () => {
+  const fetchRecords = useCallback(async () => {
     try {
       setLoading(true);
-      const params = new URLSearchParams();
-      if (filterType) params.append('type', filterType);
-      if (dateFrom) params.append('fromDate', dateFrom);
-      if (dateTo) params.append('toDate', dateTo);
-
-      const response = await fetch(`/api/vat/records?${params}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
+      const response = await api.getVATRecords({
+        type: filterType || undefined,
+        fromDate: dateFrom || undefined,
+        toDate: dateTo || undefined
       });
 
-      if (!response.ok) throw new Error('Failed to fetch VAT records');
-
-      const data = await response.json();
-      setRecords(data.data || []);
+      if (response.success && response.data) {
+        setRecords((response.data.data as VATRecord[]) || []);
+      } else {
+        setError(response.error || 'Greška pri učitavanju');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Greška pri učitavanju');
     } finally {
       setLoading(false);
     }
-  };
+  }, [filterType, dateFrom, dateTo]);
 
-  const fetchSummary = async () => {
+  const fetchSummary = useCallback(async () => {
     try {
-      const params = new URLSearchParams();
-      if (dateFrom) params.append('fromDate', dateFrom);
-      if (dateTo) params.append('toDate', dateTo);
-
-      const response = await fetch(`/api/vat/summary?${params}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
+      const response = await api.getVATSummary({
+        fromDate: dateFrom || undefined,
+        toDate: dateTo || undefined
       });
 
-      if (!response.ok) throw new Error('Failed to fetch VAT summary');
-
-      const data = await response.json();
-      setSummary(data.data);
+      if (response.success && response.data) {
+        setSummary(response.data as VATSummary);
+      }
     } catch (err) {
       console.error('Error fetching summary:', err);
     }
-  };
+  }, [dateFrom, dateTo]);
 
   const exportKPO = async () => {
     try {
-      const response = await fetch(`/api/vat/export/kpo?fromDate=${dateFrom}&toDate=${dateTo}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
-
-      if (!response.ok) throw new Error('Failed to export KPO');
-
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `KPO_${dateFrom}_${dateTo}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
+      toast.loading('Generisanje KPO...', { id: 'kpo-export' });
+      await api.exportKPO({ fromDate: dateFrom, toDate: dateTo });
+      toast.success('KPO uspešno preuzet', { id: 'kpo-export' });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Greška pri exportu');
+      toast.error(err instanceof Error ? err.message : 'Greška pri exportu KPO', { id: 'kpo-export' });
     }
   };
 
   const exportKPR = async () => {
     try {
-      const response = await fetch(`/api/vat/export/kpr?fromDate=${dateFrom}&toDate=${dateTo}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
-
-      if (!response.ok) throw new Error('Failed to export KPR');
-
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `KPR_${dateFrom}_${dateTo}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
+      toast.loading('Generisanje KPR...', { id: 'kpr-export' });
+      await api.exportKPR({ fromDate: dateFrom, toDate: dateTo });
+      toast.success('KPR uspešno preuzet', { id: 'kpr-export' });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Greška pri exportu');
+      toast.error(err instanceof Error ? err.message : 'Greška pri exportu KPR', { id: 'kpr-export' });
     }
   };
 
   const generatePPPDV = async () => {
     try {
-      const response = await fetch(`/api/vat/pppdv?fromDate=${dateFrom}&toDate=${dateTo}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
-
-      if (!response.ok) throw new Error('Failed to generate PP-PDV');
-
-      const data = await response.json();
-      // Display or download PP-PDV form
-      alert('PP-PDV obrazac je generisan. Funkcionalnost prikaza će biti implementirana.');
+      toast.loading('Generisanje PP-PDV...', { id: 'pppdv' });
+      const response = await api.generatePPPDV({ fromDate: dateFrom, toDate: dateTo });
+      
+      if (response.success) {
+        toast.success('PP-PDV obrazac je generisan', { id: 'pppdv' });
+      } else {
+        toast.error(response.error || 'Greška pri generisanju PP-PDV', { id: 'pppdv' });
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Greška pri generisanju PP-PDV');
+      toast.error(err instanceof Error ? err.message : 'Greška pri generisanju PP-PDV', { id: 'pppdv' });
     }
   };
 

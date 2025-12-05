@@ -3,9 +3,12 @@
  * Upravljanje avansnim fakturama i njihovom upotrebom
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { LoadingSpinner } from '../components/LoadingSpinner';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { Autocomplete, type AutocompleteOption } from '../components/Autocomplete';
+import { ResponsiveModal, ModalFooter } from '../components/ui';
 import {
   Receipt,
   Plus,
@@ -16,19 +19,20 @@ import {
   CheckCircle,
   Clock,
   XCircle,
-  AlertCircle,
   CreditCard,
   Link2,
   Search,
-  Filter,
-  MoreVertical,
   ArrowRight
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import advanceInvoiceService, { AdvanceInvoice, CreateAdvanceInvoiceData } from '../services/advanceInvoiceService';
+import advanceInvoiceService from '../services/advanceInvoiceService';
+import type { AdvanceInvoiceListItem, AdvanceInvoiceDetail, CreateAdvanceInvoiceDTO, PartnerAutocompleteItem } from '@sef-app/shared';
+import apiClient from '../services/api';
 
+// Status configuration
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ElementType }> = {
   DRAFT: { label: 'Nacrt', color: 'bg-gray-100 text-gray-700', icon: Receipt },
+  SENT: { label: 'Poslata', color: 'bg-blue-100 text-blue-700', icon: Send },
   ISSUED: { label: 'Izdata', color: 'bg-blue-100 text-blue-700', icon: Send },
   PAID: { label: 'Plaćena', color: 'bg-green-100 text-green-700', icon: CheckCircle },
   PARTIALLY_USED: { label: 'Delimično iskorišćena', color: 'bg-yellow-100 text-yellow-700', icon: Clock },
@@ -42,43 +46,94 @@ const VAT_RATES = [
   { value: 0, label: '0% - Oslobođeno' },
 ];
 
+// Helper to get partner display info from invoice
+const getPartnerInfo = (invoice: AdvanceInvoiceListItem) => ({
+  name: invoice.partner?.name || 'N/A',
+  pib: invoice.partner?.pib || 'N/A',
+});
+
+// Debounce hook
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+
 export const AdvanceInvoices: React.FC = () => {
   const { user } = useAuth();
   const companyId = user?.company?.id || '';
 
   // State
-  const [invoices, setInvoices] = useState<AdvanceInvoice[]>([]);
+  const [invoices, setInvoices] = useState<AdvanceInvoiceListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearch = useDebounce(searchTerm, 300);
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
   // Create/Edit modal
   const [showModal, setShowModal] = useState(false);
-  const [editingInvoice, setEditingInvoice] = useState<AdvanceInvoice | null>(null);
-  const [formData, setFormData] = useState<CreateAdvanceInvoiceData>({
-    partnerName: '',
-    partnerPIB: '',
-    partnerAddress: '',
+  const [editingInvoice, setEditingInvoice] = useState<AdvanceInvoiceListItem | null>(null);
+  const [formData, setFormData] = useState<{
+    partnerId: string;
+    partnerDisplay: string;
+    issueDate: string;
+    advanceAmount: number;
+    taxRate: number;
+    currency: string;
+    note: string;
+  }>({
+    partnerId: '',
+    partnerDisplay: '',
     issueDate: new Date().toISOString().split('T')[0],
-    dueDate: '',
-    netAmount: 0,
-    vatRate: 20,
+    advanceAmount: 0,
+    taxRate: 20,
     currency: 'RSD',
-    description: '',
-    notes: '',
+    note: '',
   });
   const [saving, setSaving] = useState(false);
 
-  // Use modal
+  // Use advance modal
   const [showUseModal, setShowUseModal] = useState(false);
-  const [selectedAdvance, setSelectedAdvance] = useState<AdvanceInvoice | null>(null);
-  const [useData, setUseData] = useState({ invoiceId: '', amount: 0, notes: '' });
+  const [selectedAdvance, setSelectedAdvance] = useState<AdvanceInvoiceListItem | null>(null);
+  const [useData, setUseData] = useState({ finalInvoiceId: '', amount: 0, notes: '' });
+
+  // Mark paid modal
+  const [showPayModal, setShowPayModal] = useState(false);
+  const [payInvoice, setPayInvoice] = useState<AdvanceInvoiceListItem | null>(null);
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // Cancel modal
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelInvoice, setCancelInvoice] = useState<AdvanceInvoiceListItem | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+
+  // Confirm dialogs
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    variant: 'danger' | 'warning' | 'info';
+  }>({ isOpen: false, title: '', message: '', onConfirm: () => {}, variant: 'danger' });
 
   // Detail modal
   const [showDetailModal, setShowDetailModal] = useState(false);
-  const [detailInvoice, setDetailInvoice] = useState<AdvanceInvoice | null>(null);
+  const [detailInvoice, setDetailInvoice] = useState<AdvanceInvoiceDetail | null>(null);
+
+  // Action loading states
+  const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
 
   // Fetch invoices
   useEffect(() => {
@@ -107,12 +162,51 @@ export const AdvanceInvoices: React.FC = () => {
     }
   };
 
+  // Partner search for autocomplete
+  const searchPartners = useCallback(async (query: string): Promise<AutocompleteOption[]> => {
+    if (!companyId || query.length < 2) return [];
+    
+    try {
+      const response = await apiClient.get<PartnerAutocompleteItem[]>(
+        `/partners/companies/${companyId}/autocomplete?q=${encodeURIComponent(query)}`
+      );
+      
+      if (response.success && response.data) {
+        return response.data.map(p => ({
+          id: p.id,
+          label: p.name,
+          sublabel: `PIB: ${p.pib}`,
+          data: p,
+        }));
+      }
+      return [];
+    } catch (error) {
+      console.error('Error searching partners:', error);
+      return [];
+    }
+  }, [companyId]);
+
   const handleCreate = async () => {
+    if (!formData.partnerId) {
+      toast.error('Molimo izaberite partnera');
+      return;
+    }
+
     try {
       setSaving(true);
+      
+      const createData: CreateAdvanceInvoiceDTO = {
+        partnerId: formData.partnerId,
+        issueDate: formData.issueDate,
+        advanceAmount: formData.advanceAmount,
+        taxRate: formData.taxRate,
+        currency: formData.currency,
+        note: formData.note || undefined,
+      };
+      
       const response = editingInvoice
-        ? await advanceInvoiceService.update(companyId, editingInvoice.id, formData)
-        : await advanceInvoiceService.create(companyId, formData);
+        ? await advanceInvoiceService.update(companyId, editingInvoice.id, createData)
+        : await advanceInvoiceService.create(companyId, createData);
       
       if (response.success) {
         toast.success(editingInvoice ? 'Avansna faktura ažurirana' : 'Avansna faktura kreirana');
@@ -129,21 +223,29 @@ export const AdvanceInvoices: React.FC = () => {
     }
   };
 
-  const handleMarkPaid = async (invoice: AdvanceInvoice) => {
-    const paymentDate = prompt('Unesite datum plaćanja (YYYY-MM-DD):', new Date().toISOString().split('T')[0]);
-    if (!paymentDate) return;
+  const handleMarkPaid = async () => {
+    if (!payInvoice) return;
     
     try {
-      const response = await advanceInvoiceService.markPaid(companyId, invoice.id, {
+      setActionLoading(prev => ({ ...prev, [payInvoice.id]: true }));
+      const response = await advanceInvoiceService.markPaid(companyId, payInvoice.id, {
         paymentDate,
-        amount: invoice.totalAmount,
+        amount: payInvoice.totalAmount,
       });
       if (response.success) {
         toast.success('Avansna faktura označena kao plaćena');
+        setShowPayModal(false);
+        setPayInvoice(null);
         fetchInvoices();
+      } else {
+        toast.error(response.error || 'Greška pri označavanju plaćanja');
       }
     } catch (error) {
       toast.error('Greška pri označavanju plaćanja');
+    } finally {
+      if (payInvoice) {
+        setActionLoading(prev => ({ ...prev, [payInvoice.id]: false }));
+      }
     }
   };
 
@@ -153,16 +255,16 @@ export const AdvanceInvoices: React.FC = () => {
     try {
       setSaving(true);
       const response = await advanceInvoiceService.useAdvance(companyId, selectedAdvance.id, {
-        invoiceId: useData.invoiceId,
+        finalInvoiceId: useData.finalInvoiceId,
         amount: useData.amount,
-        notes: useData.notes,
+        notes: useData.notes || undefined,
       });
       
       if (response.success) {
         toast.success('Avans iskorišćen');
         setShowUseModal(false);
         setSelectedAdvance(null);
-        setUseData({ invoiceId: '', amount: 0, notes: '' });
+        setUseData({ finalInvoiceId: '', amount: 0, notes: '' });
         fetchInvoices();
       } else {
         toast.error(response.error || 'Greška pri korišćenju avansa');
@@ -174,96 +276,125 @@ export const AdvanceInvoices: React.FC = () => {
     }
   };
 
-  const handleSendToSEF = async (invoice: AdvanceInvoice) => {
-    if (!confirm('Poslati avansnu fakturu na SEF?')) return;
-    
-    try {
-      const response = await advanceInvoiceService.sendToSEF(companyId, invoice.id);
-      if (response.success) {
-        toast.success('Avansna faktura poslata na SEF');
-        fetchInvoices();
-      }
-    } catch (error) {
-      toast.error('Greška pri slanju na SEF');
-    }
+  const handleSendToSEF = (invoice: AdvanceInvoiceListItem) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Slanje na SEF',
+      message: `Da li želite da pošaljete avansnu fakturu ${invoice.invoiceNumber} na SEF?`,
+      variant: 'info',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+        try {
+          setActionLoading(prev => ({ ...prev, [invoice.id]: true }));
+          const response = await advanceInvoiceService.sendToSEF(companyId, invoice.id);
+          if (response.success) {
+            toast.success('Avansna faktura poslata na SEF');
+            fetchInvoices();
+          } else {
+            toast.error(response.error || 'Greška pri slanju na SEF');
+          }
+        } catch (error) {
+          toast.error('Greška pri slanju na SEF');
+        } finally {
+          setActionLoading(prev => ({ ...prev, [invoice.id]: false }));
+        }
+      },
+    });
   };
 
-  const handleCancel = async (invoice: AdvanceInvoice) => {
-    const reason = prompt('Unesite razlog storniranja:');
-    if (!reason) return;
+  const handleCancelSubmit = async () => {
+    if (!cancelInvoice) return;
     
     try {
-      const response = await advanceInvoiceService.cancel(companyId, invoice.id, reason);
+      setActionLoading(prev => ({ ...prev, [cancelInvoice.id]: true }));
+      const response = await advanceInvoiceService.cancel(companyId, cancelInvoice.id, cancelReason);
       if (response.success) {
         toast.success('Avansna faktura stornirana');
+        setShowCancelModal(false);
+        setCancelInvoice(null);
+        setCancelReason('');
         fetchInvoices();
+      } else {
+        toast.error(response.error || 'Greška pri storniranju');
       }
     } catch (error) {
       toast.error('Greška pri storniranju');
+    } finally {
+      if (cancelInvoice) {
+        setActionLoading(prev => ({ ...prev, [cancelInvoice.id]: false }));
+      }
     }
   };
 
-  const handleDelete = async (invoice: AdvanceInvoice) => {
-    if (!confirm('Obrisati avansnu fakturu?')) return;
-    
-    try {
-      const response = await advanceInvoiceService.delete(companyId, invoice.id);
-      if (response.success) {
-        toast.success('Avansna faktura obrisana');
-        fetchInvoices();
-      }
-    } catch (error) {
-      toast.error('Greška pri brisanju');
-    }
+  const handleDelete = (invoice: AdvanceInvoiceListItem) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Brisanje avansne fakture',
+      message: `Da li ste sigurni da želite da obrišete avansnu fakturu ${invoice.invoiceNumber}? Ova akcija se ne može poništiti.`,
+      variant: 'danger',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+        try {
+          setActionLoading(prev => ({ ...prev, [invoice.id]: true }));
+          const response = await advanceInvoiceService.delete(companyId, invoice.id);
+          if (response.success) {
+            toast.success('Avansna faktura obrisana');
+            fetchInvoices();
+          } else {
+            toast.error(response.error || 'Greška pri brisanju');
+          }
+        } catch (error) {
+          toast.error('Greška pri brisanju');
+        } finally {
+          setActionLoading(prev => ({ ...prev, [invoice.id]: false }));
+        }
+      },
+    });
   };
 
-  const handleDownloadPDF = async (invoice: AdvanceInvoice) => {
+  const handleDownloadPDF = async (invoice: AdvanceInvoiceListItem) => {
     try {
-      const response = await advanceInvoiceService.generatePDF(companyId, invoice.id);
-      if (response.success && response.data) {
-        const url = URL.createObjectURL(response.data);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `avans-${invoice.invoiceNumber}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }
+      setActionLoading(prev => ({ ...prev, [`pdf-${invoice.id}`]: true }));
+      const blob = await advanceInvoiceService.generatePDF(companyId, invoice.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `avans-${invoice.invoiceNumber}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
     } catch (error) {
       toast.error('Greška pri preuzimanju PDF-a');
+    } finally {
+      setActionLoading(prev => ({ ...prev, [`pdf-${invoice.id}`]: false }));
     }
   };
 
   const resetForm = () => {
     setFormData({
-      partnerName: '',
-      partnerPIB: '',
-      partnerAddress: '',
+      partnerId: '',
+      partnerDisplay: '',
       issueDate: new Date().toISOString().split('T')[0],
-      dueDate: '',
-      netAmount: 0,
-      vatRate: 20,
+      advanceAmount: 0,
+      taxRate: 20,
       currency: 'RSD',
-      description: '',
-      notes: '',
+      note: '',
     });
     setEditingInvoice(null);
   };
 
-  const openEditModal = (invoice: AdvanceInvoice) => {
+  const openEditModal = (invoice: AdvanceInvoiceListItem) => {
+    const partnerInfo = getPartnerInfo(invoice);
     setEditingInvoice(invoice);
     setFormData({
-      partnerName: invoice.partnerName,
-      partnerPIB: invoice.partnerPIB,
-      partnerAddress: invoice.partnerAddress || '',
+      partnerId: invoice.partnerId,
+      partnerDisplay: partnerInfo.name,
       issueDate: invoice.issueDate.split('T')[0],
-      dueDate: invoice.dueDate?.split('T')[0] || '',
-      netAmount: invoice.netAmount,
-      vatRate: invoice.vatRate,
+      advanceAmount: invoice.advanceAmount,
+      taxRate: 20,
       currency: invoice.currency,
-      description: invoice.description || '',
-      notes: invoice.notes || '',
+      note: '',
     });
     setShowModal(true);
   };
@@ -281,17 +412,32 @@ export const AdvanceInvoices: React.FC = () => {
   };
 
   const calculateTotalAmount = () => {
-    const net = formData.netAmount || 0;
-    const vat = net * (formData.vatRate / 100);
+    const net = formData.advanceAmount || 0;
+    const vat = net * (formData.taxRate / 100);
     return net + vat;
   };
 
-  const filteredInvoices = invoices.filter(inv => 
-    searchTerm === '' ||
-    inv.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    inv.partnerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    inv.partnerPIB.includes(searchTerm)
-  );
+  // Filtered invoices with debounced search
+  const filteredInvoices = useMemo(() => {
+    if (!debouncedSearch) return invoices;
+    const term = debouncedSearch.toLowerCase();
+    return invoices.filter(inv => {
+      const partnerInfo = getPartnerInfo(inv);
+      return (
+        inv.invoiceNumber.toLowerCase().includes(term) ||
+        partnerInfo.name.toLowerCase().includes(term) ||
+        partnerInfo.pib.includes(debouncedSearch)
+      );
+    });
+  }, [invoices, debouncedSearch]);
+
+  // Summary calculations
+  const summary = useMemo(() => ({
+    total: invoices.length,
+    paid: invoices.filter(i => i.status === 'PAID' || i.status === 'SENT').length,
+    remaining: invoices.reduce((sum, i) => sum + i.remainingAmount, 0),
+    used: invoices.reduce((sum, i) => sum + i.usedAmount, 0),
+  }), [invoices]);
 
   if (loading && invoices.length === 0) {
     return (
@@ -330,7 +476,7 @@ export const AdvanceInvoices: React.FC = () => {
             </div>
             <div>
               <p className="text-sm text-gray-500">Ukupno</p>
-              <p className="text-xl font-bold">{invoices.length}</p>
+              <p className="text-xl font-bold">{summary.total}</p>
             </div>
           </div>
         </div>
@@ -340,10 +486,8 @@ export const AdvanceInvoices: React.FC = () => {
               <CheckCircle className="w-5 h-5 text-green-600" />
             </div>
             <div>
-              <p className="text-sm text-gray-500">Plaćene</p>
-              <p className="text-xl font-bold">
-                {invoices.filter(i => i.status === 'PAID').length}
-              </p>
+              <p className="text-sm text-gray-500">Plaćene/Poslate</p>
+              <p className="text-xl font-bold">{summary.paid}</p>
             </div>
           </div>
         </div>
@@ -354,11 +498,7 @@ export const AdvanceInvoices: React.FC = () => {
             </div>
             <div>
               <p className="text-sm text-gray-500">Neiskorišćeno</p>
-              <p className="text-xl font-bold">
-                {formatCurrency(
-                  invoices.reduce((sum, i) => sum + i.remainingAmount, 0)
-                )}
-              </p>
+              <p className="text-xl font-bold">{formatCurrency(summary.remaining)}</p>
             </div>
           </div>
         </div>
@@ -369,11 +509,7 @@ export const AdvanceInvoices: React.FC = () => {
             </div>
             <div>
               <p className="text-sm text-gray-500">Iskorišćeno</p>
-              <p className="text-xl font-bold">
-                {formatCurrency(
-                  invoices.reduce((sum, i) => sum + i.usedAmount, 0)
-                )}
-              </p>
+              <p className="text-xl font-bold">{formatCurrency(summary.used)}</p>
             </div>
           </div>
         </div>
@@ -431,6 +567,9 @@ export const AdvanceInvoices: React.FC = () => {
               ) : (
                 filteredInvoices.map((invoice) => {
                   const StatusIcon = STATUS_CONFIG[invoice.status]?.icon || Receipt;
+                  const partnerInfo = getPartnerInfo(invoice);
+                  const isLoading = actionLoading[invoice.id];
+                  
                   return (
                     <tr key={invoice.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3">
@@ -438,8 +577,8 @@ export const AdvanceInvoices: React.FC = () => {
                       </td>
                       <td className="px-4 py-3">
                         <div>
-                          <p className="font-medium">{invoice.partnerName}</p>
-                          <p className="text-sm text-gray-500">{invoice.partnerPIB}</p>
+                          <p className="font-medium">{partnerInfo.name}</p>
+                          <p className="text-sm text-gray-500">{partnerInfo.pib}</p>
                         </div>
                       </td>
                       <td className="px-4 py-3 text-gray-600">
@@ -454,90 +593,105 @@ export const AdvanceInvoices: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <span className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full ${STATUS_CONFIG[invoice.status]?.color}`}>
+                        <span className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full ${STATUS_CONFIG[invoice.status]?.color || 'bg-gray-100 text-gray-700'}`}>
                           <StatusIcon className="w-3 h-3" />
-                          {STATUS_CONFIG[invoice.status]?.label}
+                          {STATUS_CONFIG[invoice.status]?.label || invoice.status}
                         </span>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-center gap-1">
-                          <button
-                            onClick={() => {
-                              setDetailInvoice(invoice);
-                              setShowDetailModal(true);
-                            }}
-                            className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded"
-                            title="Detalji"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          
-                          {invoice.status === 'DRAFT' && (
+                          {isLoading ? (
+                            <LoadingSpinner />
+                          ) : (
                             <>
                               <button
-                                onClick={() => openEditModal(invoice)}
+                                onClick={() => {
+                                  setDetailInvoice(invoice);
+                                  setShowDetailModal(true);
+                                }}
                                 className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded"
-                                title="Izmeni"
+                                title="Detalji"
                               >
-                                <Receipt className="w-4 h-4" />
+                                <Eye className="w-4 h-4" />
                               </button>
+                              
+                              {invoice.status === 'DRAFT' && (
+                                <>
+                                  <button
+                                    onClick={() => openEditModal(invoice)}
+                                    className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded"
+                                    title="Izmeni"
+                                  >
+                                    <Receipt className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleSendToSEF(invoice)}
+                                    className="p-1.5 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded"
+                                    title="Pošalji na SEF"
+                                  >
+                                    <Send className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDelete(invoice)}
+                                    className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded"
+                                    title="Obriši"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </>
+                              )}
+                              
+                              {(invoice.status === 'SENT' || invoice.status === 'ISSUED') && (
+                                <button
+                                  onClick={() => {
+                                    setPayInvoice(invoice);
+                                    setPaymentDate(new Date().toISOString().split('T')[0]);
+                                    setShowPayModal(true);
+                                  }}
+                                  className="p-1.5 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded"
+                                  title="Označi kao plaćeno"
+                                >
+                                  <CreditCard className="w-4 h-4" />
+                                </button>
+                              )}
+                              
+                              {['PAID', 'PARTIALLY_USED'].includes(invoice.status) && invoice.remainingAmount > 0 && (
+                                <button
+                                  onClick={() => {
+                                    setSelectedAdvance(invoice);
+                                    setUseData({ finalInvoiceId: '', amount: invoice.remainingAmount, notes: '' });
+                                    setShowUseModal(true);
+                                  }}
+                                  className="p-1.5 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded"
+                                  title="Iskoristi avans"
+                                >
+                                  <Link2 className="w-4 h-4" />
+                                </button>
+                              )}
+                              
                               <button
-                                onClick={() => handleSendToSEF(invoice)}
-                                className="p-1.5 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded"
-                                title="Pošalji na SEF"
+                                onClick={() => handleDownloadPDF(invoice)}
+                                disabled={actionLoading[`pdf-${invoice.id}`]}
+                                className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded disabled:opacity-50"
+                                title="Preuzmi PDF"
                               >
-                                <Send className="w-4 h-4" />
+                                <Download className="w-4 h-4" />
                               </button>
-                              <button
-                                onClick={() => handleDelete(invoice)}
-                                className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded"
-                                title="Obriši"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                              
+                              {!['CANCELLED', 'FULLY_USED'].includes(invoice.status) && (
+                                <button
+                                  onClick={() => {
+                                    setCancelInvoice(invoice);
+                                    setCancelReason('');
+                                    setShowCancelModal(true);
+                                  }}
+                                  className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded"
+                                  title="Storniraj"
+                                >
+                                  <XCircle className="w-4 h-4" />
+                                </button>
+                              )}
                             </>
-                          )}
-                          
-                          {invoice.status === 'ISSUED' && (
-                            <button
-                              onClick={() => handleMarkPaid(invoice)}
-                              className="p-1.5 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded"
-                              title="Označi kao plaćeno"
-                            >
-                              <CreditCard className="w-4 h-4" />
-                            </button>
-                          )}
-                          
-                          {['PAID', 'PARTIALLY_USED'].includes(invoice.status) && invoice.remainingAmount > 0 && (
-                            <button
-                              onClick={() => {
-                                setSelectedAdvance(invoice);
-                                setUseData({ invoiceId: '', amount: invoice.remainingAmount, notes: '' });
-                                setShowUseModal(true);
-                              }}
-                              className="p-1.5 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded"
-                              title="Iskoristi avans"
-                            >
-                              <Link2 className="w-4 h-4" />
-                            </button>
-                          )}
-                          
-                          <button
-                            onClick={() => handleDownloadPDF(invoice)}
-                            className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded"
-                            title="Preuzmi PDF"
-                          >
-                            <Download className="w-4 h-4" />
-                          </button>
-                          
-                          {!['CANCELLED', 'FULLY_USED'].includes(invoice.status) && (
-                            <button
-                              onClick={() => handleCancel(invoice)}
-                              className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded"
-                              title="Storniraj"
-                            >
-                              <XCircle className="w-4 h-4" />
-                            </button>
                           )}
                         </div>
                       </td>
@@ -574,138 +728,230 @@ export const AdvanceInvoices: React.FC = () => {
       </div>
 
       {/* Create/Edit Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200">
-              <h2 className="text-xl font-semibold">
-                {editingInvoice ? 'Izmeni Avansnu Fakturu' : 'Nova Avansna Faktura'}
-              </h2>
-            </div>
-
-            <div className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Naziv partnera *</label>
-                  <input
-                    type="text"
-                    value={formData.partnerName}
-                    onChange={(e) => setFormData({ ...formData, partnerName: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">PIB *</label>
-                  <input
-                    type="text"
-                    value={formData.partnerPIB}
-                    onChange={(e) => setFormData({ ...formData, partnerPIB: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Datum izdavanja *</label>
-                  <input
-                    type="date"
-                    value={formData.issueDate}
-                    onChange={(e) => setFormData({ ...formData, issueDate: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Neto iznos *</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.netAmount}
-                    onChange={(e) => setFormData({ ...formData, netAmount: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Stopa PDV *</label>
-                  <select
-                    value={formData.vatRate}
-                    onChange={(e) => setFormData({ ...formData, vatRate: parseInt(e.target.value) })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  >
-                    {VAT_RATES.map((rate) => (
-                      <option key={rate.value} value={rate.value}>{rate.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Opis</label>
-                  <textarea
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    rows={2}
-                  />
-                </div>
-              </div>
-
-              {/* Calculated amounts */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <div className="flex justify-between text-sm mb-2">
-                  <span>Neto iznos:</span>
-                  <span>{formatCurrency(formData.netAmount)}</span>
-                </div>
-                <div className="flex justify-between text-sm mb-2">
-                  <span>PDV ({formData.vatRate}%):</span>
-                  <span>{formatCurrency(formData.netAmount * (formData.vatRate / 100))}</span>
-                </div>
-                <div className="flex justify-between font-medium border-t pt-2">
-                  <span>Ukupno:</span>
-                  <span>{formatCurrency(calculateTotalAmount())}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
-              <button
-                onClick={() => {
-                  setShowModal(false);
-                  resetForm();
+      <ResponsiveModal
+        isOpen={showModal}
+        onClose={() => {
+          setShowModal(false);
+          resetForm();
+        }}
+        title={editingInvoice ? 'Izmeni Avansnu Fakturu' : 'Nova Avansna Faktura'}
+        size="lg"
+      >
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="col-span-1 md:col-span-2">
+              <Autocomplete
+                label="Partner"
+                placeholder="Počnite da kucate naziv partnera..."
+                required
+                value={formData.partnerDisplay}
+                onSearch={searchPartners}
+                onSelect={(option) => {
+                  if (option) {
+                    const partner = option.data as PartnerAutocompleteItem;
+                    setFormData(prev => ({
+                      ...prev,
+                      partnerId: partner.id,
+                      partnerDisplay: partner.name,
+                    }));
+                  } else {
+                    setFormData(prev => ({
+                      ...prev,
+                      partnerId: '',
+                      partnerDisplay: '',
+                    }));
+                  }
                 }}
-                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Datum izdavanja *</label>
+              <input
+                type="date"
+                value={formData.issueDate}
+                onChange={(e) => setFormData({ ...formData, issueDate: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Neto iznos *</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={formData.advanceAmount}
+                onChange={(e) => setFormData({ ...formData, advanceAmount: parseFloat(e.target.value) || 0 })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Stopa PDV *</label>
+              <select
+                value={formData.taxRate}
+                onChange={(e) => setFormData({ ...formData, taxRate: parseInt(e.target.value) })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               >
-                Odustani
-              </button>
-              <button
-                onClick={handleCreate}
-                disabled={saving || !formData.partnerName || !formData.partnerPIB || !formData.netAmount}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                {VAT_RATES.map((rate) => (
+                  <option key={rate.value} value={rate.value}>{rate.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Valuta</label>
+              <select
+                value={formData.currency}
+                onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               >
-                {saving ? 'Čuvanje...' : editingInvoice ? 'Sačuvaj' : 'Kreiraj'}
-              </button>
+                <option value="RSD">RSD</option>
+                <option value="EUR">EUR</option>
+                <option value="USD">USD</option>
+              </select>
+            </div>
+            <div className="col-span-1 md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Napomena</label>
+              <textarea
+                value={formData.note}
+                onChange={(e) => setFormData({ ...formData, note: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                rows={2}
+              />
+            </div>
+          </div>
+
+          {/* Calculated amounts */}
+          <div className="bg-gray-50 rounded-lg p-4">
+            <div className="flex justify-between text-sm mb-2">
+              <span>Neto iznos:</span>
+              <span>{formatCurrency(formData.advanceAmount, formData.currency)}</span>
+            </div>
+            <div className="flex justify-between text-sm mb-2">
+              <span>PDV ({formData.taxRate}%):</span>
+              <span>{formatCurrency(formData.advanceAmount * (formData.taxRate / 100), formData.currency)}</span>
+            </div>
+            <div className="flex justify-between font-medium border-t pt-2">
+              <span>Ukupno:</span>
+              <span>{formatCurrency(calculateTotalAmount(), formData.currency)}</span>
             </div>
           </div>
         </div>
-      )}
+
+        <ModalFooter
+          onCancel={() => {
+            setShowModal(false);
+            resetForm();
+          }}
+          onConfirm={handleCreate}
+          confirmText={saving ? 'Čuvanje...' : editingInvoice ? 'Sačuvaj' : 'Kreiraj'}
+          confirmDisabled={saving || !formData.partnerId || !formData.advanceAmount}
+        />
+      </ResponsiveModal>
+
+      {/* Mark Paid Modal */}
+      <ResponsiveModal
+        isOpen={showPayModal}
+        onClose={() => {
+          setShowPayModal(false);
+          setPayInvoice(null);
+        }}
+        title="Označi kao plaćeno"
+        size="sm"
+      >
+        <div className="p-6 space-y-4">
+          <p className="text-gray-600">
+            Avansna faktura: <strong>{payInvoice?.invoiceNumber}</strong>
+          </p>
+          <p className="text-gray-600">
+            Iznos: <strong>{payInvoice ? formatCurrency(payInvoice.totalAmount, payInvoice.currency) : ''}</strong>
+          </p>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Datum plaćanja *</label>
+            <input
+              type="date"
+              value={paymentDate}
+              onChange={(e) => setPaymentDate(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              required
+            />
+          </div>
+        </div>
+        <ModalFooter
+          onCancel={() => {
+            setShowPayModal(false);
+            setPayInvoice(null);
+          }}
+          onConfirm={handleMarkPaid}
+          confirmText={actionLoading[payInvoice?.id || ''] ? 'Čuvanje...' : 'Potvrdi'}
+          confirmDisabled={!paymentDate || actionLoading[payInvoice?.id || '']}
+        />
+      </ResponsiveModal>
+
+      {/* Cancel Modal */}
+      <ResponsiveModal
+        isOpen={showCancelModal}
+        onClose={() => {
+          setShowCancelModal(false);
+          setCancelInvoice(null);
+          setCancelReason('');
+        }}
+        title="Storniraj avansnu fakturu"
+        size="sm"
+      >
+        <div className="p-6 space-y-4">
+          <p className="text-gray-600">
+            Da li ste sigurni da želite da stornirate fakturu <strong>{cancelInvoice?.invoiceNumber}</strong>?
+          </p>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Razlog storniranja *</label>
+            <textarea
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              rows={3}
+              placeholder="Unesite razlog storniranja..."
+              required
+            />
+          </div>
+        </div>
+        <ModalFooter
+          onCancel={() => {
+            setShowCancelModal(false);
+            setCancelInvoice(null);
+            setCancelReason('');
+          }}
+          onConfirm={handleCancelSubmit}
+          confirmText={actionLoading[cancelInvoice?.id || ''] ? 'Storniranje...' : 'Storniraj'}
+          confirmDisabled={!cancelReason.trim() || actionLoading[cancelInvoice?.id || '']}
+          confirmVariant="danger"
+        />
+      </ResponsiveModal>
 
       {/* Use Advance Modal */}
-      {showUseModal && selectedAdvance && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
-            <div className="p-6 border-b border-gray-200">
-              <h2 className="text-xl font-semibold">Iskoristi Avans</h2>
-              <p className="text-gray-500 mt-1">
-                Avans {selectedAdvance.invoiceNumber} - preostalo {formatCurrency(selectedAdvance.remainingAmount)}
-              </p>
-            </div>
-
+      <ResponsiveModal
+        isOpen={showUseModal}
+        onClose={() => {
+          setShowUseModal(false);
+          setSelectedAdvance(null);
+        }}
+        title="Iskoristi Avans"
+        size="md"
+      >
+        {selectedAdvance && (
+          <>
             <div className="p-6 space-y-4">
+              <p className="text-gray-600">
+                Avans <strong>{selectedAdvance.invoiceNumber}</strong> - preostalo{' '}
+                <strong className="text-green-600">{formatCurrency(selectedAdvance.remainingAmount)}</strong>
+              </p>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">ID fakture za umanjenje *</label>
                 <input
                   type="text"
-                  value={useData.invoiceId}
-                  onChange={(e) => setUseData({ ...useData, invoiceId: e.target.value })}
+                  value={useData.finalInvoiceId}
+                  onChange={(e) => setUseData({ ...useData, finalInvoiceId: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   placeholder="Unesite ID izlazne fakture"
                 />
@@ -715,11 +961,15 @@ export const AdvanceInvoices: React.FC = () => {
                 <input
                   type="number"
                   step="0.01"
+                  min="0.01"
                   max={selectedAdvance.remainingAmount}
                   value={useData.amount}
                   onChange={(e) => setUseData({ ...useData, amount: parseFloat(e.target.value) || 0 })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
+                {useData.amount > selectedAdvance.remainingAmount && (
+                  <p className="text-red-500 text-sm mt-1">Iznos ne može biti veći od preostalog</p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Napomena</label>
@@ -732,132 +982,116 @@ export const AdvanceInvoices: React.FC = () => {
               </div>
             </div>
 
-            <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
-              <button
-                onClick={() => {
-                  setShowUseModal(false);
-                  setSelectedAdvance(null);
-                }}
-                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
-              >
-                Odustani
-              </button>
-              <button
-                onClick={handleUseAdvance}
-                disabled={saving || !useData.invoiceId || !useData.amount}
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
-              >
-                {saving ? 'Čuvanje...' : 'Iskoristi'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            <ModalFooter
+              onCancel={() => {
+                setShowUseModal(false);
+                setSelectedAdvance(null);
+              }}
+              onConfirm={handleUseAdvance}
+              confirmText={saving ? 'Čuvanje...' : 'Iskoristi'}
+              confirmDisabled={
+                saving ||
+                !useData.finalInvoiceId ||
+                !useData.amount ||
+                useData.amount > selectedAdvance.remainingAmount
+              }
+            />
+          </>
+        )}
+      </ResponsiveModal>
 
       {/* Detail Modal */}
-      {showDetailModal && detailInvoice && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full">
-            <div className="p-6 border-b border-gray-200 flex justify-between items-start">
+      <ResponsiveModal
+        isOpen={showDetailModal}
+        onClose={() => setShowDetailModal(false)}
+        title={`Avansna Faktura ${detailInvoice?.invoiceNumber || ''}`}
+        size="lg"
+      >
+        {detailInvoice && (
+          <div className="p-6 space-y-4">
+            <div className="flex items-center gap-2 mb-4">
+              <span className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full ${STATUS_CONFIG[detailInvoice.status]?.color || 'bg-gray-100'}`}>
+                {STATUS_CONFIG[detailInvoice.status]?.label || detailInvoice.status}
+              </span>
+              {detailInvoice.sefId && (
+                <span className="text-xs text-gray-500">SEF ID: {detailInvoice.sefId}</span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <h2 className="text-xl font-semibold">Avansna Faktura {detailInvoice.invoiceNumber}</h2>
-                <span className={`inline-flex items-center gap-1 mt-2 px-2 py-1 text-xs rounded-full ${STATUS_CONFIG[detailInvoice.status]?.color}`}>
-                  {STATUS_CONFIG[detailInvoice.status]?.label}
+                <p className="text-gray-500">Partner</p>
+                <p className="font-medium">{getPartnerInfo(detailInvoice).name}</p>
+                <p className="text-gray-600">PIB: {getPartnerInfo(detailInvoice).pib}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Datum izdavanja</p>
+                <p className="font-medium">{formatDate(detailInvoice.issueDate)}</p>
+              </div>
+            </div>
+
+            <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+              <div className="flex justify-between">
+                <span>Osnovica:</span>
+                <span>{formatCurrency(detailInvoice.advanceAmount, detailInvoice.currency)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>PDV:</span>
+                <span>{formatCurrency(detailInvoice.taxAmount, detailInvoice.currency)}</span>
+              </div>
+              <div className="flex justify-between font-medium border-t pt-2">
+                <span>Ukupno:</span>
+                <span>{formatCurrency(detailInvoice.totalAmount, detailInvoice.currency)}</span>
+              </div>
+              <div className="flex justify-between text-purple-600">
+                <span>Iskorišćeno:</span>
+                <span>{formatCurrency(detailInvoice.usedAmount, detailInvoice.currency)}</span>
+              </div>
+              <div className="flex justify-between font-medium border-t pt-2">
+                <span>Preostalo:</span>
+                <span className={detailInvoice.remainingAmount > 0 ? 'text-green-600' : ''}>
+                  {formatCurrency(detailInvoice.remainingAmount, detailInvoice.currency)}
                 </span>
               </div>
-              <button
-                onClick={() => setShowDetailModal(false)}
-                className="p-2 hover:bg-gray-100 rounded-lg"
-              >
-                <XCircle className="w-5 h-5" />
-              </button>
             </div>
 
-            <div className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-gray-500">Partner</p>
-                  <p className="font-medium">{detailInvoice.partnerName}</p>
-                  <p className="text-gray-600">{detailInvoice.partnerPIB}</p>
-                </div>
-                <div>
-                  <p className="text-gray-500">Datum izdavanja</p>
-                  <p className="font-medium">{formatDate(detailInvoice.issueDate)}</p>
-                </div>
-              </div>
-
-              <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-                <div className="flex justify-between">
-                  <span>Neto iznos:</span>
-                  <span>{formatCurrency(detailInvoice.netAmount)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>PDV ({detailInvoice.vatRate}%):</span>
-                  <span>{formatCurrency(detailInvoice.vatAmount)}</span>
-                </div>
-                <div className="flex justify-between font-medium border-t pt-2">
-                  <span>Ukupno:</span>
-                  <span>{formatCurrency(detailInvoice.totalAmount)}</span>
-                </div>
-                <div className="flex justify-between text-green-600">
-                  <span>Plaćeno:</span>
-                  <span>{formatCurrency(detailInvoice.paidAmount)}</span>
-                </div>
-                <div className="flex justify-between text-purple-600">
-                  <span>Iskorišćeno:</span>
-                  <span>{formatCurrency(detailInvoice.usedAmount)}</span>
-                </div>
-                <div className="flex justify-between font-medium border-t pt-2">
-                  <span>Preostalo:</span>
-                  <span className={detailInvoice.remainingAmount > 0 ? 'text-green-600' : ''}>
-                    {formatCurrency(detailInvoice.remainingAmount)}
-                  </span>
-                </div>
-              </div>
-
-              {detailInvoice.linkedInvoices && detailInvoice.linkedInvoices.length > 0 && (
-                <div>
-                  <h4 className="font-medium mb-2">Povezane fakture:</h4>
-                  <div className="space-y-2">
-                    {detailInvoice.linkedInvoices.map((linked) => (
-                      <div key={linked.id} className="flex items-center justify-between bg-gray-50 p-2 rounded">
-                        <div className="flex items-center gap-2">
-                          <ArrowRight className="w-4 h-4 text-gray-400" />
-                          <span>{linked.invoiceNumber}</span>
-                        </div>
-                        <span className="text-purple-600">{formatCurrency(linked.amount)}</span>
+            {detailInvoice.linkedInvoices && detailInvoice.linkedInvoices.length > 0 && (
+              <div>
+                <h4 className="font-medium mb-2">Povezane fakture:</h4>
+                <div className="space-y-2">
+                  {detailInvoice.linkedInvoices.map((linked: { id: string; invoiceNumber: string; amount: number }) => (
+                    <div key={linked.id} className="flex items-center justify-between bg-gray-50 p-2 rounded">
+                      <div className="flex items-center gap-2">
+                        <ArrowRight className="w-4 h-4 text-gray-400" />
+                        <span>{linked.invoiceNumber}</span>
                       </div>
-                    ))}
-                  </div>
+                      <span className="text-purple-600">{formatCurrency(linked.amount)}</span>
+                    </div>
+                  ))}
                 </div>
-              )}
-
-              {detailInvoice.sefId && (
-                <div className="text-sm">
-                  <p className="text-gray-500">SEF ID:</p>
-                  <p className="font-mono">{detailInvoice.sefId}</p>
-                </div>
-              )}
-
-              {detailInvoice.description && (
-                <div className="text-sm">
-                  <p className="text-gray-500">Opis:</p>
-                  <p>{detailInvoice.description}</p>
-                </div>
-              )}
-            </div>
-
-            <div className="p-6 border-t border-gray-200 flex justify-end">
-              <button
-                onClick={() => setShowDetailModal(false)}
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg"
-              >
-                Zatvori
-              </button>
-            </div>
+              </div>
+            )}
           </div>
+        )}
+        <div className="p-6 border-t border-gray-200 flex justify-end">
+          <button
+            onClick={() => setShowDetailModal(false)}
+            className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg"
+          >
+            Zatvori
+          </button>
         </div>
-      )}
+      </ResponsiveModal>
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        variant={confirmDialog.variant}
+      />
     </div>
   );
 };

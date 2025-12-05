@@ -30,6 +30,12 @@ const updateStatusSchema = z.object({
   reason: z.string().optional()
 });
 
+const bulkStatusSchema = z.object({
+  invoiceIds: z.array(z.string().uuid()),
+  status: z.nativeEnum(IncomingInvoiceStatus),
+  reason: z.string().optional()
+});
+
 export class IncomingInvoiceController {
   
   static async create(req: Request, res: Response) {
@@ -55,7 +61,9 @@ export class IncomingInvoiceController {
       paymentStatus: req.query.paymentStatus as InvoicePaymentStatus,
       dateFrom: req.query.dateFrom as string,
       dateTo: req.query.dateTo as string,
-      supplierPIB: req.query.supplierPIB as string
+      supplierPIB: req.query.supplierPIB as string,
+      sortBy: req.query.sortBy as 'issueDate' | 'receivedDate' | 'totalAmount' | 'invoiceNumber' | 'dueDate' | undefined,
+      sortOrder: req.query.sortOrder as 'asc' | 'desc' | undefined
     };
 
     const result = await IncomingInvoiceService.list(authReq.user!.companyId, filters);
@@ -106,6 +114,33 @@ export class IncomingInvoiceController {
       authReq.user!.companyId,
       lineId,
       productId || null
+    );
+    
+    res.json({ success: true, data: result });
+  }
+
+  static async getStatusCounts(req: Request, res: Response) {
+    const authReq = req as AuthenticatedRequest;
+    const counts = await IncomingInvoiceService.getStatusCounts(authReq.user!.companyId);
+    res.json({ success: true, data: counts });
+  }
+
+  static async getPaymentCounts(req: Request, res: Response) {
+    const authReq = req as AuthenticatedRequest;
+    const counts = await IncomingInvoiceService.getPaymentCounts(authReq.user!.companyId);
+    res.json({ success: true, data: counts });
+  }
+
+  static async bulkUpdateStatus(req: Request, res: Response) {
+    const authReq = req as AuthenticatedRequest;
+    const { invoiceIds, status, reason } = bulkStatusSchema.parse(req.body);
+    
+    const result = await IncomingInvoiceService.bulkUpdateStatus(
+      authReq.user!.companyId,
+      invoiceIds,
+      status,
+      authReq.user!.id,
+      reason
     );
     
     res.json({ success: true, data: result });

@@ -3,8 +3,11 @@
  * Double-entry bookkeeping journal management
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { toast } from 'react-hot-toast';
 import { LoadingSpinner } from '../components/LoadingSpinner';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import api from '../services/api';
 import {
   BookOpen,
   Plus,
@@ -12,11 +15,12 @@ import {
   RotateCcw,
   Check,
   X,
-  CornerUpLeft,
+  Undo2,
   Trash2,
   Calendar,
   AlertCircle,
-  FileText
+  FileText,
+  Loader2
 } from 'lucide-react';
 
 const JOURNAL_STATUS_COLORS: Record<string, string> = {
@@ -89,6 +93,22 @@ export const JournalEntries: React.FC = () => {
   const [filterType, setFilterType] = useState<string>('');
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Dialog states
+  const [postDialog, setPostDialog] = useState<{ isOpen: boolean; entry: JournalEntry | null }>({
+    isOpen: false,
+    entry: null,
+  });
+  const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; entry: JournalEntry | null }>({
+    isOpen: false,
+    entry: null,
+  });
+  const [reverseDialog, setReverseDialog] = useState<{ isOpen: boolean; entry: JournalEntry | null; reason: string }>({
+    isOpen: false,
+    entry: null,
+    reason: '',
+  });
 
   // New entry form state
   const [formData, setFormData] = useState({
@@ -115,18 +135,22 @@ export const JournalEntries: React.FC = () => {
       if (dateFrom) params.append('fromDate', dateFrom);
       if (dateTo) params.append('toDate', dateTo);
 
-      const response = await fetch(`/api/accounting/journals?${params}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
+      const response = await api.getJournalEntries({
+        status: filterStatus,
+        type: filterType,
+        fromDate: dateFrom,
+        toDate: dateTo
       });
 
-      if (!response.ok) throw new Error('Failed to fetch entries');
-
-      const data = await response.json();
-      setEntries(data.data || []);
+      if (response.success && response.data) {
+        setEntries(response.data.data || []);
+      } else {
+        throw new Error(response.error || 'Failed to fetch entries');
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Greška pri učitavanju');
+      const message = err instanceof Error ? err.message : 'Greška pri učitavanju';
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -134,16 +158,10 @@ export const JournalEntries: React.FC = () => {
 
   const fetchAccounts = async () => {
     try {
-      const response = await fetch('/api/accounting/accounts?flat=true&isActive=true', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
-
-      if (!response.ok) throw new Error('Failed to fetch accounts');
-
-      const data = await response.json();
-      setAccounts(data.data || []);
+      const response = await api.getAccounts({ flat: true, isActive: true });
+      if (response.success && response.data) {
+        setAccounts(response.data as Account[]);
+      }
     } catch (err) {
       console.error('Error fetching accounts:', err);
     }
@@ -168,93 +186,121 @@ export const JournalEntries: React.FC = () => {
     }
 
     try {
-      const response = await fetch('/api/accounting/journals', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ...formData,
-          lines: validLines.map(l => ({
-            accountId: l.accountId,
-            debit: parseFloat(l.debit) || 0,
-            credit: parseFloat(l.credit) || 0,
-            description: l.description,
-          })),
-        }),
+      setIsSubmitting(true);
+      const response = await api.createJournalEntry({
+        ...formData,
+        lines: validLines.map(l => ({
+          accountId: l.accountId,
+          debit: parseFloat(l.debit) || 0,
+          credit: parseFloat(l.credit) || 0,
+          description: l.description,
+        })),
       });
 
-      if (!response.ok) throw new Error('Failed to create entry');
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to create entry');
+      }
 
+      toast.success('Nalog za knjiženje uspešno kreiran');
       setShowModal(false);
       resetForm();
       await fetchEntries();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Greška pri kreiranju');
+      const message = err instanceof Error ? err.message : 'Greška pri kreiranju';
+      setError(message);
+      toast.error(message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handlePost = async (id: string) => {
-    if (!confirm('Da li ste sigurni da želite da proknjižite ovaj nalog?')) return;
+  const handlePostClick = (entry: JournalEntry) => {
+    setPostDialog({ isOpen: true, entry });
+  };
+
+  const handlePostConfirm = async () => {
+    const entry = postDialog.entry;
+    if (!entry) return;
 
     try {
-      const response = await fetch(`/api/accounting/journals/${id}/post`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
+      setIsSubmitting(true);
+      const response = await api.postJournalEntry(entry.id);
 
-      if (!response.ok) throw new Error('Failed to post entry');
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to post entry');
+      }
 
+      toast.success(`Nalog ${entry.entryNumber} uspešno proknjižen`);
+      setPostDialog({ isOpen: false, entry: null });
       await fetchEntries();
       setSelectedEntry(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Greška pri knjiženju');
+      const message = err instanceof Error ? err.message : 'Greška pri knjiženju';
+      setError(message);
+      toast.error(message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleReverse = async (id: string) => {
-    const reason = prompt('Unesite razlog storniranja:');
-    if (!reason) return;
+  const handleReverseClick = (entry: JournalEntry) => {
+    setReverseDialog({ isOpen: true, entry, reason: '' });
+  };
+
+  const handleReverseConfirm = async () => {
+    const entry = reverseDialog.entry;
+    if (!entry || !reverseDialog.reason.trim()) {
+      toast.error('Morate uneti razlog storniranja');
+      return;
+    }
 
     try {
-      const response = await fetch(`/api/accounting/journals/${id}/reverse`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ reason }),
-      });
+      setIsSubmitting(true);
+      const response = await api.reverseJournalEntry(entry.id, reverseDialog.reason);
 
-      if (!response.ok) throw new Error('Failed to reverse entry');
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to reverse entry');
+      }
 
+      toast.success(`Nalog ${entry.entryNumber} uspešno storniran`);
+      setReverseDialog({ isOpen: false, entry: null, reason: '' });
       await fetchEntries();
       setSelectedEntry(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Greška pri storniranju');
+      const message = err instanceof Error ? err.message : 'Greška pri storniranju';
+      setError(message);
+      toast.error(message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Da li ste sigurni da želite da obrišete ovaj nalog?')) return;
+  const handleDeleteClick = (entry: JournalEntry) => {
+    setDeleteDialog({ isOpen: true, entry });
+  };
+
+  const handleDeleteConfirm = async () => {
+    const entry = deleteDialog.entry;
+    if (!entry) return;
 
     try {
-      const response = await fetch(`/api/accounting/journals/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
+      setIsSubmitting(true);
+      const response = await api.deleteJournalEntry(entry.id);
 
-      if (!response.ok) throw new Error('Failed to delete entry');
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to delete entry');
+      }
 
+      toast.success(`Nalog ${entry.entryNumber} uspešno obrisan`);
+      setDeleteDialog({ isOpen: false, entry: null });
       await fetchEntries();
       setSelectedEntry(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Greška pri brisanju');
+      const message = err instanceof Error ? err.message : 'Greška pri brisanju';
+      setError(message);
+      toast.error(message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -495,32 +541,32 @@ export const JournalEntries: React.FC = () => {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
-                    <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                       {entry.status === 'DRAFT' && (
                         <>
                           <button
-                            onClick={() => handlePost(entry.id)}
-                            className="text-green-600 hover:text-green-800"
+                            onClick={() => handlePostClick(entry)}
+                            className="p-1.5 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-colors"
                             title="Proknjiži"
                           >
-                            ✓
+                            <Check className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => handleDelete(entry.id)}
-                            className="text-red-600 hover:text-red-800"
+                            onClick={() => handleDeleteClick(entry)}
+                            className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors"
                             title="Obriši"
                           >
-                            ✕
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </>
                       )}
                       {entry.status === 'POSTED' && (
                         <button
-                          onClick={() => handleReverse(entry.id)}
-                          className="text-orange-600 hover:text-orange-800"
+                          onClick={() => handleReverseClick(entry)}
+                          className="p-1.5 text-orange-600 hover:text-orange-800 hover:bg-orange-50 rounded-lg transition-colors"
                           title="Storniraj"
                         >
-                          ↩
+                          <Undo2 className="w-4 h-4" />
                         </button>
                       )}
                     </div>
@@ -607,7 +653,7 @@ export const JournalEntries: React.FC = () => {
                 </button>
                 {selectedEntry.status === 'DRAFT' && (
                   <button
-                    onClick={() => handlePost(selectedEntry.id)}
+                    onClick={() => handlePostClick(selectedEntry)}
                     className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
                   >
                     Proknjiži
@@ -741,9 +787,9 @@ export const JournalEntries: React.FC = () => {
                                 <button
                                   type="button"
                                   onClick={() => removeLine(index)}
-                                  className="text-red-500 hover:text-red-700"
+                                  className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors"
                                 >
-                                  ✕
+                                  <Trash2 className="w-4 h-4" />
                                 </button>
                               )}
                             </td>
@@ -775,19 +821,130 @@ export const JournalEntries: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setShowModal(false)}
-                    className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                    disabled={isSubmitting}
+                    className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
                   >
                     Otkaži
                   </button>
                   <button
                     type="submit"
-                    disabled={formTotals.debit !== formTotals.credit || formTotals.debit === 0}
-                    className="px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={formTotals.debit !== formTotals.credit || formTotals.debit === 0 || isSubmitting}
+                    className="px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >
-                    Sačuvaj nalog
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Čuvanje...
+                      </>
+                    ) : (
+                      'Sačuvaj nalog'
+                    )}
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Post Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={postDialog.isOpen}
+        onClose={() => setPostDialog({ isOpen: false, entry: null })}
+        onConfirm={handlePostConfirm}
+        title="Proknjiženje naloga"
+        message={
+          postDialog.entry ? (
+            <span>
+              Da li ste sigurni da želite da proknjižite nalog{' '}
+              <strong>{postDialog.entry.entryNumber}</strong>?
+              <br />
+              <span className="text-sm text-gray-500">
+                Nakon proknjiženja nalog se ne može menjati.
+              </span>
+            </span>
+          ) : 'Da li ste sigurni?'
+        }
+        confirmText="Proknjiži"
+        variant="success"
+        isLoading={isSubmitting}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={deleteDialog.isOpen}
+        onClose={() => setDeleteDialog({ isOpen: false, entry: null })}
+        onConfirm={handleDeleteConfirm}
+        title="Brisanje naloga"
+        message={
+          deleteDialog.entry ? (
+            <span>
+              Da li ste sigurni da želite da obrišete nalog{' '}
+              <strong>{deleteDialog.entry.entryNumber}</strong>?
+              Ova akcija je nepovratna.
+            </span>
+          ) : 'Da li ste sigurni?'
+        }
+        confirmText="Obriši"
+        variant="danger"
+        isLoading={isSubmitting}
+      />
+
+      {/* Reverse Dialog with Reason Input */}
+      {reverseDialog.isOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div className="fixed inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setReverseDialog({ isOpen: false, entry: null, reason: '' })} />
+            <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md p-6 animate-fadeIn">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-orange-100 rounded-xl">
+                  <Undo2 className="w-6 h-6 text-orange-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Storniranje naloga</h3>
+                  <p className="text-sm text-gray-500">Nalog: {reverseDialog.entry?.entryNumber}</p>
+                </div>
+              </div>
+              
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Razlog storniranja <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={reverseDialog.reason}
+                  onChange={(e) => setReverseDialog(prev => ({ ...prev, reason: e.target.value }))}
+                  rows={3}
+                  placeholder="Unesite razlog storniranja..."
+                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setReverseDialog({ isOpen: false, entry: null, reason: '' })}
+                  disabled={isSubmitting}
+                  className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  Otkaži
+                </button>
+                <button
+                  onClick={handleReverseConfirm}
+                  disabled={!reverseDialog.reason.trim() || isSubmitting}
+                  className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Storniranje...
+                    </>
+                  ) : (
+                    <>
+                      <Undo2 className="w-4 h-4" />
+                      Storniraj
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>

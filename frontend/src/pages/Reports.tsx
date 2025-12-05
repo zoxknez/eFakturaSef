@@ -3,8 +3,10 @@
  * Balance Sheet, Income Statement, Trial Balance, Aging Reports
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { toast } from 'react-hot-toast';
 import { LoadingSpinner } from '../components/LoadingSpinner';
+import api from '../services/api';
 import { 
   FileText, 
   TrendingUp, 
@@ -19,7 +21,8 @@ import {
   ChevronRight,
   AlertCircle,
   CheckCircle,
-  BarChart3
+  BarChart3,
+  Printer
 } from 'lucide-react';
 
 type ReportType = 'balance-sheet' | 'income-statement' | 'trial-balance' | 'aging' | 'sales-by-partner' | 'sales-by-product' | 'monthly-summary';
@@ -118,78 +121,89 @@ export const Reports: React.FC = () => {
     { id: 'monthly-summary', name: 'Mesečni Pregled', icon: Calendar, color: 'teal' },
   ];
 
-  const fetchReport = async () => {
+  const fetchReport = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      let url = '';
-      const headers = {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`,
-      };
-
+      let response;
+      
       switch (activeReport) {
         case 'balance-sheet':
-          url = `/api/accounting/reports/balance-sheet?asOfDate=${asOfDate}`;
+          response = await api.getBalanceSheet(asOfDate);
+          if (response.success) setBalanceSheet(response.data as BalanceSheetData);
           break;
         case 'income-statement':
-          url = `/api/accounting/reports/income-statement?fromDate=${dateFrom}&toDate=${dateTo}`;
+          response = await api.getIncomeStatement(dateFrom, dateTo);
+          if (response.success) setIncomeStatement(response.data as IncomeStatementData);
           break;
         case 'trial-balance':
-          url = `/api/accounting/trial-balance?fromDate=${dateFrom}&toDate=${dateTo}`;
+          response = await api.getTrialBalance(dateFrom, dateTo);
+          if (response.success) setTrialBalance(response.data as TrialBalanceData);
           break;
         case 'aging':
-          url = `/api/accounting/reports/aging?type=${agingType}&asOfDate=${asOfDate}`;
+          response = await api.getAgingReport(agingType, asOfDate);
+          if (response.success) setAgingReport(response.data as AgingData);
           break;
         case 'sales-by-partner':
-          url = `/api/accounting/reports/sales-by-partner?fromDate=${dateFrom}&toDate=${dateTo}`;
+          response = await api.getSalesByPartnerReport(dateFrom, dateTo);
+          if (response.success) setSalesByPartner(response.data);
           break;
         case 'sales-by-product':
-          url = `/api/accounting/reports/sales-by-product?fromDate=${dateFrom}&toDate=${dateTo}`;
+          response = await api.getSalesByProductReport(dateFrom, dateTo);
+          if (response.success) setSalesByProduct(response.data);
           break;
         case 'monthly-summary':
-          url = `/api/accounting/reports/monthly-summary?year=${selectedYear}`;
+          response = await api.getMonthlySummaryReport(selectedYear);
+          if (response.success) setMonthlySummary(response.data);
           break;
       }
 
-      const response = await fetch(url, { headers });
-      if (!response.ok) throw new Error('Failed to fetch report');
-
-      const data = await response.json();
-
-      switch (activeReport) {
-        case 'balance-sheet':
-          setBalanceSheet(data.data);
-          break;
-        case 'income-statement':
-          setIncomeStatement(data.data);
-          break;
-        case 'trial-balance':
-          setTrialBalance(data.data);
-          break;
-        case 'aging':
-          setAgingReport(data.data);
-          break;
-        case 'sales-by-partner':
-          setSalesByPartner(data.data);
-          break;
-        case 'sales-by-product':
-          setSalesByProduct(data.data);
-          break;
-        case 'monthly-summary':
-          setMonthlySummary(data.data);
-          break;
+      if (response && !response.success) {
+        setError(response.error || 'Greška pri učitavanju izveštaja');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Greška pri učitavanju izveštaja');
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeReport, asOfDate, dateFrom, dateTo, agingType, selectedYear]);
 
   useEffect(() => {
     fetchReport();
-  }, [activeReport]);
+  }, [fetchReport]);
+
+  const exportReport = async (format: 'pdf' | 'xlsx') => {
+    try {
+      toast.loading(`Generisanje ${format.toUpperCase()}...`, { id: 'export-report' });
+      const params: Record<string, unknown> = {};
+      
+      switch (activeReport) {
+        case 'balance-sheet':
+          params.asOfDate = asOfDate;
+          break;
+        case 'income-statement':
+        case 'trial-balance':
+        case 'sales-by-partner':
+        case 'sales-by-product':
+          params.fromDate = dateFrom;
+          params.toDate = dateTo;
+          break;
+        case 'aging':
+          params.type = agingType;
+          params.asOfDate = asOfDate;
+          break;
+        case 'monthly-summary':
+          params.year = selectedYear;
+          break;
+      }
+
+      await api.exportReport(activeReport, params, format);
+      toast.success(`${format.toUpperCase()} uspešno preuzet`, { id: 'export-report' });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Greška pri eksportu', { id: 'export-report' });
+    }
+  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('sr-RS', {
@@ -205,32 +219,23 @@ export const Reports: React.FC = () => {
 
   const downloadReport = async (format: 'pdf' | 'excel') => {
     try {
-      let url = '';
+      let blob: Blob;
       let filename = '';
       
       switch (activeReport) {
         case 'balance-sheet':
-          url = `/api/accounting/reports/balance-sheet?asOfDate=${asOfDate}&format=${format}`;
+          blob = await api.downloadBalanceSheet(asOfDate, format);
           filename = `bilans-stanja-${asOfDate}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
           break;
         case 'income-statement':
-          url = `/api/accounting/reports/income-statement?fromDate=${dateFrom}&toDate=${dateTo}&format=${format}`;
+          blob = await api.downloadIncomeStatement(dateFrom, dateTo, format);
           filename = `bilans-uspeha-${dateFrom}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
           break;
         default:
-          alert('Export je trenutno dostupan samo za Bilans Stanja i Bilans Uspeha');
+          toast.error('Export je trenutno dostupan samo za Bilans Stanja i Bilans Uspeha');
           return;
       }
 
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
-
-      if (!response.ok) throw new Error('Download failed');
-
-      const blob = await response.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
@@ -239,9 +244,10 @@ export const Reports: React.FC = () => {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(downloadUrl);
+      toast.success('Izveštaj uspešno preuzet');
     } catch (err) {
       console.error(err);
-      alert('Greška pri preuzimanju izveštaja');
+      toast.error('Greška pri preuzimanju izveštaja');
     }
   };
 

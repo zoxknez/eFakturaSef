@@ -3,6 +3,8 @@ import { prisma } from '../db/prisma';
 import { logger } from '../utils/logger';
 import { z } from 'zod';
 import { InventoryService } from './inventoryService';
+import { sanitizeSearchQuery } from '../utils/validation';
+import cacheService, { CachePrefix } from './cacheService';
 
 // ========================================
 // ZOD VALIDATION SCHEMAS
@@ -80,12 +82,16 @@ export class ProductService {
     };
 
     if (search) {
-      where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { code: { contains: search, mode: 'insensitive' } },
-        { barcode: { contains: search } },
-        { description: { contains: search, mode: 'insensitive' } },
-      ];
+      // Sanitize search query
+      const sanitizedSearch = sanitizeSearchQuery(search);
+      if (sanitizedSearch) {
+        where.OR = [
+          { name: { contains: sanitizedSearch, mode: 'insensitive' } },
+          { code: { contains: sanitizedSearch, mode: 'insensitive' } },
+          { barcode: { contains: sanitizedSearch } },
+          { description: { contains: sanitizedSearch, mode: 'insensitive' } },
+        ];
+      }
     }
 
     if (category) {
@@ -149,23 +155,32 @@ export class ProductService {
    * Get single product by ID
    */
   static async getProduct(id: string, companyId: string) {
-    const product = await prisma.product.findFirst({
-      where: {
-        id,
-        companyId,
-      },
-      include: {
-        _count: {
-          select: { invoiceLines: true },
-        },
-      },
-    });
+    const cacheKey = `${companyId}:${id}`;
+    
+    return cacheService.getOrSet(
+      CachePrefix.PRODUCT,
+      cacheKey,
+      async () => {
+        const product = await prisma.product.findFirst({
+          where: {
+            id,
+            companyId,
+          },
+          include: {
+            _count: {
+              select: { invoiceLines: true },
+            },
+          },
+        });
 
-    if (!product) {
-      throw new Error('Product not found');
-    }
+        if (!product) {
+          throw new Error('Product not found');
+        }
 
-    return product;
+        return product;
+      },
+      300 // Cache for 5 minutes
+    );
   }
 
   /**
@@ -204,6 +219,11 @@ export class ProductService {
         ...data,
         companyId,
       },
+    });
+
+    // Invalidate product list cache for this company
+    cacheService.invalidatePattern(`cache:${CachePrefix.PRODUCT}:${companyId}:*`).catch((err: unknown) => {
+      logger.warn('Failed to invalidate product cache', { error: err });
     });
 
     logger.info(`Product created: ${product.id} (Code: ${product.code}) by user ${userId}`);

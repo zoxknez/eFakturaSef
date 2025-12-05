@@ -5,8 +5,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { LoadingSpinner } from '../components/LoadingSpinner';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { apiClient } from '../services/api';
 import { logger } from '../utils/logger';
+import toast from 'react-hot-toast';
 import { 
   ArrowLeftRight, 
   Plus, 
@@ -18,7 +20,9 @@ import {
   FileText,
   Building2,
   Users,
-  RefreshCw
+  RefreshCw,
+  TrendingUp,
+  TrendingDown
 } from 'lucide-react';
 
 interface CompensationItem {
@@ -65,6 +69,7 @@ const CompensationsPage: React.FC = () => {
   const [selectedTab, setSelectedTab] = useState<'list' | 'create'>('list');
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [showDetailModal, setShowDetailModal] = useState<Compensation | null>(null);
+  const [cancelConfirm, setCancelConfirm] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
   useEffect(() => {
     fetchCompensations();
@@ -79,6 +84,7 @@ const CompensationsPage: React.FC = () => {
       }
     } catch (error) {
       logger.error('Failed to fetch compensations', error);
+      toast.error('Greška pri učitavanju kompenzacija');
     } finally {
       setLoading(false);
     }
@@ -92,6 +98,7 @@ const CompensationsPage: React.FC = () => {
       }
     } catch (error) {
       logger.error('Failed to fetch open items', error);
+      toast.error('Greška pri učitavanju otvorenih stavki');
     }
   };
 
@@ -111,7 +118,7 @@ const CompensationsPage: React.FC = () => {
 
   const handleCreateCompensation = async () => {
     if (selectedItems.length < 2) {
-      alert('Morate izabrati najmanje 2 stavke za kompenzaciju');
+      toast.error('Morate izabrati najmanje 2 stavke za kompenzaciju');
       return;
     }
 
@@ -124,9 +131,11 @@ const CompensationsPage: React.FC = () => {
         setSelectedItems([]);
         setSelectedTab('list');
         fetchCompensations();
+        toast.success('Kompenzacija je uspešno kreirana');
       }
     } catch (error) {
       logger.error('Failed to create compensation', error);
+      toast.error('Greška pri kreiranju kompenzacije');
     }
   };
 
@@ -135,22 +144,32 @@ const CompensationsPage: React.FC = () => {
       const response = await apiClient.post(`/compensations/${id}/sign`);
       if (response.data.success) {
         fetchCompensations();
+        toast.success('Kompenzacija je uspešno potpisana');
       }
     } catch (error) {
       logger.error('Failed to sign compensation', error);
+      toast.error('Greška pri potpisivanju kompenzacije');
     }
   };
 
-  const handleCancel = async (id: string) => {
-    if (!confirm('Da li ste sigurni da želite da stornirate ovu kompenzaciju?')) return;
+  const handleCancelClick = (id: string) => {
+    setCancelConfirm({ open: true, id });
+  };
+
+  const handleCancelConfirm = async () => {
+    if (!cancelConfirm.id) return;
+    const id = cancelConfirm.id;
+    setCancelConfirm({ open: false, id: null });
 
     try {
       const response = await apiClient.post(`/compensations/${id}/cancel`);
       if (response.data.success) {
         fetchCompensations();
+        toast.success('Kompenzacija je uspešno stornirana');
       }
     } catch (error) {
       logger.error('Failed to cancel compensation', error);
+      toast.error('Greška pri storniranju kompenzacije');
     }
   };
 
@@ -334,7 +353,7 @@ const CompensationsPage: React.FC = () => {
                                 <CheckCircle className="w-4 h-4 text-green-600" />
                               </button>
                               <button
-                                onClick={() => handleCancel(comp.id)}
+                                onClick={() => handleCancelClick(comp.id)}
                                 className="p-2 hover:bg-red-100 rounded-lg transition-colors"
                                 title="Storniraj"
                               >
@@ -565,23 +584,20 @@ const CompensationsPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Cancel Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={cancelConfirm.open}
+        onClose={() => setCancelConfirm({ open: false, id: null })}
+        onConfirm={handleCancelConfirm}
+        title="Storniranje kompenzacije"
+        message="Da li ste sigurni da želite da stornirate ovu kompenzaciju?"
+        confirmText="Storniraj"
+        cancelText="Odustani"
+        variant="danger"
+      />
     </div>
   );
 };
-
-// Missing icons
-const TrendingUp: React.FC<{ className?: string }> = ({ className }) => (
-  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <polyline points="23,6 13.5,15.5 8.5,10.5 1,18" />
-    <polyline points="17,6 23,6 23,12" />
-  </svg>
-);
-
-const TrendingDown: React.FC<{ className?: string }> = ({ className }) => (
-  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <polyline points="23,18 13.5,8.5 8.5,13.5 1,6" />
-    <polyline points="17,18 23,18 23,12" />
-  </svg>
-);
 
 export default CompensationsPage;

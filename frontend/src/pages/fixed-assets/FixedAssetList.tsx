@@ -1,11 +1,42 @@
-import React, { useState, useEffect } from 'react';
+/**
+ * Fixed Asset List Page - Lista Osnovnih Sredstava
+ * Evidencija, praćenje i obračun amortizacije
+ */
+
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import toast from 'react-hot-toast';
+import { toast } from 'react-hot-toast';
 import { fixedAssetService } from '../../services/fixedAssetService';
 import { FixedAsset, FixedAssetStatus } from '@sef-app/shared';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
+import {
+  Plus,
+  Building2,
+  Search,
+  LayoutGrid,
+  List,
+  Calendar,
+  Check,
+  X,
+  DollarSign,
+  ChevronRight,
+  Calculator
+} from 'lucide-react';
 
-const StatusBadge = ({ status }: { status: string }) => {
+// Debounce hook
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+  
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(handler);
+  }, [value, delay]);
+  
+  return debouncedValue;
+}
+
+// Status Badge Component
+const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
   const getStatusConfig = (status: string) => {
     switch (status) {
       case FixedAssetStatus.ACTIVE:
@@ -13,33 +44,21 @@ const StatusBadge = ({ status }: { status: string }) => {
           bg: 'bg-gradient-to-r from-emerald-500 to-green-500',
           text: 'text-white',
           label: 'Aktivno',
-          icon: (
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-            </svg>
-          )
+          icon: <Check className="w-3.5 h-3.5" strokeWidth={2.5} />
         };
       case FixedAssetStatus.WRITTEN_OFF:
         return { 
           bg: 'bg-gray-100',
           text: 'text-gray-700',
           label: 'Otpisano',
-          icon: (
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          )
+          icon: <X className="w-3.5 h-3.5" />
         };
       case FixedAssetStatus.SOLD:
         return { 
           bg: 'bg-gradient-to-r from-blue-500 to-indigo-500',
           text: 'text-white',
           label: 'Prodato',
-          icon: (
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          )
+          icon: <DollarSign className="w-3.5 h-3.5" />
         };
       default:
         return { 
@@ -61,7 +80,8 @@ const StatusBadge = ({ status }: { status: string }) => {
   );
 };
 
-const FixedAssetCard = ({ asset }: { asset: FixedAsset }) => {
+// Fixed Asset Card Component
+const FixedAssetCard: React.FC<{ asset: FixedAsset }> = ({ asset }) => {
   return (
     <div className="group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl hover:border-blue-200 transition-all duration-300 overflow-hidden">
       {/* Header */}
@@ -105,26 +125,19 @@ const FixedAssetCard = ({ asset }: { asset: FixedAsset }) => {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-4 text-sm">
             <div className="flex items-center gap-1.5 text-gray-500">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
+              <Calendar className="w-4 h-4" />
               <span>Nabavljeno: {new Date(asset.purchaseDate).toLocaleDateString('sr-RS')}</span>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-          <div className="flex items-center gap-2">
-             {/* Actions */}
-          </div>
+        <div className="flex items-center justify-end pt-3 border-t border-gray-100">
           <Link
             to={`/fixed-assets/${asset.id}`}
             className="inline-flex items-center gap-1.5 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-xl transition-colors"
           >
             Detalji
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
+            <ChevronRight className="w-4 h-4" />
           </Link>
         </div>
       </div>
@@ -132,27 +145,33 @@ const FixedAssetCard = ({ asset }: { asset: FixedAsset }) => {
   );
 };
 
+// Main FixedAssetList Component
 export const FixedAssetList: React.FC = () => {
   const navigate = useNavigate();
+  
+  // Data state
   const [assets, setAssets] = useState<FixedAsset[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('all');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
-  const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
-  useEffect(() => {
-    fetchAssets();
-  }, [currentPage, activeTab]);
+  // Filters
+  const [activeTab, setActiveTab] = useState<string>('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  const [currentPage, setCurrentPage] = useState(1);
 
-  const fetchAssets = async () => {
+  // Debounced search
+  const debouncedSearch = useDebounce(searchTerm, 300);
+
+  // Fetch assets
+  const fetchAssets = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fixedAssetService.getAll(currentPage, 12, searchTerm);
+      const response = await fixedAssetService.getAll(currentPage, 12, debouncedSearch);
       if (response.success && response.data) {
         let filtered = response.data.data || [];
+        // Filter by status tab if not 'all'
         if (activeTab !== 'all') {
           filtered = filtered.filter(a => a.status === activeTab);
         }
@@ -166,23 +185,35 @@ export const FixedAssetList: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  }, [currentPage, activeTab, debouncedSearch]);
+
+  // Load assets when filters change
+  useEffect(() => {
+    fetchAssets();
+  }, [fetchAssets]);
+
+  // Handle amortization calculation
+  const handleCalculateAmortization = async () => {
+    const currentYear = new Date().getFullYear();
+    try {
+      toast.loading('Obračun amortizacije u toku...');
+      const response = await fixedAssetService.calculateAmortization(currentYear, false);
+      toast.dismiss();
+      if (response.success) {
+        toast.success(`Obračun amortizacije završen za ${response.data?.data?.length || 0} sredstava`);
+      }
+    } catch (error) {
+      toast.dismiss();
+      toast.error('Greška pri obračunu amortizacije');
+    }
   };
 
   const tabs = [
-    { id: 'all', name: 'Sva sredstva', count: totalCount },
-    { id: FixedAssetStatus.ACTIVE, name: 'Aktivna', count: 0 },
-    { id: FixedAssetStatus.WRITTEN_OFF, name: 'Otpisana', count: 0 },
-    { id: FixedAssetStatus.SOLD, name: 'Prodata', count: 0 },
+    { id: 'all', name: 'Sva sredstva' },
+    { id: FixedAssetStatus.ACTIVE, name: 'Aktivna' },
+    { id: FixedAssetStatus.WRITTEN_OFF, name: 'Otpisana' },
+    { id: FixedAssetStatus.SOLD, name: 'Prodata' },
   ];
-
-  const filteredAssets = assets.filter(asset => {
-    if (!searchTerm) return true;
-    const term = searchTerm.toLowerCase();
-    return (
-      asset.name.toLowerCase().includes(term) ||
-      asset.inventoryNumber.toLowerCase().includes(term)
-    );
-  });
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -197,9 +228,7 @@ export const FixedAssetList: React.FC = () => {
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
           <div className="space-y-4">
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full text-sm font-medium">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-              </svg>
+              <Building2 className="w-4 h-4" />
               Osnovna sredstva
             </div>
             <h1 className="text-4xl lg:text-5xl font-black tracking-tight">
@@ -215,18 +244,14 @@ export const FixedAssetList: React.FC = () => {
               to="/fixed-assets/new"
               className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-blue-600 rounded-xl font-semibold shadow-lg shadow-black/10 hover:shadow-xl hover:-translate-y-0.5 transition-all"
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
+              <Plus className="w-5 h-5" />
               Novo sredstvo
             </Link>
             <button
-              onClick={() => toast.success('Obračun amortizacije pokrenut...')}
+              onClick={handleCalculateAmortization}
               className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-500/20 backdrop-blur-sm border border-white/20 text-white rounded-xl font-semibold hover:bg-blue-500/30 transition-all"
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-              </svg>
+              <Calculator className="w-5 h-5" />
               Obračun amortizacije
             </button>
           </div>
@@ -239,15 +264,16 @@ export const FixedAssetList: React.FC = () => {
           {/* Search */}
           <div className="flex-1">
             <div className="relative">
-              <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
                 type="text"
                 placeholder="Pretraži po nazivu ili inventarskom broju..."
                 className="w-full pl-12 pr-4 py-3 border-2 border-gray-100 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-gray-50 focus:bg-white"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(1);
+                }}
               />
             </div>
           </div>
@@ -258,17 +284,13 @@ export const FixedAssetList: React.FC = () => {
               onClick={() => setViewMode('grid')}
               className={`p-2.5 rounded-lg transition-colors ${viewMode === 'grid' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-              </svg>
+              <LayoutGrid className="w-5 h-5" />
             </button>
             <button
               onClick={() => setViewMode('table')}
               className={`p-2.5 rounded-lg transition-colors ${viewMode === 'table' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-              </svg>
+              <List className="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -306,12 +328,10 @@ export const FixedAssetList: React.FC = () => {
                 <p className="mt-4 text-gray-500">Učitavanje osnovnih sredstava...</p>
               </div>
             </div>
-          ) : filteredAssets.length === 0 ? (
+          ) : assets.length === 0 ? (
             <div className="text-center py-16">
               <div className="w-20 h-20 mx-auto mb-6 bg-gray-100 rounded-full flex items-center justify-center">
-                <svg className="w-10 h-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                </svg>
+                <Building2 className="w-10 h-10 text-gray-400" />
               </div>
               <h3 className="text-xl font-bold text-gray-900 mb-2">Nema osnovnih sredstava za prikaz</h3>
               <p className="text-gray-500 mb-6">
@@ -322,16 +342,14 @@ export const FixedAssetList: React.FC = () => {
                   to="/fixed-assets/new"
                   className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-500 text-white rounded-xl font-semibold shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all"
                 >
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
+                  <Plus className="w-5 h-5" />
                   Unesi novo sredstvo
                 </Link>
               )}
             </div>
           ) : viewMode === 'grid' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-              {filteredAssets.map((asset) => (
+              {assets.map((asset) => (
                 <FixedAssetCard
                   key={asset.id}
                   asset={asset}
@@ -353,7 +371,7 @@ export const FixedAssetList: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {filteredAssets.map((asset) => (
+                  {assets.map((asset) => (
                     <tr key={asset.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-4">
                         <span className="font-mono text-sm text-gray-600">{asset.inventoryNumber}</span>
@@ -378,9 +396,7 @@ export const FixedAssetList: React.FC = () => {
                           to={`/fixed-assets/${asset.id}`}
                           className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors inline-block"
                         >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
+                          <ChevronRight className="w-4 h-4" />
                         </Link>
                       </td>
                     </tr>
@@ -392,11 +408,11 @@ export const FixedAssetList: React.FC = () => {
         </div>
 
         {/* Pagination */}
-        {filteredAssets.length > 0 && totalPages > 1 && (
+        {assets.length > 0 && totalPages > 1 && (
           <div className="px-6 py-4 border-t border-gray-100">
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-500">
-                Prikazano <span className="font-semibold text-gray-900">{filteredAssets.length}</span> od <span className="font-semibold text-gray-900">{totalCount}</span> sredstava
+                Prikazano <span className="font-semibold text-gray-900">{assets.length}</span> od <span className="font-semibold text-gray-900">{totalCount}</span> sredstava
               </p>
               <div className="flex items-center gap-2">
                 <button
@@ -424,3 +440,5 @@ export const FixedAssetList: React.FC = () => {
     </div>
   );
 };
+
+export default FixedAssetList;

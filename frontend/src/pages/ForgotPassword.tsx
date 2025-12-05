@@ -5,12 +5,8 @@
 
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Mail, ArrowLeft, CheckCircle } from 'lucide-react';
-import axios from 'axios';
-
-const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3001/api',
-});
+import { Mail, ArrowLeft, CheckCircle, Loader2 } from 'lucide-react';
+import api from '../services/api';
 
 export function ForgotPassword() {
   const [email, setEmail] = useState('');
@@ -24,7 +20,7 @@ export function ForgotPassword() {
     setIsLoading(true);
 
     try {
-      await apiClient.post('/auth/forgot-password', { email });
+      await api.requestPasswordReset(email);
       setIsSubmitted(true);
     } catch (err: unknown) {
       // Ne otkrivamo da li email postoji ili ne (sigurnost)
@@ -151,10 +147,7 @@ export function ForgotPassword() {
             >
               {isLoading ? (
                 <span className="flex items-center justify-center gap-2">
-                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
+                  <Loader2 className="h-5 w-5 animate-spin" />
                   Šalje se...
                 </span>
               ) : (

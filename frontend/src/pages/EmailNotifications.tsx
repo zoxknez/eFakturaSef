@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { LoadingSpinner } from '../components/LoadingSpinner';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import {
   Mail,
   Plus,
@@ -98,6 +99,7 @@ export const EmailNotifications: React.FC = () => {
     search: '',
   });
   const [logPage, setLogPage] = useState(1);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const [logTotalPages, setLogTotalPages] = useState(1);
   
   // Preview
@@ -181,17 +183,23 @@ export const EmailNotifications: React.FC = () => {
     }
   };
 
-  const handleDeleteTemplate = async (id: string) => {
-    if (!confirm('Obrisati ovaj šablon?')) return;
+  const handleDeleteClick = (id: string) => {
+    setDeleteConfirm({ open: true, id });
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirm.id) return;
     
     try {
-      const response = await apiClient.delete(`/email-notifications/templates/${id}`);
+      const response = await apiClient.delete(`/email-notifications/templates/${deleteConfirm.id}`);
       if (response.success) {
         toast.success('Šablon obrisan');
         fetchTemplates();
       }
     } catch (error) {
       toast.error('Greška pri brisanju šablona');
+    } finally {
+      setDeleteConfirm({ open: false, id: null });
     }
   };
 
@@ -349,7 +357,7 @@ export const EmailNotifications: React.FC = () => {
                     </button>
                     {!template.isDefault && (
                       <button
-                        onClick={() => handleDeleteTemplate(template.id)}
+                        onClick={() => handleDeleteClick(template.id)}
                         className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -671,6 +679,16 @@ export const EmailNotifications: React.FC = () => {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={deleteConfirm.open}
+        onClose={() => setDeleteConfirm({ open: false, id: null })}
+        onConfirm={handleDeleteConfirm}
+        title="Brisanje šablona"
+        message="Da li ste sigurni da želite da obrišete ovaj email šablon?"
+        confirmText="Obriši"
+        variant="danger"
+      />
     </div>
   );
 };

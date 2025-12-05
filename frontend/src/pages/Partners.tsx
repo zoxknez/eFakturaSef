@@ -1,40 +1,56 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { logger } from '../utils/logger';
 import ImportModal from '../components/ImportModal';
 import ExportModal from '../components/ExportModal';
+import { useToast } from '../contexts/ToastContext';
+import { useConfirmDialog } from '../components/ConfirmDialog';
+import { useDebounce } from '../hooks/useDebounce';
+import type { PartnerListItem, CreatePartnerDTO, PartnerType } from '@sef-app/shared';
+import {
+  Users,
+  ShoppingCart,
+  Package,
+  ArrowLeftRight,
+  Plus,
+  Upload,
+  Download,
+  Search,
+  Edit2,
+  Trash2,
+  Mail,
+  Phone,
+  LayoutGrid,
+  List,
+  CheckCircle,
+  UserPlus,
+  Building2,
+  MapPin,
+  DollarSign,
+  FileText
+} from 'lucide-react';
 
-interface Partner {
-  id: string;
-  type: 'BUYER' | 'SUPPLIER' | 'BOTH';
-  pib: string;
-  name: string;
-  shortName?: string;
-  address: string;
-  city: string;
-  postalCode: string;
-  email?: string;
-  phone?: string;
-  vatPayer: boolean;
-  defaultPaymentTerms: number;
-  creditLimit?: number;
-  discount?: number;
-  isActive: boolean;
-  createdAt: string;
-  _count?: {
-    invoices: number;
-  };
-}
+// Use Partner type from shared (alias for backward compatibility)
+type Partner = PartnerListItem;
 
-interface PaginatedResponse {
+// Extended pagination response with optional summary
+interface PartnerPaginatedResponse {
   data: Partner[];
   pagination: {
     page: number;
     limit: number;
     total: number;
-    totalPages: number;
+    pages: number;
+    totalPages?: number; // Alias for pages
+  };
+  summary?: {
+    total: number;
+    buyers: number;
+    suppliers: number;
+    both: number;
+    active: number;
   };
 }
 
@@ -46,47 +62,28 @@ interface PartnerParams {
   isActive?: string;
 }
 
-interface PartnerPayload {
-  type: 'BUYER' | 'SUPPLIER' | 'BOTH';
-  pib: string;
-  name: string;
-  shortName?: string;
-  address: string;
-  city: string;
-  postalCode: string;
-  country: string;
-  email?: string;
-  phone?: string;
-  fax?: string;
-  website?: string;
-  contactPerson?: string;
-  vatPayer: boolean;
-  vatNumber?: string;
-  defaultPaymentTerms: number;
-  creditLimit?: number;
-  discount?: number;
-  note?: string;
-}
+// Use CreatePartnerDTO from shared (extended locally for payload)
+type PartnerPayload = CreatePartnerDTO;
 
 // Type config for badges and icons
 const typeConfig = {
   BUYER: { 
     label: 'Kupac', 
-    icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></svg>,
+    icon: <ShoppingCart className="w-4 h-4" />,
     bg: 'bg-blue-50',
     text: 'text-blue-700',
     border: 'border-blue-200'
   },
   SUPPLIER: { 
     label: 'Dobavljač', 
-    icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>,
+    icon: <Package className="w-4 h-4" />,
     bg: 'bg-emerald-50',
     text: 'text-emerald-700',
     border: 'border-emerald-200'
   },
   BOTH: { 
     label: 'Kupac/Dobavljač', 
-    icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>,
+    icon: <ArrowLeftRight className="w-4 h-4" />,
     bg: 'bg-violet-50',
     text: 'text-violet-700',
     border: 'border-violet-200'
@@ -145,17 +142,13 @@ const PartnerCard = ({ partner, onEdit, onDelete }: { partner: Partner; onEdit: 
         <div className="space-y-2 mb-4">
           {partner.email && (
             <div className="flex items-center gap-2 text-sm text-gray-600">
-              <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
+              <Mail className="w-4 h-4 text-gray-400" />
               <span className="truncate">{partner.email}</span>
             </div>
           )}
           {partner.phone && (
             <div className="flex items-center gap-2 text-sm text-gray-600">
-              <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-              </svg>
+              <Phone className="w-4 h-4 text-gray-400" />
               <span>{partner.phone}</span>
             </div>
           )}
@@ -167,18 +160,14 @@ const PartnerCard = ({ partner, onEdit, onDelete }: { partner: Partner; onEdit: 
             onClick={onEdit}
             className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-50 hover:bg-blue-50 text-gray-700 hover:text-blue-700 rounded-xl font-medium text-sm transition-colors"
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-            </svg>
+            <Edit2 className="w-4 h-4" />
             Izmeni
           </button>
           <button
             onClick={onDelete}
             className="flex items-center justify-center p-2.5 bg-gray-50 hover:bg-red-50 text-gray-400 hover:text-red-600 rounded-xl transition-colors"
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
+            <Trash2 className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -188,14 +177,19 @@ const PartnerCard = ({ partner, onEdit, onDelete }: { partner: Partner; onEdit: 
 
 const Partners: React.FC = () => {
   const navigate = useNavigate();
+  const toast = useToast();
+  const { confirm, ConfirmDialog } = useConfirmDialog();
   const [partners, setPartners] = useState<Partner[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const [typeFilter, setTypeFilter] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  const [serverStats, setServerStats] = useState<{ buyers: number; suppliers: number; both: number; active: number } | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
@@ -225,7 +219,7 @@ const Partners: React.FC = () => {
 
   useEffect(() => {
     fetchPartners();
-  }, [currentPage, searchTerm, typeFilter, statusFilter]);
+  }, [currentPage, debouncedSearchTerm, typeFilter, statusFilter]);
 
   const fetchPartners = async () => {
     try {
@@ -235,20 +229,26 @@ const Partners: React.FC = () => {
         limit: 12,
       };
       
-      if (searchTerm) params.search = searchTerm;
+      if (debouncedSearchTerm) params.search = debouncedSearchTerm;
       if (typeFilter) params.type = typeFilter;
       if (statusFilter) params.isActive = statusFilter;
 
       const response = await api.getPartners(params);
       
       if (response.success && response.data) {
-        setPartners(response.data.data);
-        setTotalPages(response.data.pagination.pages);
-        setTotalCount(response.data.pagination.total || 0);
+        // Cast to our extended type
+        const data = response.data as unknown as PartnerPaginatedResponse;
+        setPartners(data.data);
+        setTotalPages(data.pagination.pages);
+        setTotalCount(data.pagination.total || 0);
+        // Capture server stats if available
+        if (data.summary) {
+          setServerStats(data.summary);
+        }
       }
     } catch (error) {
       logger.error('Failed to fetch partners', error);
-      alert('Greška pri učitavanju partnera');
+      toast.error('Greška pri učitavanju', 'Nije moguće učitati listu partnera. Molimo pokušajte ponovo.');
     } finally {
       setLoading(false);
     }
@@ -257,6 +257,7 @@ const Partners: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    setIsSubmitting(true);
     try {
       const payload: PartnerPayload = {
         ...formData,
@@ -269,17 +270,17 @@ const Partners: React.FC = () => {
       if (editingPartner) {
         response = await api.updatePartner(editingPartner.id, payload);
         if (response.success) {
-          alert('Partner uspešno ažuriran!');
+          toast.success('Partner ažuriran', 'Partner je uspešno ažuriran.');
         }
       } else {
         response = await api.createPartner(payload);
         if (response.success) {
-          alert('Partner uspešno kreiran!');
+          toast.success('Partner kreiran', 'Partner je uspešno kreiran.');
         }
       }
 
       if (!response.success) {
-        alert(response.error || 'Greška pri čuvanju partnera');
+        toast.error('Greška pri čuvanju', response.error || 'Nije moguće sačuvati partnera.');
         return;
       }
 
@@ -288,28 +289,35 @@ const Partners: React.FC = () => {
       fetchPartners();
     } catch (error: unknown) {
       logger.error('Failed to save partner', error);
-      alert('Greška pri čuvanju partnera');
+      toast.error('Greška pri čuvanju', 'Došlo je do greške prilikom čuvanja partnera.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Da li ste sigurni da želite da obrišete ovog partnera?')) {
-      return;
-    }
-
-    try {
-      const response = await api.deletePartner(id);
-      
-      if (response.success) {
-        alert('Partner obrisan!');
-        fetchPartners();
-      } else {
-        alert(response.error || 'Greška pri brisanju partnera');
+    confirm({
+      title: 'Obriši partnera',
+      message: 'Da li ste sigurni da želite da obrišete ovog partnera? Ova akcija se ne može poništiti.',
+      confirmText: 'Obriši',
+      cancelText: 'Otkaži',
+      variant: 'danger',
+      onConfirm: async () => {
+        try {
+          const response = await api.deletePartner(id);
+          
+          if (response.success) {
+            toast.success('Partner obrisan', 'Partner je uspešno obrisan.');
+            fetchPartners();
+          } else {
+            toast.error('Greška pri brisanju', response.error || 'Nije moguće obrisati partnera.');
+          }
+        } catch (error: unknown) {
+          logger.error('Failed to delete partner', error);
+          toast.error('Greška pri brisanju', 'Došlo je do greške prilikom brisanja partnera.');
+        }
       }
-    } catch (error: unknown) {
-      logger.error('Failed to delete partner', error);
-      alert('Greška pri brisanju partnera');
-    }
+    });
   };
 
   const openEditModal = (partner: Partner) => {
@@ -363,12 +371,12 @@ const Partners: React.FC = () => {
     });
   };
 
-  // Stats calculations
+  // Stats calculations - use server stats when available, fallback to local calculation
   const stats = {
     total: totalCount,
-    buyers: partners.filter(p => p.type === 'BUYER').length,
-    suppliers: partners.filter(p => p.type === 'SUPPLIER').length,
-    active: partners.filter(p => p.isActive).length,
+    buyers: serverStats?.buyers ?? partners.filter(p => p.type === 'BUYER').length,
+    suppliers: serverStats?.suppliers ?? partners.filter(p => p.type === 'SUPPLIER').length,
+    active: serverStats?.active ?? partners.filter(p => p.isActive).length,
   };
 
   return (
@@ -386,18 +394,14 @@ const Partners: React.FC = () => {
           
           {/* People icons pattern */}
           <div className="absolute top-8 right-16 opacity-10">
-            <svg className="w-24 h-24" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-            </svg>
+            <Users className="w-24 h-24" />
           </div>
         </div>
         
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
           <div className="space-y-4">
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full text-sm font-medium">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
+              <Users className="w-4 h-4" />
               Kupci i dobavljači • CRM
             </div>
             <h1 className="text-4xl lg:text-5xl font-black tracking-tight">
@@ -413,27 +417,21 @@ const Partners: React.FC = () => {
               onClick={() => setShowImportModal(true)}
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/10 backdrop-blur-sm border border-white/20 text-white rounded-xl font-medium hover:bg-white/20 transition-all"
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-              </svg>
+              <Upload className="w-5 h-5" />
               Uvoz
             </button>
             <button
               onClick={() => setShowExportModal(true)}
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/10 backdrop-blur-sm border border-white/20 text-white rounded-xl font-medium hover:bg-white/20 transition-all"
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
+              <Download className="w-5 h-5" />
               Izvoz
             </button>
             <button
               onClick={() => { resetForm(); setShowModal(true); }}
               className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-emerald-600 rounded-xl font-semibold shadow-lg shadow-black/10 hover:shadow-xl hover:-translate-y-0.5 transition-all"
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
+              <Plus className="w-5 h-5" />
               Novi partner
             </button>
           </div>
@@ -449,9 +447,7 @@ const Partners: React.FC = () => {
               <p className="text-3xl font-bold text-gray-900 mt-1">{stats.total}</p>
             </div>
             <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center">
-              <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
+              <Users className="w-6 h-6 text-blue-600" />
             </div>
           </div>
         </div>
@@ -462,9 +458,7 @@ const Partners: React.FC = () => {
               <p className="text-3xl font-bold text-blue-600 mt-1">{stats.buyers}</p>
             </div>
             <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center">
-              <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-              </svg>
+              <ShoppingCart className="w-6 h-6 text-blue-600" />
             </div>
           </div>
         </div>
@@ -475,9 +469,7 @@ const Partners: React.FC = () => {
               <p className="text-3xl font-bold text-emerald-600 mt-1">{stats.suppliers}</p>
             </div>
             <div className="w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center">
-              <svg className="w-6 h-6 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-              </svg>
+              <Package className="w-6 h-6 text-emerald-600" />
             </div>
           </div>
         </div>
@@ -488,9 +480,7 @@ const Partners: React.FC = () => {
               <p className="text-3xl font-bold text-violet-600 mt-1">{stats.active}</p>
             </div>
             <div className="w-12 h-12 rounded-xl bg-violet-50 flex items-center justify-center">
-              <svg className="w-6 h-6 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+              <CheckCircle className="w-6 h-6 text-violet-600" />
             </div>
           </div>
         </div>
@@ -502,9 +492,7 @@ const Partners: React.FC = () => {
           {/* Search */}
           <div className="flex-1">
             <div className="relative">
-              <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
                 type="text"
                 placeholder="Pretraži po imenu, PIB-u, email-u..."
@@ -547,17 +535,13 @@ const Partners: React.FC = () => {
               onClick={() => setViewMode('grid')}
               className={`p-2.5 rounded-lg transition-colors ${viewMode === 'grid' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-              </svg>
+              <LayoutGrid className="w-5 h-5" />
             </button>
             <button
               onClick={() => setViewMode('table')}
               className={`p-2.5 rounded-lg transition-colors ${viewMode === 'table' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-              </svg>
+              <List className="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -574,9 +558,7 @@ const Partners: React.FC = () => {
       ) : partners.length === 0 ? (
         <div className="bg-white rounded-2xl p-12 text-center border border-gray-100 shadow-sm">
           <div className="w-20 h-20 mx-auto mb-6 bg-gray-100 rounded-full flex items-center justify-center">
-            <svg className="w-10 h-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-            </svg>
+            <Users className="w-10 h-10 text-gray-400" />
           </div>
           <h3 className="text-xl font-bold text-gray-900 mb-2">Nema pronađenih partnera</h3>
           <p className="text-gray-500 mb-6">Počnite dodavanjem vašeg prvog poslovnog partnera.</p>
@@ -584,9 +566,7 @@ const Partners: React.FC = () => {
             onClick={() => { resetForm(); setShowModal(true); }}
             className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-cyan-500 text-white rounded-xl font-semibold shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
+            <Plus className="w-5 h-5" />
             Dodaj prvog partnera
           </button>
         </div>
@@ -645,10 +625,10 @@ const Partners: React.FC = () => {
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button onClick={() => openEditModal(partner)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                          <Edit2 className="w-5 h-5" />
                         </button>
                         <button onClick={() => handleDelete(partner.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                          <Trash2 className="w-5 h-5" />
                         </button>
                       </div>
                     </td>
@@ -692,14 +672,13 @@ const Partners: React.FC = () => {
       {showModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            {/* Modal Header */}
             <div className="sticky top-0 bg-gradient-to-r from-emerald-600 to-teal-500 px-6 py-5 rounded-t-2xl">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
                   {editingPartner ? (
-                    <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                    <Edit2 className="w-6 h-6 text-white" />
                   ) : (
-                    <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
+                    <UserPlus className="w-6 h-6 text-white" />
                   )}
                 </div>
                 <div>
@@ -715,9 +694,7 @@ const Partners: React.FC = () => {
               {/* Partner Type Selection */}
               <div className="bg-gray-50 rounded-xl p-5">
                 <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
-                  <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
+                  <Users className="w-5 h-5 text-emerald-600" />
                   Tip Partnera
                 </h3>
                 <div className="grid grid-cols-3 gap-3">
@@ -732,7 +709,7 @@ const Partners: React.FC = () => {
                   >
                     <div className="flex flex-col items-center gap-2">
                       <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${formData.type === 'BUYER' ? 'bg-blue-100' : 'bg-gray-100'}`}>
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></svg>
+                        <ShoppingCart className="w-5 h-5" />
                       </div>
                       <span className="font-semibold">Kupac</span>
                     </div>
@@ -748,7 +725,7 @@ const Partners: React.FC = () => {
                   >
                     <div className="flex flex-col items-center gap-2">
                       <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${formData.type === 'SUPPLIER' ? 'bg-emerald-100' : 'bg-gray-100'}`}>
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
+                        <Package className="w-5 h-5" />
                       </div>
                       <span className="font-semibold">Dobavljač</span>
                     </div>
@@ -764,7 +741,7 @@ const Partners: React.FC = () => {
                   >
                     <div className="flex flex-col items-center gap-2">
                       <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${formData.type === 'BOTH' ? 'bg-violet-100' : 'bg-gray-100'}`}>
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                        <ArrowLeftRight className="w-5 h-5" />
                       </div>
                       <span className="font-semibold">Oba</span>
                     </div>
@@ -775,9 +752,7 @@ const Partners: React.FC = () => {
               {/* Basic Info */}
               <div className="bg-gray-50 rounded-xl p-5">
                 <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
-                  <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                  </svg>
+                  <Building2 className="w-5 h-5 text-emerald-600" />
                   Osnovni Podaci
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -821,10 +796,7 @@ const Partners: React.FC = () => {
               {/* Address */}
               <div className="bg-gray-50 rounded-xl p-5">
                 <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
-                  <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
+                  <MapPin className="w-5 h-5 text-emerald-600" />
                   Adresa
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -882,9 +854,7 @@ const Partners: React.FC = () => {
               {/* Contact Info */}
               <div className="bg-gray-50 rounded-xl p-5">
                 <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
-                  <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                  </svg>
+                  <Mail className="w-5 h-5 text-emerald-600" />
                   Kontakt Informacije
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -914,9 +884,7 @@ const Partners: React.FC = () => {
               {/* Payment Terms */}
               <div className="bg-gray-50 rounded-xl p-5">
                 <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
-                  <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
+                  <DollarSign className="w-5 h-5 text-emerald-600" />
                   Platni Uslovi
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -982,9 +950,7 @@ const Partners: React.FC = () => {
               {/* Note */}
               <div className="bg-gray-50 rounded-xl p-5">
                 <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
-                  <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
+                  <FileText className="w-5 h-5 text-emerald-600" />
                   Napomena
                 </h3>
                 <textarea
@@ -1007,9 +973,10 @@ const Partners: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-500 text-white rounded-xl font-semibold shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 transition-all"
+                  disabled={isSubmitting}
+                  className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-500 text-white rounded-xl font-semibold shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {editingPartner ? 'Sačuvaj Izmene' : 'Kreiraj Partnera'}
+                  {isSubmitting ? 'Čuvanje...' : (editingPartner ? 'Sačuvaj Izmene' : 'Kreiraj Partnera')}
                 </button>
               </div>
             </form>
@@ -1035,6 +1002,9 @@ const Partners: React.FC = () => {
         exportType="partners"
         title="Izvoz partnera"
       />
+
+      {/* Confirm Dialog */}
+      {ConfirmDialog}
     </div>
   );
 };

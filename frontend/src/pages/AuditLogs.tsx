@@ -6,7 +6,7 @@ import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { sr } from 'date-fns/locale';
-import axios from 'axios';
+import api from '../services/api';
 import { 
   Shield, 
   Filter, 
@@ -32,21 +32,9 @@ import {
   Trash2,
   Send,
   Download,
-  Upload
+  Upload,
+  Activity
 } from 'lucide-react';
-
-const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3001/api',
-  headers: { 'Content-Type': 'application/json' }
-});
-
-apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('accessToken');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
 
 interface AuditLog {
   id: string;
@@ -166,22 +154,26 @@ export default function AuditLogs() {
   const [showFilters, setShowFilters] = useState(false);
 
   // Fetch audit logs
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['audit-logs', page, pageSize, filters],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      params.append('page', page.toString());
-      params.append('pageSize', pageSize.toString());
+      const params: Record<string, string> = {
+        page: page.toString(),
+        pageSize: pageSize.toString()
+      };
       
-      if (filters.action) params.append('action', filters.action);
-      if (filters.entityType) params.append('entityType', filters.entityType);
-      if (filters.userId) params.append('userId', filters.userId);
-      if (filters.dateFrom) params.append('dateFrom', filters.dateFrom);
-      if (filters.dateTo) params.append('dateTo', filters.dateTo);
-      if (filters.search) params.append('search', filters.search);
+      if (filters.action) params.action = filters.action;
+      if (filters.entityType) params.entityType = filters.entityType;
+      if (filters.userId) params.userId = filters.userId;
+      if (filters.dateFrom) params.dateFrom = filters.dateFrom;
+      if (filters.dateTo) params.dateTo = filters.dateTo;
+      if (filters.search) params.search = filters.search;
 
-      const response = await apiClient.get<AuditLogsResponse>(`/api/audit-logs?${params}`);
-      return response.data;
+      const response = await api.getAuditLogs(params);
+      if (response.success && response.data) {
+        return response.data as AuditLogsResponse;
+      }
+      throw new Error(response.error || 'Failed to fetch audit logs');
     }
   });
 

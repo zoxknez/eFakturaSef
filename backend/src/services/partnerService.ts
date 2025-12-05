@@ -2,6 +2,8 @@ import { Prisma, PartnerType } from '@prisma/client';
 import { prisma } from '../db/prisma';
 import { logger } from '../utils/logger';
 import { z } from 'zod';
+import cacheService, { CachePrefix } from './cacheService';
+import { sanitizeSearchQuery, validatePIB, normalizePIB } from '../utils/validation';
 
 // ========================================
 // ZOD VALIDATION SCHEMAS
@@ -154,23 +156,32 @@ export class PartnerService {
    * Get single partner by ID
    */
   static async getPartner(id: string, companyId: string) {
-    const partner = await prisma.partner.findFirst({
-      where: {
-        id,
-        companyId,
-      },
-      include: {
-        _count: {
-          select: { invoices: true },
-        },
-      },
-    });
+    const cacheKey = `${companyId}:${id}`;
+    
+    return cacheService.getOrSet(
+      CachePrefix.PARTNER,
+      cacheKey,
+      async () => {
+        const partner = await prisma.partner.findFirst({
+          where: {
+            id,
+            companyId,
+          },
+          include: {
+            _count: {
+              select: { invoices: true },
+            },
+          },
+        });
 
-    if (!partner) {
-      throw new Error('Partner not found');
-    }
+        if (!partner) {
+          throw new Error('Partner not found');
+        }
 
-    return partner;
+        return partner;
+      },
+      300 // Cache for 5 minutes
+    );
   }
 
   /**
@@ -193,10 +204,16 @@ export class PartnerService {
     const partner = await prisma.partner.create({
       data: {
         ...data,
+        pib: normalizePIB(data.pib) || data.pib, // Use normalized PIB
         companyId,
         email: data.email || null,
         website: data.website || null,
       },
+    });
+
+    // Invalidate autocomplete cache for this company
+    cacheService.invalidatePattern(`cache:${CachePrefix.PARTNER}:${companyId}:autocomplete:*`).catch(err => {
+      logger.warn('Failed to invalidate partner autocomplete cache', { error: err });
     });
 
     logger.info(`Partner created: ${partner.id} (PIB: ${partner.pib}) by user ${userId}`);
@@ -244,6 +261,14 @@ export class PartnerService {
       },
     });
 
+    // Invalidate cache for this partner and autocomplete
+    cacheService.del(CachePrefix.PARTNER, `${companyId}:${id}`).catch(err => {
+      logger.warn('Failed to invalidate partner cache', { error: err });
+    });
+    cacheService.invalidatePattern(`cache:${CachePrefix.PARTNER}:${companyId}:autocomplete:*`).catch(err => {
+      logger.warn('Failed to invalidate partner autocomplete cache', { error: err });
+    });
+
     logger.info(`Partner updated: ${id} by user ${userId}`);
     return partner;
   }
@@ -277,7 +302,15 @@ export class PartnerService {
         data: { isActive: false },
       });
 
-      logger.info(`Partner soft deleted: ${id} (has ${existingPartner._count.invoices} invoices) by user ${userId}`);
+      // Invalidate cache
+    cacheService.del(CachePrefix.PARTNER, `${companyId}:${id}`).catch(err => {
+      logger.warn('Failed to invalidate partner cache', { error: err });
+    });
+    cacheService.invalidatePattern(`cache:${CachePrefix.PARTNER}:${companyId}:autocomplete:*`).catch(err => {
+      logger.warn('Failed to invalidate partner autocomplete cache', { error: err });
+    });
+
+    logger.info(`Partner soft deleted: ${id} (has ${existingPartner._count.invoices} invoices) by user ${userId}`);
       return { 
         message: 'Partner deactivated (has invoices)',
         partner,
@@ -301,39 +334,49 @@ export class PartnerService {
    * Autocomplete search
    */
   static async autocomplete(companyId: string, query: string, type?: PartnerType) {
-    const where: Prisma.PartnerWhereInput = {
-      companyId,
-      isActive: true,
-      OR: [
-        { name: { contains: query, mode: 'insensitive' } },
-        { pib: { contains: query } },
-        { shortName: { contains: query, mode: 'insensitive' } },
-      ],
-    };
+    // Cache key includes query and type for proper cache separation
+    const cacheKey = `${companyId}:autocomplete:${query.toLowerCase()}:${type || 'all'}`;
+    
+    return cacheService.getOrSet(
+      CachePrefix.PARTNER,
+      cacheKey,
+      async () => {
+        const where: Prisma.PartnerWhereInput = {
+          companyId,
+          isActive: true,
+          OR: [
+            { name: { contains: query, mode: 'insensitive' } },
+            { pib: { contains: query } },
+            { shortName: { contains: query, mode: 'insensitive' } },
+          ],
+        };
 
-    if (type) {
-      where.type = type;
-    }
+        if (type) {
+          where.type = type;
+        }
 
-    // Get partners (limit 20 for autocomplete)
-    return prisma.partner.findMany({
-      where,
-      take: 20,
-      orderBy: { name: 'asc' },
-      select: {
-        id: true,
-        pib: true,
-        name: true,
-        shortName: true,
-        type: true,
-        address: true,
-        city: true,
-        email: true,
-        phone: true,
-        defaultPaymentTerms: true,
-        vatPayer: true,
+        // Get partners (limit 20 for autocomplete)
+        return prisma.partner.findMany({
+          where,
+          take: 20,
+          orderBy: { name: 'asc' },
+          select: {
+            id: true,
+            pib: true,
+            name: true,
+            shortName: true,
+            type: true,
+            address: true,
+            city: true,
+            email: true,
+            phone: true,
+            defaultPaymentTerms: true,
+            vatPayer: true,
+          },
+        });
       },
-    });
+      60 // Cache for 1 minute (short TTL for search results)
+    );
   }
 
   /**

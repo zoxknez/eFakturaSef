@@ -1,11 +1,21 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
+import { useNavigate } from 'react-router-dom';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Autocomplete, AutocompleteOption } from '../components/Autocomplete';
 import { logger } from '../utils/logger';
+import type { 
+  PartnerAutocompleteItem, 
+  ProductAutocompleteItem, 
+  CreateInvoiceDTO,
+  CreateInvoiceLineDTO,
+  UnitOfMeasure,
+  PaymentMethod
+} from '@sef-app/shared';
+import { InvoiceStatus } from '@sef-app/shared';
 import {
   FileText,
   User,
@@ -35,33 +45,25 @@ import {
   Copy,
   FileCheck,
   Percent,
-  Banknote
+  Banknote,
+  Ruler
 } from 'lucide-react';
 
-// Types
-interface Partner {
-  id: string;
-  name: string;
-  pib: string;
-  type?: string;
-  city?: string;
-  address?: string;
-  postalCode?: string;
-  email?: string;
-  phone?: string;
-  defaultPaymentTerms?: number;
-  vatPayer?: boolean;
-}
-
-interface Product {
-  id: string;
-  name: string;
-  sku?: string;
-  unitPrice: number;
-  taxRate: number;
-  currentStock?: number;
-  trackInventory?: boolean;
-}
+// Unit of measure options
+const UNIT_OPTIONS: { value: UnitOfMeasure | string; label: string }[] = [
+  { value: 'kom', label: 'Komad' },
+  { value: 'kg', label: 'Kilogram' },
+  { value: 'l', label: 'Litar' },
+  { value: 'm', label: 'Metar' },
+  { value: 'm2', label: 'm²' },
+  { value: 'm3', label: 'm³' },
+  { value: 'h', label: 'Sat' },
+  { value: 'dan', label: 'Dan' },
+  { value: 'mes', label: 'Mesec' },
+  { value: 'god', label: 'Godina' },
+  { value: 'pkt', label: 'Paket' },
+  { value: 'set', label: 'Set' },
+];
 
 // Validation schema
 const createInvoiceSchema = z.object({
@@ -81,7 +83,8 @@ const createInvoiceSchema = z.object({
     quantity: z.number().positive('Količina mora biti pozitivna'),
     unitPrice: z.number().nonnegative('Cena ne može biti negativna'),
     taxRate: z.number().min(0).max(100, 'PDV stopa mora biti između 0 i 100'),
-    discount: z.number().min(0).max(100).optional()
+    discount: z.number().min(0).max(100).optional(),
+    unit: z.string().optional()
   })).min(1, 'Morate dodati bar jednu stavku')
 });
 
@@ -93,6 +96,7 @@ interface InvoiceLine {
   unitPrice: number;
   taxRate: number;
   discount: number;
+  unit: string;
   productId?: string;
 }
 
@@ -106,16 +110,17 @@ const steps = [
 
 export const CreateInvoice: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [lines, setLines] = useState<InvoiceLine[]>([
-    { name: '', quantity: 1, unitPrice: 0, taxRate: 20, discount: 0 }
+    { name: '', quantity: 1, unitPrice: 0, taxRate: 20, discount: 0, unit: 'kom' }
   ]);
-  const [selectedPartner, setSelectedPartner] = useState<Partner | null>(null);
-  const [selectedProducts, setSelectedProducts] = useState<Map<number, Product>>(new Map());
+  const [selectedPartner, setSelectedPartner] = useState<PartnerAutocompleteItem | null>(null);
+  const [selectedProducts, setSelectedProducts] = useState<Map<number, ProductAutocompleteItem>>(new Map());
 
   const {
     register,
@@ -190,11 +195,11 @@ export const CreateInvoice: React.FC = () => {
     }
   }, [error, success]);
 
-  const searchPartners = async (query: string): Promise<AutocompleteOption[]> => {
+  const searchPartners = useCallback(async (query: string): Promise<AutocompleteOption[]> => {
     try {
       const response = await api.searchPartners(query);
       if (response.success && response.data) {
-        return response.data.map((partner: Partner) => ({
+        return response.data.map((partner) => ({
           id: partner.id,
           label: partner.name,
           sublabel: `PIB: ${partner.pib} | ${partner.city || 'N/A'}`,
@@ -205,13 +210,13 @@ export const CreateInvoice: React.FC = () => {
       logger.error('Partner search error', err);
     }
     return [];
-  };
+  }, []);
 
-  const searchProducts = async (query: string): Promise<AutocompleteOption[]> => {
+  const searchProducts = useCallback(async (query: string): Promise<AutocompleteOption[]> => {
     try {
       const response = await api.searchProducts(query);
       if (response.success && response.data) {
-        return response.data.map((product: Product) => ({
+        return response.data.map((product) => ({
           id: product.id,
           label: product.name,
           sublabel: `${product.sku || ''} | ${product.unitPrice?.toFixed(2) || '0.00'} RSD | PDV ${product.taxRate || 20}%`,
@@ -222,21 +227,22 @@ export const CreateInvoice: React.FC = () => {
       logger.error('Product search error', err);
     }
     return [];
-  };
+  }, []);
 
   const handlePartnerSelect = (option: AutocompleteOption | null) => {
     if (option) {
-      setSelectedPartner(option.data);
-      setValue('buyerName', option.data.name);
-      setValue('buyerPIB', option.data.pib);
-      setValue('buyerAddress', option.data.address || '');
-      setValue('buyerCity', option.data.city || '');
-      setValue('buyerPostalCode', option.data.postalCode || '');
+      const partner = option.data as PartnerAutocompleteItem;
+      setSelectedPartner(partner);
+      setValue('buyerName', partner.name);
+      setValue('buyerPIB', partner.pib);
+      setValue('buyerAddress', partner.address || '');
+      setValue('buyerCity', partner.city || '');
+      setValue('buyerPostalCode', partner.postalCode || '');
       
       // Auto-set due date based on payment terms
-      if (option.data.defaultPaymentTerms) {
+      if (partner.defaultPaymentTerms) {
         const dueDate = new Date();
-        dueDate.setDate(dueDate.getDate() + option.data.defaultPaymentTerms);
+        dueDate.setDate(dueDate.getDate() + partner.defaultPaymentTerms);
         setValue('dueDate', dueDate.toISOString().split('T')[0]);
       }
     } else {
@@ -253,12 +259,14 @@ export const CreateInvoice: React.FC = () => {
     const newSelectedProducts = new Map(selectedProducts);
     
     if (option) {
-      newSelectedProducts.set(index, option.data);
+      const product = option.data as ProductAutocompleteItem;
+      newSelectedProducts.set(index, product);
       setSelectedProducts(newSelectedProducts);
       
-      updateLine(index, 'name', option.data.name);
-      updateLine(index, 'unitPrice', option.data.unitPrice || 0);
-      updateLine(index, 'taxRate', option.data.taxRate || 20);
+      updateLine(index, 'name', product.name);
+      updateLine(index, 'unitPrice', product.unitPrice || 0);
+      updateLine(index, 'taxRate', product.taxRate || 20);
+      updateLine(index, 'unit', product.unit || 'kom');
     } else {
       newSelectedProducts.delete(index);
       setSelectedProducts(newSelectedProducts);
@@ -266,7 +274,7 @@ export const CreateInvoice: React.FC = () => {
   };
 
   const addLine = () => {
-    const newLines = [...lines, { name: '', quantity: 1, unitPrice: 0, taxRate: 20, discount: 0 }];
+    const newLines = [...lines, { name: '', quantity: 1, unitPrice: 0, taxRate: 20, discount: 0, unit: 'kom' }];
     setLines(newLines);
     setValue('lines', newLines);
   };
@@ -277,7 +285,7 @@ export const CreateInvoice: React.FC = () => {
       setLines(newLines);
       setValue('lines', newLines);
       
-      const newSelectedProducts = new Map<number, Product>();
+      const newSelectedProducts = new Map<number, ProductAutocompleteItem>();
       selectedProducts.forEach((product, i) => {
         if (i < index) newSelectedProducts.set(i, product);
         else if (i > index) newSelectedProducts.set(i - 1, product);
@@ -337,40 +345,43 @@ export const CreateInvoice: React.FC = () => {
     setError(null);
 
     try {
-      const invoiceData: Record<string, unknown> = {
+      const invoiceLines: CreateInvoiceLineDTO[] = lines.map((line, index) => ({
+        name: line.name,
+        quantity: line.quantity,
+        unitPrice: line.unitPrice,
+        taxRate: line.taxRate,
+        discount: line.discount,
+        unit: line.unit,
+        productId: selectedProducts.get(index)?.id
+      }));
+
+      const invoiceData: CreateInvoiceDTO = {
         companyId: user.company.id,
         invoiceNumber: data.invoiceNumber,
         issueDate: data.issueDate,
         dueDate: data.dueDate,
         currency: data.currency,
         note: data.note,
-        paymentMethod: data.paymentMethod,
-        lines: lines.map((line, index) => ({
-          name: line.name,
-          quantity: line.quantity,
-          unitPrice: line.unitPrice,
-          taxRate: line.taxRate,
-          discount: line.discount,
-          productId: selectedProducts.get(index)?.id || null
-        }))
+        paymentMethod: data.paymentMethod as PaymentMethod,
+        lines: invoiceLines,
+        ...(selectedPartner?.id
+          ? { partnerId: selectedPartner.id }
+          : {
+              buyerName: data.buyerName,
+              buyerPIB: data.buyerPIB,
+              buyerAddress: data.buyerAddress,
+              buyerCity: data.buyerCity,
+              buyerPostalCode: data.buyerPostalCode
+            }
+        )
       };
-
-      if (selectedPartner?.id) {
-        invoiceData.partnerId = selectedPartner.id;
-      } else {
-        invoiceData.buyerName = data.buyerName;
-        invoiceData.buyerPIB = data.buyerPIB;
-        invoiceData.buyerAddress = data.buyerAddress;
-        invoiceData.buyerCity = data.buyerCity;
-        invoiceData.buyerPostalCode = data.buyerPostalCode;
-      }
 
       const response = await api.createInvoice(invoiceData);
       
       if (response.success) {
         setSuccess('Faktura uspešno kreirana!');
         setTimeout(() => {
-          window.location.href = '/invoices';
+          navigate('/invoices');
         }, 1500);
       } else {
         setError(response.error || 'Greška pri kreiranju fakture');
@@ -402,41 +413,44 @@ export const CreateInvoice: React.FC = () => {
     setError(null);
 
     try {
-      const invoiceData: Record<string, unknown> = {
-        companyId: user.company.id,
-        invoiceNumber: watchedValues.invoiceNumber,
-        issueDate: watchedValues.issueDate,
-        dueDate: watchedValues.dueDate,
-        currency: watchedValues.currency,
-        note: watchedValues.note,
-        paymentMethod: watchedValues.paymentMethod,
-        status: 'DRAFT', // Explicitly set as draft
-        lines: lines.map((line, index) => ({
-          name: line.name || 'Stavka',
-          quantity: line.quantity || 1,
-          unitPrice: line.unitPrice || 0,
-          taxRate: line.taxRate || 20,
-          discount: line.discount || 0,
-          productId: selectedProducts.get(index)?.id || null
-        }))
-      };
+      const invoiceLines: CreateInvoiceLineDTO[] = lines.map((line, index) => ({
+        name: line.name || 'Stavka',
+        quantity: line.quantity || 1,
+        unitPrice: line.unitPrice || 0,
+        taxRate: line.taxRate || 20,
+        discount: line.discount || 0,
+        unit: line.unit || 'kom',
+        productId: selectedProducts.get(index)?.id
+      }));
 
-      if (selectedPartner?.id) {
-        invoiceData.partnerId = selectedPartner.id;
-      } else {
-        invoiceData.buyerName = watchedValues.buyerName || 'Nepoznat';
-        invoiceData.buyerPIB = watchedValues.buyerPIB || '000000000';
-        invoiceData.buyerAddress = watchedValues.buyerAddress;
-        invoiceData.buyerCity = watchedValues.buyerCity;
-        invoiceData.buyerPostalCode = watchedValues.buyerPostalCode;
-      }
+      const invoiceData: CreateInvoiceDTO = {
+        companyId: user.company.id,
+        invoiceNumber: watchedValues.invoiceNumber || '',
+        issueDate: watchedValues.issueDate || new Date().toISOString().split('T')[0],
+        dueDate: watchedValues.dueDate,
+        currency: watchedValues.currency || 'RSD',
+        note: watchedValues.note,
+        paymentMethod: (watchedValues.paymentMethod || 'TRANSFER') as PaymentMethod,
+        status: InvoiceStatus.DRAFT,
+        lines: invoiceLines,
+        ...(selectedPartner?.id
+          ? { partnerId: selectedPartner.id }
+          : {
+              buyerName: watchedValues.buyerName || 'Nepoznat',
+              buyerPIB: watchedValues.buyerPIB || '000000000',
+              buyerAddress: watchedValues.buyerAddress,
+              buyerCity: watchedValues.buyerCity,
+              buyerPostalCode: watchedValues.buyerPostalCode
+            }
+        )
+      };
 
       const response = await api.createInvoice(invoiceData);
       
       if (response.success) {
         setSuccess('Nacrt fakture uspešno sačuvan!');
         setTimeout(() => {
-          window.location.href = '/invoices';
+          navigate('/invoices');
         }, 1500);
       } else {
         setError(response.error || 'Greška pri čuvanju nacrta');
@@ -458,7 +472,7 @@ export const CreateInvoice: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <button
-                onClick={() => window.history.back()}
+                onClick={() => navigate(-1)}
                 className="p-2 bg-white/10 backdrop-blur-sm rounded-xl hover:bg-white/20 transition-colors"
               >
                 <ArrowLeft className="w-5 h-5" />
@@ -911,7 +925,7 @@ export const CreateInvoice: React.FC = () => {
                         minChars={2}
                       />
 
-                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
                         <div className="space-y-2">
                           <label className="text-sm font-medium text-gray-700">Količina</label>
                           <input
@@ -923,6 +937,22 @@ export const CreateInvoice: React.FC = () => {
                             min="0"
                             step="0.01"
                           />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                            <Ruler className="w-3 h-3" /> Jedinica
+                          </label>
+                          <select
+                            value={line.unit}
+                            onChange={(e) => updateLine(index, 'unit', e.target.value)}
+                            className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg 
+                                       focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                          >
+                            {UNIT_OPTIONS.map((opt) => (
+                              <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                          </select>
                         </div>
 
                         <div className="space-y-2">
@@ -1101,12 +1131,13 @@ export const CreateInvoice: React.FC = () => {
                     <div className="space-y-3 max-h-64 overflow-y-auto">
                       {lines.map((line, index) => {
                         const lineTotal = (line.quantity * line.unitPrice * (1 - line.discount / 100)) * (1 + line.taxRate / 100);
+                        const unitLabel = UNIT_OPTIONS.find(u => u.value === line.unit)?.label || line.unit;
                         return (
                           <div key={index} className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0">
                             <div>
                               <p className="font-medium text-gray-900">{line.name || `Stavka ${index + 1}`}</p>
                               <p className="text-xs text-gray-500">
-                                {line.quantity} × {formatCurrency(line.unitPrice)}
+                                {line.quantity} {unitLabel} × {formatCurrency(line.unitPrice)}
                                 {line.discount > 0 && ` (-${line.discount}%)`}
                                 {` + PDV ${line.taxRate}%`}
                               </p>

@@ -1,47 +1,20 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import api from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import { logger } from '../utils/logger';
 import { AnimatedCounter } from '../components/AnimatedCounter';
+import { LayoutGrid, BarChart3 } from 'lucide-react';
+import type { 
+  DashboardOverview, 
+  DashboardCharts,
+  DashboardAlerts, 
+  DashboardInvoice,
+  SEFHealthStatus 
+} from '@sef-app/shared';
 
-interface DashboardOverview {
-  totalInvoices: number;
-  acceptedInvoices: number;
-  pendingInvoices: number;
-  totalRevenue: number;
-  acceptanceRate: number;
-  trends?: {
-    invoices?: { value: number; positive: boolean };
-    revenue?: { value: number; positive: boolean };
-  };
-}
-
-interface DashboardInvoice {
-  id: string;
-  invoiceNumber: string;
-  type: 'OUTGOING' | 'INCOMING';
-  hasPartner: boolean;
-  partnerName: string;
-  totalAmount: number;
-  currency: string;
-  createdAt: string;
-  status: string;
-}
-
-interface DashboardAlerts {
-  overdueInvoices: {
-    count: number;
-    items: Array<{ totalAmount: number }>;
-  };
-  lowStockProducts: {
-    count: number;
-  };
-  deadlines: {
-    critical: number;
-    warning: number;
-    aging: number;
-  };
-}
+// =====================================================
+// COMPONENTS
+// =====================================================
 
 const StatCard = ({ title, value, subtitle, icon, gradient, trend, onClick }: {
   title: string;
@@ -49,12 +22,16 @@ const StatCard = ({ title, value, subtitle, icon, gradient, trend, onClick }: {
   subtitle: string;
   icon: string;
   gradient: string;
-  trend?: { value: string; positive: boolean };
+  trend?: { value: number; positive: boolean };
   onClick?: () => void;
 }) => (
   <div 
     className={`bg-white/80 backdrop-blur-sm rounded-2xl p-6 card-hover border border-gray-200/50 cursor-pointer transition-all duration-200 ${onClick ? 'hover:scale-105' : ''}`}
     onClick={onClick}
+    role="button"
+    tabIndex={0}
+    onKeyDown={(e) => e.key === 'Enter' && onClick?.()}
+    aria-label={`${title}: ${value}`}
   >
     <div className="flex items-center justify-between">
       <div className="flex-1">
@@ -69,56 +46,137 @@ const StatCard = ({ title, value, subtitle, icon, gradient, trend, onClick }: {
         <p className="text-sm text-gray-500">{subtitle}</p>
         {trend && (
           <div className={`flex items-center mt-2 text-sm ${trend.positive ? 'text-green-600' : 'text-red-600'}`}>
-            <span className="mr-1">{trend.positive ? '↗' : '↘'}</span>
-            {trend.value}
+            <span className="mr-1" aria-hidden="true">{trend.positive ? '↗' : '↘'}</span>
+            <span>{trend.value}%</span>
           </div>
         )}
       </div>
-      <div className={`w-16 h-16 rounded-2xl ${gradient} flex items-center justify-center text-2xl shadow-lg`}>
+      <div className={`w-16 h-16 rounded-2xl ${gradient} flex items-center justify-center text-2xl shadow-lg`} aria-hidden="true">
         {icon}
       </div>
     </div>
   </div>
 );
 
-const SEFHealthCard = () => (
-  <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50">
-    <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
-      💚 SEF Health Status
-    </h3>
-    
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-gray-600">Poslednji ping</span>
-        <div className="flex items-center">
-          <div className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></div>
-          <span className="text-sm font-medium">Pre 30s</span>
+// Dynamic SEF Health Card
+const SEFHealthCard = ({ 
+  health, 
+  loading, 
+  onRefresh 
+}: { 
+  health: SEFHealthStatus | null; 
+  loading: boolean;
+  onRefresh: () => void;
+}) => {
+  const formatTimeSince = (isoString: string | null): string => {
+    if (!isoString) return 'N/A';
+    const diff = Date.now() - new Date(isoString).getTime();
+    const seconds = Math.floor(diff / 1000);
+    if (seconds < 60) return `Pre ${seconds}s`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `Pre ${minutes}min`;
+    const hours = Math.floor(minutes / 60);
+    return `Pre ${hours}h`;
+  };
+
+  const queueTotal = health 
+    ? health.queueStats.waiting + health.queueStats.active + health.queueStats.delayed
+    : 0;
+
+  return (
+    <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-bold text-gray-900 flex items-center">
+          {health?.isOnline ? '💚' : '❤️'} SEF Health Status
+        </h3>
+        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+          health?.environment === 'production' 
+            ? 'bg-green-100 text-green-800' 
+            : 'bg-orange-100 text-orange-800'
+        }`}>
+          {health?.environment === 'production' ? 'PROD' : 'DEMO'}
+        </span>
+      </div>
+      
+      {loading ? (
+        <div className="flex items-center justify-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
         </div>
-      </div>
-      
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-gray-600">Greške (24h)</span>
-        <span className="text-sm font-medium text-red-600">2</span>
-      </div>
-      
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-gray-600">Queue veličina</span>
-        <span className="text-sm font-medium">5 dokumenata</span>
-      </div>
-      
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-gray-600">Retry trend</span>
-        <span className="text-sm font-medium text-green-600">↘ -15%</span>
-      </div>
-      
-      <div className="pt-2 border-t border-gray-100">
-        <button className="w-full px-4 py-2 bg-green-50 text-green-700 rounded-lg text-sm font-medium hover:bg-green-100">
-          🔍 Detaljni status
-        </button>
-      </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-600">Status</span>
+            <div className="flex items-center">
+              <div className={`w-2 h-2 rounded-full mr-2 ${
+                health?.isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'
+              }`}></div>
+              <span className="text-sm font-medium">
+                {health?.isOnline ? 'Online' : 'Offline'}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-600">Poslednji ping</span>
+            <span className="text-sm font-medium">
+              {formatTimeSince(health?.lastPingAt || null)}
+              {health?.lastPingLatencyMs && (
+                <span className="text-gray-400 ml-1">({health.lastPingLatencyMs}ms)</span>
+              )}
+            </span>
+          </div>
+          
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-600">Greške (24h)</span>
+            <span className={`text-sm font-medium ${
+              (health?.errors24h || 0) > 0 ? 'text-red-600' : 'text-green-600'
+            }`}>
+              {health?.errors24h || 0}
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-600">Uspešnost (24h)</span>
+            <span className={`text-sm font-medium ${
+              (health?.successRate24h || 100) >= 95 ? 'text-green-600' : 'text-orange-600'
+            }`}>
+              {health?.successRate24h || 100}%
+            </span>
+          </div>
+          
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-600">Queue</span>
+            <span className="text-sm font-medium">
+              {queueTotal} dokumenata
+              {health?.queueStats.failed ? (
+                <span className="text-red-500 ml-1">({health.queueStats.failed} neuspešno)</span>
+              ) : null}
+            </span>
+          </div>
+          
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-600">Retry trend</span>
+            <span className={`text-sm font-medium ${
+              health?.retryTrend.positive ? 'text-green-600' : 'text-red-600'
+            }`}>
+              {health?.retryTrend.positive ? '↘' : '↗'} {health?.retryTrend.value || 0}%
+            </span>
+          </div>
+          
+          <div className="pt-2 border-t border-gray-100">
+            <button 
+              onClick={onRefresh}
+              disabled={loading}
+              className="w-full px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 disabled:opacity-50 transition-colors"
+            >
+              🔄 Osveži status
+            </button>
+          </div>
+        </div>
+      )}
     </div>
-  </div>
-);
+  );
+};
 
 const DeadlinesCard = ({ alerts }: { alerts: DashboardAlerts | null }) => (
   <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50">
@@ -154,7 +212,7 @@ const DeadlinesCard = ({ alerts }: { alerts: DashboardAlerts | null }) => (
   </div>
 );
 
-const ErrorsFeedCard = ({ alerts }: { alerts: DashboardAlerts | null }) => {
+const ErrorsFeedCard = ({ alerts, navigate }: { alerts: DashboardAlerts | null; navigate: (path: string) => void }) => {
   return (
     <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50">
       <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
@@ -166,13 +224,13 @@ const ErrorsFeedCard = ({ alerts }: { alerts: DashboardAlerts | null }) => {
         {alerts?.overdueInvoices && alerts.overdueInvoices.count > 0 && (
           <div className="p-3 rounded-lg bg-red-50 border border-red-200">
             <div className="flex items-start">
-              <span className="text-lg mr-3">⚠️</span>
+              <span className="text-lg mr-3" aria-hidden="true">⚠️</span>
               <div className="flex-1">
                 <p className="text-sm font-medium text-red-900">
                   {alerts.overdueInvoices.count} faktura sa isteklim rokom
                 </p>
                 <p className="text-xs text-red-600 mt-1">
-                  Ukupno: {alerts.overdueInvoices.items.reduce((sum: number, inv) => sum + inv.totalAmount, 0).toLocaleString('sr-RS')} RSD
+                  Ukupno: {alerts.overdueInvoices.totalAmount.toLocaleString('sr-RS')} RSD
                 </p>
               </div>
             </div>
@@ -183,7 +241,7 @@ const ErrorsFeedCard = ({ alerts }: { alerts: DashboardAlerts | null }) => {
         {alerts?.lowStockProducts && alerts.lowStockProducts.count > 0 && (
           <div className="p-3 rounded-lg bg-orange-50 border border-orange-200">
             <div className="flex items-start">
-              <span className="text-lg mr-3">📦</span>
+              <span className="text-lg mr-3" aria-hidden="true">📦</span>
               <div className="flex-1">
                 <p className="text-sm font-medium text-orange-900">
                   {alerts.lowStockProducts.count} proizvoda sa niskim stanjem
@@ -200,7 +258,7 @@ const ErrorsFeedCard = ({ alerts }: { alerts: DashboardAlerts | null }) => {
         {alerts?.deadlines && (alerts.deadlines.critical > 0 || alerts.deadlines.warning > 0) && (
           <div className="p-3 rounded-lg bg-yellow-50 border border-yellow-200">
             <div className="flex items-start">
-              <span className="text-lg mr-3">⏰</span>
+              <span className="text-lg mr-3" aria-hidden="true">⏰</span>
               <div className="flex-1">
                 <p className="text-sm font-medium text-yellow-900">
                   {alerts.deadlines.critical + alerts.deadlines.warning} faktura zahteva odluku
@@ -221,7 +279,7 @@ const ErrorsFeedCard = ({ alerts }: { alerts: DashboardAlerts | null }) => {
           alerts.deadlines?.warning === 0
         )) && (
           <div className="p-4 rounded-lg bg-green-50 border border-green-200 text-center">
-            <span className="text-3xl">✅</span>
+            <span className="text-3xl" aria-hidden="true">✅</span>
             <p className="text-sm font-medium text-green-900 mt-2">Sve je u redu!</p>
             <p className="text-xs text-green-600">Nema upozorenja</p>
           </div>
@@ -229,7 +287,7 @@ const ErrorsFeedCard = ({ alerts }: { alerts: DashboardAlerts | null }) => {
       </div>
       
       <button 
-        onClick={() => window.location.href = '/accounting/reports'} 
+        onClick={() => navigate('/accounting/reports')} 
         className="w-full mt-4 px-4 py-2 bg-gray-50 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-100"
       >
         📋 Detaljni izveštaj
@@ -238,26 +296,133 @@ const ErrorsFeedCard = ({ alerts }: { alerts: DashboardAlerts | null }) => {
   );
 };
 
+// Simple Mini Bar Chart for revenue
+const MiniBarChart = ({ data }: { data: DashboardCharts['revenueByMonth'] }) => {
+  const maxRevenue = Math.max(...data.map(d => d.revenue), 1);
+  
+  return (
+    <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50">
+      <h3 className="text-lg font-bold text-gray-900 mb-4">📈 Prihod (12 meseci)</h3>
+      <div className="flex items-end justify-between h-32 gap-1">
+        {data.map((item, index) => {
+          const height = (item.revenue / maxRevenue) * 100;
+          const monthName = new Date(item.month + '-01').toLocaleDateString('sr-RS', { month: 'short' });
+          return (
+            <div key={index} className="flex-1 flex flex-col items-center">
+              <div 
+                className="w-full bg-gradient-to-t from-blue-500 to-cyan-400 rounded-t transition-all hover:from-blue-600 hover:to-cyan-500"
+                style={{ height: `${Math.max(height, 2)}%` }}
+                title={`${monthName}: ${item.revenue.toLocaleString('sr-RS')} RSD`}
+              />
+              <span className="text-[10px] text-gray-500 mt-1 rotate-[-45deg] origin-top-left">
+                {monthName}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// Status Pie Chart (simple CSS version)
+const StatusChart = ({ data }: { data: DashboardCharts['invoicesByStatus'] }) => {
+  const total = data.reduce((sum, d) => sum + d.count, 0);
+  
+  const statusLabels: Record<string, string> = {
+    'DRAFT': 'Nacrt',
+    'SENT': 'Poslato',
+    'DELIVERED': 'Isporučeno',
+    'ACCEPTED': 'Prihvaćeno',
+    'REJECTED': 'Odbijeno',
+    'CANCELLED': 'Otkazano',
+    'STORNO': 'Stornirano',
+    'EXPIRED': 'Isteklo'
+  };
+
+  return (
+    <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50">
+      <h3 className="text-lg font-bold text-gray-900 mb-4">📊 Status faktura</h3>
+      <div className="space-y-2">
+        {data.map((item, index) => {
+          const percentage = total > 0 ? (item.count / total) * 100 : 0;
+          return (
+            <div key={index} className="flex items-center gap-3">
+              <div 
+                className="w-3 h-3 rounded-full flex-shrink-0" 
+                style={{ backgroundColor: item.color }}
+              />
+              <div className="flex-1">
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-gray-700">{statusLabels[item.status] || item.status}</span>
+                  <span className="font-medium">{item.count}</span>
+                </div>
+                <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full rounded-full transition-all"
+                    style={{ width: `${percentage}%`, backgroundColor: item.color }}
+                  />
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// =====================================================
+// MAIN COMPONENT
+// =====================================================
+
+// Auto-refresh intervals in seconds
+const REFRESH_INTERVALS = [
+  { label: 'Isključeno', value: 0 },
+  { label: '30 sekundi', value: 30 },
+  { label: '1 minut', value: 60 },
+  { label: '5 minuta', value: 300 },
+];
+
 export const AdvancedDashboard: React.FC = () => {
   const navigate = useNavigate();
   
   // UI State
   const [searchQuery, setSearchQuery] = useState('');
-  const [isDemoMode, setIsDemoMode] = useState(true);
-  const [selectedCompany, setSelectedCompany] = useState('Primer d.o.o. (12345678)');
-  const [savedSearches] = useState([
-    'Odbijene fakture danas',
-    'Visoki iznosi > 100000',
-    'PIB: 12345678',
-    'Status: na_čekanju'
-  ]);
+  const [autoRefreshInterval, setAutoRefreshInterval] = useState(60); // Default: 1 minute
 
   // Dashboard Data State
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
+  const [charts, setCharts] = useState<DashboardCharts | null>(null);
   const [recentInvoices, setRecentInvoices] = useState<DashboardInvoice[]>([]);
   const [alerts, setAlerts] = useState<DashboardAlerts | null>(null);
+  const [sefHealth, setSefHealth] = useState<SEFHealthStatus | null>(null);
+  const [sefHealthLoading, setSefHealthLoading] = useState(false);
+
+  // Saved searches from localStorage
+  const [savedSearches, setSavedSearches] = useState<string[]>(() => {
+    const saved = localStorage.getItem('dashboard_saved_searches');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // Fetch SEF Health
+  const fetchSEFHealth = useCallback(async (refresh = false) => {
+    setSefHealthLoading(true);
+    try {
+      const res = refresh 
+        ? await api.refreshSEFHealth()
+        : await api.getSEFHealth();
+      if (res.success && res.data) {
+        setSefHealth(res.data);
+      }
+    } catch (err) {
+      logger.error('Failed to fetch SEF health', err);
+    } finally {
+      setSefHealthLoading(false);
+    }
+  }, []);
 
   // Fetch Dashboard Data
   const fetchDashboardData = useCallback(async () => {
@@ -265,16 +430,23 @@ export const AdvancedDashboard: React.FC = () => {
     setError(null);
     
     try {
-      const [overviewRes, recentRes, alertsRes] = await Promise.all([
+      const [overviewRes, chartsRes, recentRes, alertsRes] = await Promise.all([
         api.getDashboardOverview(),
+        api.getDashboardCharts(),
         api.getDashboardRecent(10),
         api.getDashboardAlerts()
       ]);
 
-      if (overviewRes?.success) {
+      if (overviewRes?.success && overviewRes.data) {
         setOverview(overviewRes.data);
       } else {
         logger.error('Failed to fetch overview', overviewRes?.error);
+      }
+
+      if (chartsRes?.success && chartsRes.data) {
+        setCharts(chartsRes.data);
+      } else {
+        logger.error('Failed to fetch charts', chartsRes?.error);
       }
 
       if (recentRes?.success) {
@@ -283,7 +455,7 @@ export const AdvancedDashboard: React.FC = () => {
         logger.error('Failed to fetch recent invoices', recentRes?.error);
       }
 
-      if (alertsRes?.success) {
+      if (alertsRes?.success && alertsRes.data) {
         setAlerts(alertsRes.data);
       } else {
         logger.error('Failed to fetch alerts', alertsRes?.error);
@@ -296,18 +468,87 @@ export const AdvancedDashboard: React.FC = () => {
     }
   }, []);
 
+  // Initial load
   useEffect(() => {
     fetchDashboardData();
-  }, [fetchDashboardData]);
+    fetchSEFHealth();
+  }, [fetchDashboardData, fetchSEFHealth]);
+
+  // Auto-refresh
+  useEffect(() => {
+    if (autoRefreshInterval <= 0) return;
+
+    const intervalId = setInterval(() => {
+      fetchDashboardData();
+      fetchSEFHealth();
+    }, autoRefreshInterval * 1000);
+
+    return () => clearInterval(intervalId);
+  }, [autoRefreshInterval, fetchDashboardData, fetchSEFHealth]);
+
+  // Handle search
+  const handleSearch = useCallback(() => {
+    if (!searchQuery.trim()) return;
+    
+    // Parse search query and navigate to invoices with filters
+    const params = new URLSearchParams();
+    
+    // Parse operators from search query
+    const parts = searchQuery.split(/\s+/);
+    parts.forEach(part => {
+      if (part.includes(':')) {
+        const [key, value] = part.split(':');
+        const keyLower = key.toLowerCase();
+        
+        if (keyLower === 'broj' || keyLower === 'number') {
+          params.set('invoiceNumber', value);
+        } else if (keyLower === 'pib') {
+          params.set('buyerPIB', value);
+        } else if (keyLower === 'status') {
+          params.set('status', value.toUpperCase());
+        } else if (keyLower === 'datum' || keyLower === 'date') {
+          params.set('dateFrom', value);
+        } else if (keyLower === 'iznos' || keyLower === 'amount') {
+          if (value.startsWith('>')) {
+            params.set('minAmount', value.substring(1));
+          } else if (value.startsWith('<')) {
+            params.set('maxAmount', value.substring(1));
+          }
+        }
+      } else if (part.trim()) {
+        // General search term
+        params.set('search', part);
+      }
+    });
+    
+    navigate(`/invoices?${params.toString()}`);
+  }, [searchQuery, navigate]);
+
+  // Save search
+  const saveCurrentSearch = useCallback(() => {
+    if (!searchQuery.trim()) return;
+    if (savedSearches.includes(searchQuery)) return;
+    
+    const newSearches = [searchQuery, ...savedSearches].slice(0, 10);
+    setSavedSearches(newSearches);
+    localStorage.setItem('dashboard_saved_searches', JSON.stringify(newSearches));
+  }, [searchQuery, savedSearches]);
+
+  // Remove saved search
+  const removeSavedSearch = useCallback((searchToRemove: string) => {
+    const newSearches = savedSearches.filter(s => s !== searchToRemove);
+    setSavedSearches(newSearches);
+    localStorage.setItem('dashboard_saved_searches', JSON.stringify(newSearches));
+  }, [savedSearches]);
 
   // Format currency
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = useCallback((amount: number) => {
     return new Intl.NumberFormat('sr-RS', {
       style: 'decimal',
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     }).format(amount);
-  };
+  }, []);
 
   // Loading state
   if (loading && !overview) {
@@ -355,18 +596,14 @@ export const AdvancedDashboard: React.FC = () => {
           
           {/* Dashboard grid pattern */}
           <div className="absolute top-8 right-16 opacity-10">
-            <svg className="w-24 h-24" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M3 3h8v8H3V3zm0 10h8v8H3v-8zm10-10h8v8h-8V3zm0 10h8v8h-8v-8z"/>
-            </svg>
+            <LayoutGrid className="w-24 h-24" />
           </div>
         </div>
         
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
           <div className="space-y-4">
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full text-sm font-medium">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
+              <BarChart3 className="w-4 h-4" />
               Napredni dashboard • Multi-company
             </div>
             <h1 className="text-4xl lg:text-5xl font-black tracking-tight">
@@ -378,37 +615,41 @@ export const AdvancedDashboard: React.FC = () => {
           </div>
           
           <div className="flex flex-wrap gap-3">
+            {/* Auto-refresh selector */}
             <select 
-              value={selectedCompany} 
-              onChange={(e) => setSelectedCompany(e.target.value)}
+              value={autoRefreshInterval} 
+              onChange={(e) => setAutoRefreshInterval(Number(e.target.value))}
               className="px-4 py-2.5 bg-white/10 backdrop-blur-sm border border-white/20 text-white rounded-xl font-medium hover:bg-white/20 transition-all"
+              aria-label="Auto-refresh interval"
             >
-              <option className="text-gray-900">Primer d.o.o. (12345678)</option>
-              <option className="text-gray-900">Test Company (87654321)</option>
-              <option className="text-gray-900">ABC d.o.o. (11111111)</option>
+              {REFRESH_INTERVALS.map(interval => (
+                <option key={interval.value} value={interval.value} className="text-gray-900">
+                  ⏱️ {interval.label}
+                </option>
+              ))}
             </select>
+
             <button
-              onClick={fetchDashboardData}
+              onClick={() => {
+                fetchDashboardData();
+                fetchSEFHealth();
+              }}
               disabled={loading}
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/10 backdrop-blur-sm border border-white/20 text-white rounded-xl font-medium hover:bg-white/20 transition-all disabled:opacity-50"
             >
               <span className={loading ? 'animate-spin' : ''}>🔄</span>
               Osveži
             </button>
+
+            {/* Environment badge from SEF health */}
             <div className={`px-4 py-2.5 rounded-xl text-sm font-bold flex items-center ${
-              isDemoMode 
-                ? 'bg-orange-500 text-white' 
-                : 'bg-emerald-500 text-white'
+              sefHealth?.environment === 'production'
+                ? 'bg-emerald-500 text-white' 
+                : 'bg-orange-500 text-white'
             }`}>
-              <div className={`w-2 h-2 rounded-full mr-2 animate-pulse bg-white`}></div>
-              {isDemoMode ? 'DEMO' : 'PRODUKCIJA'}
+              <div className="w-2 h-2 rounded-full mr-2 animate-pulse bg-white"></div>
+              {sefHealth?.environment === 'production' ? 'PRODUKCIJA' : 'DEMO'}
             </div>
-            <button 
-              onClick={() => setIsDemoMode(!isDemoMode)}
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-purple-600 rounded-xl font-semibold shadow-lg shadow-black/10 hover:shadow-xl hover:-translate-y-0.5 transition-all"
-            >
-              🔄 Promeni okruženje
-            </button>
           </div>
         </div>
       </div>
@@ -425,31 +666,55 @@ export const AdvancedDashboard: React.FC = () => {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="broj:2024-001 PIB:12345678 status:poslato datum:2024-10 iznos:>50000 changed:2024-10-01"
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              placeholder="broj:2024-001 PIB:12345678 status:poslato datum:2024-10 iznos:>50000"
               className="w-full px-4 py-3 pl-12 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+              aria-label="Pretraga faktura"
             />
-            <div className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400">
+            <div className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" aria-hidden="true">
               🔍
             </div>
-            <button className="absolute right-3 top-1/2 transform -translate-y-1/2 px-4 py-1 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition-colors">
+            <button 
+              onClick={handleSearch}
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 px-4 py-1 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition-colors"
+            >
               Pretraži
             </button>
           </div>
           
           <div className="flex flex-wrap gap-2 items-center">
             <span className="text-sm text-gray-600">Snimljene pretrage:</span>
+            {savedSearches.length === 0 && (
+              <span className="text-sm text-gray-400 italic">Nema sačuvanih pretraga</span>
+            )}
             {savedSearches.map((search, index) => (
-              <button
-                key={index}
-                onClick={() => setSearchQuery(search)}
-                className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm hover:bg-blue-200 transition-colors"
-              >
-                {search}
-              </button>
+              <div key={index} className="group relative inline-flex items-center">
+                <button
+                  onClick={() => setSearchQuery(search)}
+                  className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm hover:bg-blue-200 transition-colors pr-7"
+                >
+                  {search}
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeSavedSearch(search);
+                  }}
+                  className="absolute right-1 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center text-blue-600 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Ukloni pretragu"
+                >
+                  ×
+                </button>
+              </div>
             ))}
-            <button className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-sm hover:bg-gray-200 transition-colors">
-              + Sačuvaj pretragu
-            </button>
+            {searchQuery.trim() && !savedSearches.includes(searchQuery) && (
+              <button 
+                onClick={saveCurrentSearch}
+                className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm hover:bg-green-200 transition-colors"
+              >
+                + Sačuvaj pretragu
+              </button>
+            )}
           </div>
 
           <div className="flex flex-wrap gap-2 text-xs text-gray-500">
@@ -459,7 +724,6 @@ export const AdvancedDashboard: React.FC = () => {
             <code className="bg-gray-100 px-2 py-1 rounded">status:poslato</code>
             <code className="bg-gray-100 px-2 py-1 rounded">iznos:&gt;50000</code>
             <code className="bg-gray-100 px-2 py-1 rounded">datum:2024-10</code>
-            <code className="bg-gray-100 px-2 py-1 rounded">changed:2024-10-01</code>
           </div>
         </div>
       </div>
@@ -472,10 +736,7 @@ export const AdvancedDashboard: React.FC = () => {
           subtitle="Ovaj mesec"
           icon="📤"
           gradient="bg-gradient-to-r from-blue-500 to-cyan-500"
-          trend={overview?.trends?.invoices ? { 
-            value: `${overview.trends.invoices.value}%`, 
-            positive: overview.trends.invoices.positive 
-          } : undefined}
+          trend={overview?.trends?.invoices}
           onClick={() => navigate('/invoices?status=SENT')}
         />
         
@@ -485,10 +746,7 @@ export const AdvancedDashboard: React.FC = () => {
           subtitle={`${overview?.acceptanceRate || 0}% stopa prihvatanja`}
           icon="✅"
           gradient="bg-gradient-to-r from-green-500 to-emerald-500"
-          trend={overview?.trends?.revenue ? { 
-            value: `${overview.trends.revenue.value}%`, 
-            positive: overview.trends.revenue.positive 
-          } : undefined}
+          trend={overview?.trends?.revenue}
           onClick={() => navigate('/invoices?status=ACCEPTED')}
         />
         
@@ -507,13 +765,18 @@ export const AdvancedDashboard: React.FC = () => {
           subtitle="RSD ovaj mesec"
           icon="💰"
           gradient="bg-gradient-to-r from-purple-500 to-pink-500"
-          trend={overview?.trends?.revenue ? { 
-            value: `${overview.trends.revenue.value}%`, 
-            positive: overview.trends.revenue.positive 
-          } : undefined}
+          trend={overview?.trends?.revenue}
           onClick={() => navigate('/accounting/reports')}
         />
       </div>
+
+      {/* Charts Section */}
+      {charts && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <MiniBarChart data={charts.revenueByMonth} />
+          <StatusChart data={charts.invoicesByStatus} />
+        </div>
+      )}
 
       {/* Recent Invoices */}
       {recentInvoices.length > 0 && (
@@ -587,8 +850,12 @@ export const AdvancedDashboard: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column */}
         <div className="lg:col-span-2 space-y-6">
-          <SEFHealthCard />
-          <ErrorsFeedCard alerts={alerts} />
+          <SEFHealthCard 
+            health={sefHealth} 
+            loading={sefHealthLoading} 
+            onRefresh={() => fetchSEFHealth(true)} 
+          />
+          <ErrorsFeedCard alerts={alerts} navigate={navigate} />
         </div>
         
         {/* Right Column */}
@@ -614,7 +881,7 @@ export const AdvancedDashboard: React.FC = () => {
                 className="w-full flex items-center justify-between p-4 bg-green-50 hover:bg-green-100 rounded-xl transition-colors"
               >
                 <span className="flex items-center text-green-900 font-medium">
-                  📊 Generisi izveštaj
+                  📊 Generiši izveštaj
                 </span>
                 <span className="text-green-600">→</span>
               </button>

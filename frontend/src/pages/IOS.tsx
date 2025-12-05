@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { apiClient } from '../services/api';
 import { logger } from '../utils/logger';
+import toast from 'react-hot-toast';
 import { 
   FileSpreadsheet, 
   Send, 
@@ -71,6 +72,7 @@ const IOSPage: React.FC = () => {
   const [showDetailModal, setShowDetailModal] = useState<IOSReport | null>(null);
   const [generating, setGenerating] = useState(false);
   const [asOfDate, setAsOfDate] = useState(new Date().toISOString().split('T')[0]);
+  const [disputeDialog, setDisputeDialog] = useState<{ open: boolean; id: string | null; notes: string }>({ open: false, id: null, notes: '' });
 
   useEffect(() => {
     if (selectedTab === 'reports') {
@@ -89,6 +91,7 @@ const IOSPage: React.FC = () => {
       }
     } catch (error) {
       logger.error('Failed to fetch IOS reports', error);
+      toast.error('Greška pri učitavanju IOS izveštaja');
     } finally {
       setLoading(false);
     }
@@ -103,6 +106,7 @@ const IOSPage: React.FC = () => {
       }
     } catch (error) {
       logger.error('Failed to fetch partner balances', error);
+      toast.error('Greška pri učitavanju salda partnera');
     } finally {
       setLoading(false);
     }
@@ -122,9 +126,11 @@ const IOSPage: React.FC = () => {
         setShowGenerateModal(null);
         setSelectedTab('reports');
         fetchReports();
+        toast.success('IOS izveštaj je uspešno generisan');
       }
     } catch (error) {
       logger.error('Failed to generate IOS', error);
+      toast.error('Greška pri generisanju IOS izveštaja');
     } finally {
       setGenerating(false);
     }
@@ -135,9 +141,11 @@ const IOSPage: React.FC = () => {
       const response = await apiClient.post(`/ios/${id}/send`);
       if (response.data.success) {
         fetchReports();
+        toast.success('IOS je uspešno poslat partneru');
       }
     } catch (error) {
       logger.error('Failed to send IOS', error);
+      toast.error('Greška pri slanju IOS-a');
     }
   };
 
@@ -149,9 +157,11 @@ const IOSPage: React.FC = () => {
         if (showDetailModal?.id === id) {
           setShowDetailModal(null);
         }
+        toast.success('IOS je uspešno potvrđen');
       }
     } catch (error) {
       logger.error('Failed to confirm IOS', error);
+      toast.error('Greška pri potvrđivanju IOS-a');
     }
   };
 
@@ -163,9 +173,18 @@ const IOSPage: React.FC = () => {
         if (showDetailModal?.id === id) {
           setShowDetailModal(null);
         }
+        toast.success('IOS je uspešno osporen');
       }
     } catch (error) {
       logger.error('Failed to dispute IOS', error);
+      toast.error('Greška pri osporavanju IOS-a');
+    }
+  };
+
+  const handleDisputeSubmit = () => {
+    if (disputeDialog.id && disputeDialog.notes.trim()) {
+      handleDispute(disputeDialog.id, disputeDialog.notes);
+      setDisputeDialog({ open: false, id: null, notes: '' });
     }
   };
 
@@ -582,10 +601,7 @@ const IOSPage: React.FC = () => {
                     Potvrdi
                   </button>
                   <button
-                    onClick={() => {
-                      const notes = prompt('Unesite razlog osporavanja:');
-                      if (notes) handleDispute(showDetailModal.id, notes);
-                    }}
+                    onClick={() => setDisputeDialog({ open: true, id: showDetailModal.id, notes: '' })}
                     className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700"
                   >
                     <XCircle className="w-4 h-4" />
@@ -598,6 +614,45 @@ const IOSPage: React.FC = () => {
                 className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200"
               >
                 Zatvori
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dispute Dialog */}
+      {disputeDialog.open && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">Ospori IOS</h3>
+            </div>
+            <div className="p-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Razlog osporavanja
+              </label>
+              <textarea
+                value={disputeDialog.notes}
+                onChange={(e) => setDisputeDialog(prev => ({ ...prev, notes: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                rows={4}
+                placeholder="Unesite razlog osporavanja..."
+                autoFocus
+              />
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 flex gap-3">
+              <button
+                onClick={() => setDisputeDialog({ open: false, id: null, notes: '' })}
+                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200"
+              >
+                Odustani
+              </button>
+              <button
+                onClick={handleDisputeSubmit}
+                disabled={!disputeDialog.notes.trim()}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Ospori
               </button>
             </div>
           </div>

@@ -1,405 +1,347 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import api from '../services/api';
+/**
+ * Products Page - Šifarnik Proizvoda i Usluga
+ * Upravljanje artiklima sa praćenjem zaliha
+ */
+
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { 
+  productService, 
+  type ProductListItem, 
+  type CreateProductDTO,
+  type ProductSummary 
+} from '../services/productService';
+import { toast } from 'react-hot-toast';
 import { LoadingSpinner } from '../components/LoadingSpinner';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { logger } from '../utils/logger';
 import ImportModal from '../components/ImportModal';
 import ExportModal from '../components/ExportModal';
 import InventoryHistory from '../components/InventoryHistory';
+import {
+  Plus,
+  Package,
+  ClipboardCheck,
+  AlertTriangle,
+  CheckCircle,
+  Search,
+  LayoutGrid,
+  List,
+  Edit,
+  Trash2,
+  Settings,
+  X,
+  Info,
+  Tag,
+  DollarSign,
+  Boxes,
+  Building,
+  Download,
+  Upload,
+  History,
+  Barcode
+} from 'lucide-react';
 
-interface Product {
-  id: string;
+// Debounce hook
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+  
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(handler);
+  }, [value, delay]);
+  
+  return debouncedValue;
+}
+
+// Form data type
+interface ProductFormData {
   code: string;
-  barcode?: string;
+  barcode: string;
   name: string;
-  description?: string;
-  category?: string;
-  subcategory?: string;
-  unitPrice: number;
-  costPrice?: number;
+  description: string;
+  category: string;
+  subcategory: string;
+  unitPrice: string;
+  costPrice: string;
   vatRate: number;
   unit: string;
   trackInventory: boolean;
-  currentStock?: number;
-  minStock?: number;
-  maxStock?: number;
-  supplier?: string;
-  manufacturer?: string;
-  isActive: boolean;
-  createdAt: string;
-  _count?: {
-    invoiceLines: number;
-  };
+  currentStock: number;
+  minStock: string;
+  maxStock: string;
+  supplier: string;
+  manufacturer: string;
 }
 
-interface PaginatedResponse {
-  data: Product[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    pages: number;
-  };
-}
+const initialFormData: ProductFormData = {
+  code: '',
+  barcode: '',
+  name: '',
+  description: '',
+  category: '',
+  subcategory: '',
+  unitPrice: '',
+  costPrice: '',
+  vatRate: 20,
+  unit: 'kom',
+  trackInventory: false,
+  currentStock: 0,
+  minStock: '',
+  maxStock: '',
+  supplier: '',
+  manufacturer: ''
+};
 
-interface ProductParams {
-  page: number;
-  limit: number;
-  search?: string;
-  category?: string;
-  trackInventory?: string;
-  isActive?: string;
-}
-
-interface ProductPayload {
-  code: string;
-  barcode?: string;
-  name: string;
-  description?: string;
-  category?: string;
-  subcategory?: string;
-  unitPrice: number;
-  costPrice?: number;
-  vatRate: number;
-  unit: string;
-  trackInventory: boolean;
-  currentStock?: number;
-  minStock?: number;
-  maxStock?: number;
-  supplier?: string;
-  manufacturer?: string;
-  note?: string;
-}
-
-// Product Card Component
-const ProductCard: React.FC<{
-  product: Product;
+// ProductCard Component
+interface ProductCardProps {
+  product: ProductListItem;
   onEdit: () => void;
   onDelete: () => void;
   onStockAdjust: () => void;
   onViewHistory: () => void;
-  getStockStatus: (product: Product) => { label: string; class: string; bg: string } | null;
-}> = ({ product, onEdit, onDelete, onStockAdjust, onViewHistory, getStockStatus }) => {
+  getStockStatus: (product: ProductListItem) => { label: string; class: string } | null;
+}
+
+const ProductCard: React.FC<ProductCardProps> = ({
+  product,
+  onEdit,
+  onDelete,
+  onStockAdjust,
+  onViewHistory,
+  getStockStatus
+}) => {
   const stockStatus = getStockStatus(product);
-  const margin = product.costPrice ? ((product.unitPrice - product.costPrice) / product.unitPrice * 100).toFixed(1) : null;
-  
+
   return (
-    <div className="group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl hover:border-blue-200 transition-all duration-300 overflow-hidden">
-      {/* Header with Category Badge */}
-      <div className="relative p-5 pb-3">
-        <div className="flex items-start justify-between">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-2">
-              {product.category && (
-                <span className="px-2.5 py-1 bg-gradient-to-r from-violet-500 to-purple-500 text-white text-xs font-bold rounded-lg">
-                  {product.category}
-                </span>
-              )}
-              {!product.isActive && (
-                <span className="px-2.5 py-1 bg-gray-100 text-gray-500 text-xs font-medium rounded-lg">
-                  Neaktivan
-                </span>
-              )}
+    <div className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all hover:shadow-md ${!product.isActive ? 'opacity-60' : ''}`}>
+      {/* Header */}
+      <div className="bg-gradient-to-r from-violet-600 to-purple-500 px-5 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+              <Package className="w-5 h-5 text-white" />
             </div>
-            <h3 className="font-bold text-gray-900 text-lg truncate group-hover:text-blue-600 transition-colors">
-              {product.name}
-            </h3>
-            <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
-              <span className="font-mono bg-gray-100 px-2 py-0.5 rounded">{product.code}</span>
-              {product.barcode && (
-                <span className="flex items-center gap-1">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-                  </svg>
-                  {product.barcode}
-                </span>
-              )}
+            <div>
+              <p className="text-white/70 text-xs font-mono">{product.code}</p>
+              <h3 className="font-bold text-white text-lg truncate max-w-[200px]">{product.name}</h3>
             </div>
           </div>
-          {/* Quick Actions - visible on hover */}
-          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-            <button onClick={onEdit} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-            </button>
-            <button onClick={onDelete} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-            </button>
-          </div>
+          {!product.isActive && (
+            <span className="px-2 py-1 bg-red-500/20 text-white text-xs rounded-lg">Neaktivan</span>
+          )}
         </div>
       </div>
 
-      {/* Price Section */}
-      <div className="px-5 py-4 bg-gradient-to-br from-gray-50 to-gray-100/50 border-t border-b border-gray-100">
-        <div className="flex items-end justify-between">
+      {/* Body */}
+      <div className="p-5 space-y-4">
+        {/* Category & Barcode */}
+        <div className="flex items-center justify-between text-sm">
+          {product.category ? (
+            <span className="px-2 py-1 bg-violet-100 text-violet-700 font-medium rounded-lg">
+              {product.category}
+            </span>
+          ) : (
+            <span className="text-gray-400">Bez kategorije</span>
+          )}
+          {product.barcode && (
+            <span className="text-gray-500 font-mono text-xs flex items-center gap-1">
+              <Barcode className="w-3 h-3" />
+              {product.barcode}
+            </span>
+          )}
+        </div>
+
+        {/* Price */}
+        <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Prodajna cena</p>
+            <p className="text-sm text-gray-500">Prodajna cena</p>
             <p className="text-2xl font-bold text-gray-900">
               {product.unitPrice.toLocaleString('sr-RS', { minimumFractionDigits: 2 })}
-              <span className="text-sm font-medium text-gray-500 ml-1">RSD</span>
+              <span className="text-sm font-normal text-gray-500 ml-1">RSD</span>
             </p>
           </div>
-          <div className="text-right">
-            <div className="flex items-center gap-2">
-              <span className={`px-2.5 py-1.5 rounded-lg text-sm font-bold ${
-                product.vatRate === 20 ? 'bg-blue-100 text-blue-700' :
-                product.vatRate === 10 ? 'bg-amber-100 text-amber-700' :
-                'bg-green-100 text-green-700'
-              }`}>
-                PDV {product.vatRate}%
-              </span>
-            </div>
-            {margin && (
-              <p className="text-xs text-gray-500 mt-1.5">
-                Marža: <span className={`font-bold ${parseFloat(margin) > 20 ? 'text-emerald-600' : 'text-amber-600'}`}>{margin}%</span>
-              </p>
-            )}
-          </div>
+          <span className={`px-3 py-1.5 rounded-lg text-sm font-bold ${
+            product.vatRate === 20 ? 'bg-blue-100 text-blue-700' :
+            product.vatRate === 10 ? 'bg-amber-100 text-amber-700' :
+            'bg-green-100 text-green-700'
+          }`}>
+            PDV {product.vatRate}%
+          </span>
         </div>
-        {product.costPrice && (
-          <p className="text-sm text-gray-500 mt-2">
-            Nabavna: {product.costPrice.toLocaleString('sr-RS', { minimumFractionDigits: 2 })} RSD
-          </p>
-        )}
-      </div>
 
-      {/* Footer - Stock & Stats */}
-      <div className="px-5 py-4">
-        <div className="flex items-center justify-between">
-          {/* Stock Info */}
-          {product.trackInventory ? (
-            <div className="flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${stockStatus?.bg || 'bg-gray-100'}`}>
-                <svg className={`w-5 h-5 ${stockStatus?.class.includes('red') ? 'text-red-600' : stockStatus?.class.includes('orange') ? 'text-orange-600' : 'text-emerald-600'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                </svg>
-              </div>
+        {/* Stock */}
+        {product.trackInventory && (
+          <div className="bg-gray-50 rounded-xl p-3">
+            <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-semibold text-gray-900">{product.currentStock} {product.unit}</p>
-                {stockStatus && (
-                  <span className={`text-xs font-medium ${stockStatus.class}`}>{stockStatus.label}</span>
-                )}
+                <p className="text-xs text-gray-500">Stanje zaliha</p>
+                <p className="text-lg font-bold text-gray-900">
+                  {product.currentStock} <span className="text-sm font-normal text-gray-500">{product.unit}</span>
+                </p>
               </div>
-              <button 
+              {stockStatus && (
+                <span className={`text-xs font-medium px-2 py-1 rounded-lg ${stockStatus.class}`}>
+                  {stockStatus.label}
+                </span>
+              )}
+            </div>
+            <div className="flex gap-2 mt-2">
+              <button
                 onClick={onStockAdjust}
-                className="ml-2 px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                className="flex-1 text-xs text-violet-600 hover:text-violet-700 font-medium"
               >
                 Prilagodi
               </button>
-              <button 
+              <button
                 onClick={onViewHistory}
-                className="ml-1 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
-                title="Istorija promena"
+                className="flex-1 text-xs text-gray-500 hover:text-gray-700 font-medium"
               >
-                🕒
+                Istorija
               </button>
             </div>
-          ) : (
-            <div className="flex items-center gap-2 text-gray-400">
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-              </svg>
-              <span className="text-sm">Bez praćenja</span>
-            </div>
-          )}
-
-          {/* Usage count */}
-          <div className="flex items-center gap-1.5 text-gray-500">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            <span className="text-sm font-medium">{product._count?.invoiceLines || 0}</span>
           </div>
+        )}
+
+        {/* Usage Stats */}
+        <div className="flex items-center gap-2 text-sm text-gray-500">
+          <span>Korišćeno u fakturama:</span>
+          <span className="font-semibold text-gray-900">{product._count?.invoiceLines || 0}</span>
         </div>
+      </div>
+
+      {/* Footer Actions */}
+      <div className="border-t border-gray-100 px-5 py-3 flex items-center justify-end gap-2">
+        <button
+          onClick={onEdit}
+          className="p-2 text-gray-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-colors"
+          title="Izmeni"
+        >
+          <Edit className="w-5 h-5" />
+        </button>
+        <button
+          onClick={onDelete}
+          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+          title="Obriši"
+        >
+          <Trash2 className="w-5 h-5" />
+        </button>
       </div>
     </div>
   );
 };
 
+// Main Products Component
 const Products: React.FC = () => {
-  const [products, setProducts] = useState<Product[]>([]);
+  // Data state
+  const [products, setProducts] = useState<ProductListItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  
+  // Server-side stats
+  const [serverStats, setServerStats] = useState<ProductSummary | null>(null);
+
+  // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
-  const [trackInventoryFilter, setTrackInventoryFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+
+  // Debounced search
+  const debouncedSearch = useDebounce(searchTerm, 300);
+
+  // Modals
   const [showModal, setShowModal] = useState(false);
   const [showStockModal, setShowStockModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
-  const [historyProductId, setHistoryProductId] = useState<string | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [stockAdjustment, setStockAdjustment] = useState({ productId: '', adjustment: 0, note: '' });
-  const [formData, setFormData] = useState({
-    code: '',
-    barcode: '',
-    name: '',
-    description: '',
-    category: '',
-    subcategory: '',
-    unitPrice: '',
-    costPrice: '',
-    vatRate: 20,
-    unit: 'kom',
-    trackInventory: false,
-    currentStock: 0,
-    minStock: '',
-    maxStock: '',
-    supplier: '',
-    manufacturer: '',
-    note: '',
-  });
 
-  // Stats calculation
+  // Delete confirmation
+  const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; productId: string | null; productName: string }>({
+    isOpen: false,
+    productId: null,
+    productName: ''
+  });
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Form state
+  const [editingProduct, setEditingProduct] = useState<ProductListItem | null>(null);
+  const [formData, setFormData] = useState<ProductFormData>(initialFormData);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Stock adjustment
+  const [stockAdjustment, setStockAdjustment] = useState<{
+    productId: string;
+    adjustment: number;
+    note: string;
+  }>({ productId: '', adjustment: 0, note: '' });
+  const [isAdjustingStock, setIsAdjustingStock] = useState(false);
+
+  // History modal
+  const [historyProductId, setHistoryProductId] = useState<string | null>(null);
+
+  // Calculate stats from current page data or use server stats
   const stats = useMemo(() => {
+    if (serverStats) {
+      return serverStats;
+    }
+    // Fallback to client-side calculation
     return {
       total: totalCount,
       withInventory: products.filter(p => p.trackInventory).length,
-      lowStock: products.filter(p => p.trackInventory && p.currentStock !== undefined && p.minStock !== undefined && p.currentStock <= p.minStock).length,
-      active: products.filter(p => p.isActive).length,
+      lowStock: products.filter(p => 
+        p.trackInventory && 
+        p.minStock !== null && 
+        p.minStock !== undefined && 
+        (p.currentStock || 0) <= p.minStock
+      ).length,
+      active: products.filter(p => p.isActive).length
     };
-  }, [products, totalCount]);
+  }, [products, totalCount, serverStats]);
 
-  useEffect(() => {
-    fetchProducts();
-  }, [currentPage, searchTerm, categoryFilter, trackInventoryFilter, statusFilter]);
-
-  const fetchProducts = async () => {
+  // Fetch products
+  const fetchProducts = useCallback(async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const params: ProductParams = {
+      const result = await productService.list({
         page: currentPage,
-        limit: 20,
-      };
-      
-      if (searchTerm) params.search = searchTerm;
-      if (categoryFilter) params.category = categoryFilter;
-      if (trackInventoryFilter) params.trackInventory = trackInventoryFilter;
-      if (statusFilter) params.isActive = statusFilter;
+        limit: 12,
+        search: debouncedSearch || undefined,
+        category: categoryFilter || undefined,
+        isActive: statusFilter || undefined
+      });
 
-      const response = await api.getProducts(params);
-      
-      if (response.success && response.data) {
-        setProducts(response.data.data);
-        setTotalPages(response.data.pagination.pages);
-        setTotalCount(response.data.pagination.total);
+      setProducts(result.data);
+      setTotalCount(result.pagination.total);
+      setTotalPages(result.pagination.totalPages);
+
+      // Use summary from response if available
+      if (result.summary) {
+        setServerStats(result.summary);
       }
     } catch (error) {
-      logger.error('Failed to fetch products', error);
-      alert('Greška pri učitavanju proizvoda');
+      logger.error('Failed to fetch products:', error);
+      toast.error('Greška pri učitavanju proizvoda');
     } finally {
       setLoading(false);
     }
+  }, [currentPage, debouncedSearch, categoryFilter, statusFilter]);
+
+  // Load products on mount and when filters change
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
+
+  // Reset form
+  const resetForm = () => {
+    setFormData(initialFormData);
+    setEditingProduct(null);
   };
 
-  const getStockStatus = (product: Product) => {
-    if (!product.trackInventory) return null;
-    const stock = product.currentStock || 0;
-    const minStock = product.minStock || 0;
-    const maxStock = product.maxStock || Infinity;
-
-    if (stock <= minStock) {
-      return { label: 'Niska zaliha', class: 'text-red-600', bg: 'bg-red-50' };
-    } else if (stock >= maxStock) {
-      return { label: 'Visoka zaliha', class: 'text-orange-600', bg: 'bg-orange-50' };
-    } else {
-      return { label: 'Normalno', class: 'text-emerald-600', bg: 'bg-emerald-50' };
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    try {
-      const payload: ProductPayload = {
-        ...formData,
-        unitPrice: parseFloat(formData.unitPrice),
-        costPrice: formData.costPrice ? parseFloat(formData.costPrice) : undefined,
-        minStock: formData.minStock ? parseFloat(formData.minStock) : undefined,
-        maxStock: formData.maxStock ? parseFloat(formData.maxStock) : undefined,
-        barcode: formData.barcode || undefined,
-        description: formData.description || undefined,
-        category: formData.category || undefined,
-        subcategory: formData.subcategory || undefined,
-        supplier: formData.supplier || undefined,
-        manufacturer: formData.manufacturer || undefined,
-      };
-
-      let response;
-      if (editingProduct) {
-        response = await api.updateProduct(editingProduct.id, payload);
-        if (response.success) {
-          alert('Proizvod uspešno ažuriran!');
-        }
-      } else {
-        response = await api.createProduct(payload);
-        if (response.success) {
-          alert('Proizvod uspešno kreiran!');
-        }
-      }
-
-      if (!response.success) {
-        alert(response.error || 'Greška pri čuvanju proizvoda');
-        return;
-      }
-
-      setShowModal(false);
-      resetForm();
-      fetchProducts();
-    } catch (error: unknown) {
-      logger.error('Failed to save product', error);
-      alert('Greška pri čuvanju proizvoda');
-    }
-  };
-
-  const handleStockAdjustment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    try {
-      const response = await api.updateProductStock(
-        stockAdjustment.productId,
-        stockAdjustment.adjustment,
-        stockAdjustment.note
-      );
-      
-      if (response.success) {
-        alert('Zalihe uspešno ažurirane!');
-        setShowStockModal(false);
-        setStockAdjustment({ productId: '', adjustment: 0, note: '' });
-        fetchProducts();
-      } else {
-        alert(response.error || 'Greška pri ažuriranju zaliha');
-      }
-    } catch (error) {
-      logger.error('Failed to update stock', error);
-      alert('Greška pri ažuriranju zaliha');
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('Da li ste sigurni da želite da obrišete ovaj proizvod?')) {
-      return;
-    }
-
-    try {
-      const response = await api.deleteProduct(id);
-      
-      if (response.success) {
-        alert('Proizvod obrisan!');
-        fetchProducts();
-      } else {
-        alert(response.error || 'Greška pri brisanju proizvoda');
-      }
-    } catch (error: unknown) {
-      logger.error('Failed to delete product', error);
-      alert('Greška pri brisanju proizvoda');
-    }
-  };
-
-  const openEditModal = (product: Product) => {
+  // Open edit modal
+  const openEditModal = (product: ProductListItem) => {
     setEditingProduct(product);
     setFormData({
       code: product.code,
@@ -416,141 +358,184 @@ const Products: React.FC = () => {
       currentStock: product.currentStock || 0,
       minStock: product.minStock?.toString() || '',
       maxStock: product.maxStock?.toString() || '',
-      supplier: product.supplier || '',
-      manufacturer: product.manufacturer || '',
-      note: '',
+      supplier: '',
+      manufacturer: ''
     });
     setShowModal(true);
   };
 
-  const openStockModal = (product: Product) => {
-    setStockAdjustment({ productId: product.id, adjustment: 0, note: '' });
+  // Open stock adjustment modal
+  const openStockModal = (product: ProductListItem) => {
+    setStockAdjustment({
+      productId: product.id,
+      adjustment: 0,
+      note: ''
+    });
     setShowStockModal(true);
   };
 
-  const openHistoryModal = (product: Product) => {
+  // Open history modal
+  const openHistoryModal = (product: ProductListItem) => {
     setHistoryProductId(product.id);
     setShowHistoryModal(true);
   };
 
-  const resetForm = () => {
-    setEditingProduct(null);
-    setFormData({
-      code: '',
-      barcode: '',
-      name: '',
-      description: '',
-      category: '',
-      subcategory: '',
-      unitPrice: '',
-      costPrice: '',
-      vatRate: 20,
-      unit: 'kom',
-      trackInventory: false,
-      currentStock: 0,
-      minStock: '',
-      maxStock: '',
-      supplier: '',
-      manufacturer: '',
-      note: '',
+  // Get stock status
+  const getStockStatus = (product: ProductListItem): { label: string; class: string } | null => {
+    if (!product.trackInventory) return null;
+    
+    const stock = product.currentStock || 0;
+    
+    if (stock === 0) {
+      return { label: 'Nema na stanju', class: 'bg-red-100 text-red-700' };
+    }
+    if (product.minStock !== null && product.minStock !== undefined && stock <= product.minStock) {
+      return { label: 'Niske zalihe', class: 'bg-amber-100 text-amber-700' };
+    }
+    if (product.maxStock !== null && product.maxStock !== undefined && stock >= product.maxStock) {
+      return { label: 'Prekomerno', class: 'bg-blue-100 text-blue-700' };
+    }
+    return { label: 'Optimalno', class: 'bg-green-100 text-green-700' };
+  };
+
+  // Handle form submit
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+
+    try {
+      const payload: CreateProductDTO = {
+        code: formData.code,
+        barcode: formData.barcode || undefined,
+        name: formData.name,
+        description: formData.description || undefined,
+        category: formData.category || undefined,
+        subcategory: formData.subcategory || undefined,
+        unitPrice: parseFloat(formData.unitPrice),
+        costPrice: formData.costPrice ? parseFloat(formData.costPrice) : undefined,
+        vatRate: formData.vatRate,
+        unit: formData.unit,
+        trackInventory: formData.trackInventory,
+        currentStock: formData.trackInventory ? formData.currentStock : undefined,
+        minStock: formData.minStock ? parseFloat(formData.minStock) : undefined,
+        maxStock: formData.maxStock ? parseFloat(formData.maxStock) : undefined,
+        supplier: formData.supplier || undefined,
+        manufacturer: formData.manufacturer || undefined
+      };
+
+      if (editingProduct) {
+        await productService.update(editingProduct.id, payload);
+        toast.success('Proizvod uspešno ažuriran');
+      } else {
+        await productService.create(payload);
+        toast.success('Proizvod uspešno kreiran');
+      }
+
+      setShowModal(false);
+      resetForm();
+      fetchProducts();
+    } catch (error) {
+      logger.error('Failed to save product:', error);
+      toast.error(editingProduct ? 'Greška pri ažuriranju proizvoda' : 'Greška pri kreiranju proizvoda');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Handle delete
+  const handleDelete = (productId: string) => {
+    const product = products.find(p => p.id === productId);
+    setDeleteConfirm({
+      isOpen: true,
+      productId,
+      productName: product?.name || ''
     });
   };
 
+  const confirmDelete = async () => {
+    if (!deleteConfirm.productId) return;
+
+    setIsDeleting(true);
+    try {
+      await productService.delete(deleteConfirm.productId);
+      toast.success('Proizvod uspešno obrisan');
+      setDeleteConfirm({ isOpen: false, productId: null, productName: '' });
+      fetchProducts();
+    } catch (error) {
+      logger.error('Failed to delete product:', error);
+      toast.error('Greška pri brisanju proizvoda');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // Handle stock adjustment
+  const handleStockAdjustment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsAdjustingStock(true);
+
+    try {
+      await productService.adjustStock(stockAdjustment.productId, {
+        adjustment: stockAdjustment.adjustment,
+        note: stockAdjustment.note || undefined
+      });
+      toast.success('Zalihe uspešno ažurirane');
+      setShowStockModal(false);
+      setStockAdjustment({ productId: '', adjustment: 0, note: '' });
+      fetchProducts();
+    } catch (error) {
+      logger.error('Failed to adjust stock:', error);
+      toast.error('Greška pri ažuriranju zaliha');
+    } finally {
+      setIsAdjustingStock(false);
+    }
+  };
+
   return (
-    <div className="space-y-6 animate-fadeIn">
-      {/* Hero Section */}
-      <div className="relative bg-gradient-to-br from-violet-600 via-purple-600 to-fuchsia-600 rounded-[2rem] p-8 lg:p-10 text-white overflow-hidden">
-        {/* Animated background elements */}
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute -top-24 -right-24 w-96 h-96 bg-white/10 rounded-full blur-3xl animate-pulse"></div>
-          <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-purple-400/20 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
-          
-          {/* Floating elements */}
-          <div className="absolute top-10 right-20 w-20 h-20 bg-white/5 rounded-2xl rotate-12 floating"></div>
-          <div className="absolute bottom-10 right-40 w-14 h-14 bg-white/5 rounded-xl -rotate-12 floating" style={{ animationDelay: '2s' }}></div>
-          
-          {/* Package icons pattern */}
-          <div className="absolute top-8 right-16 opacity-10">
-            <svg className="w-24 h-24" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-            </svg>
-          </div>
+    <div className="space-y-6 p-6">
+      {/* Header */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-violet-600 to-purple-500 bg-clip-text text-transparent">
+            Šifarnik Proizvoda
+          </h1>
+          <p className="text-gray-500 mt-1">Upravljanje proizvodima i uslugama</p>
         </div>
-        
-        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-          <div className="space-y-4">
-            <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full text-sm font-medium">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-              </svg>
-              Proizvodi i usluge • Šifarnik
-            </div>
-            <h1 className="text-4xl lg:text-5xl font-black tracking-tight">
-              Šifarnik Proizvoda
-            </h1>
-            <p className="text-xl text-violet-100 max-w-xl">
-              Upravljajte katalogom proizvoda i usluga, pratite zalihe i marže.
-            </p>
-          </div>
-          
-          <div className="flex flex-wrap gap-3">
-            <button
-              onClick={async () => {
-                const response = await api.getLowStockProducts();
-                if (response.success && response.data) {
-                  alert(`Proizvoda sa niskim zalihama: ${response.data.length}`);
-                }
-              }}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-amber-400 text-amber-900 rounded-xl font-medium hover:bg-amber-300 transition-all"
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-              Niske zalihe
-            </button>
-            <button
-              onClick={() => setShowImportModal(true)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/10 backdrop-blur-sm border border-white/20 text-white rounded-xl font-medium hover:bg-white/20 transition-all"
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-              </svg>
-              Uvoz
-            </button>
-            <button
-              onClick={() => setShowExportModal(true)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/10 backdrop-blur-sm border border-white/20 text-white rounded-xl font-medium hover:bg-white/20 transition-all"
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              Izvoz
-            </button>
-            <button
-              onClick={() => { resetForm(); setShowModal(true); }}
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-violet-600 rounded-xl font-semibold shadow-lg shadow-black/10 hover:shadow-xl hover:-translate-y-0.5 transition-all"
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Novi proizvod
-            </button>
-          </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="px-4 py-2.5 border-2 border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 font-semibold transition-all flex items-center gap-2"
+          >
+            <Upload className="w-4 h-4" />
+            Uvoz
+          </button>
+          <button
+            onClick={() => setShowExportModal(true)}
+            className="px-4 py-2.5 border-2 border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 font-semibold transition-all flex items-center gap-2"
+          >
+            <Download className="w-4 h-4" />
+            Izvoz
+          </button>
+          <button
+            onClick={() => { resetForm(); setShowModal(true); }}
+            className="px-5 py-2.5 bg-gradient-to-r from-violet-600 to-purple-500 text-white rounded-xl font-semibold shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 transition-all flex items-center gap-2"
+          >
+            <Plus className="w-5 h-5" />
+            Novi Proizvod
+          </button>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-500">Ukupno proizvoda</p>
-              <p className="text-3xl font-bold text-gray-900 mt-1">{stats.total}</p>
+              <p className="text-sm font-medium text-gray-500">Ukupno Proizvoda</p>
+              <p className="text-3xl font-bold text-violet-600 mt-1">{stats.total}</p>
             </div>
             <div className="w-12 h-12 rounded-xl bg-violet-50 flex items-center justify-center">
-              <svg className="w-6 h-6 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-              </svg>
+              <Package className="w-6 h-6 text-violet-600" />
             </div>
           </div>
         </div>
@@ -561,9 +546,7 @@ const Products: React.FC = () => {
               <p className="text-3xl font-bold text-blue-600 mt-1">{stats.withInventory}</p>
             </div>
             <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center">
-              <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-              </svg>
+              <ClipboardCheck className="w-6 h-6 text-blue-600" />
             </div>
           </div>
         </div>
@@ -574,9 +557,7 @@ const Products: React.FC = () => {
               <p className="text-3xl font-bold text-red-600 mt-1">{stats.lowStock}</p>
             </div>
             <div className="w-12 h-12 rounded-xl bg-red-50 flex items-center justify-center">
-              <svg className="w-6 h-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
+              <AlertTriangle className="w-6 h-6 text-red-600" />
             </div>
           </div>
         </div>
@@ -587,9 +568,7 @@ const Products: React.FC = () => {
               <p className="text-3xl font-bold text-emerald-600 mt-1">{stats.active}</p>
             </div>
             <div className="w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center">
-              <svg className="w-6 h-6 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+              <CheckCircle className="w-6 h-6 text-emerald-600" />
             </div>
           </div>
         </div>
@@ -601,9 +580,7 @@ const Products: React.FC = () => {
           {/* Search */}
           <div className="flex-1">
             <div className="relative">
-              <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
                 type="text"
                 placeholder="Pretraži po šifri, barkodu, nazivu..."
@@ -643,17 +620,13 @@ const Products: React.FC = () => {
               onClick={() => setViewMode('grid')}
               className={`p-2.5 rounded-lg transition-colors ${viewMode === 'grid' ? 'bg-white shadow text-violet-600' : 'text-gray-500 hover:text-gray-700'}`}
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-              </svg>
+              <LayoutGrid className="w-5 h-5" />
             </button>
             <button
               onClick={() => setViewMode('table')}
               className={`p-2.5 rounded-lg transition-colors ${viewMode === 'table' ? 'bg-white shadow text-violet-600' : 'text-gray-500 hover:text-gray-700'}`}
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-              </svg>
+              <List className="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -670,9 +643,7 @@ const Products: React.FC = () => {
       ) : products.length === 0 ? (
         <div className="bg-white rounded-2xl p-12 text-center border border-gray-100 shadow-sm">
           <div className="w-20 h-20 mx-auto mb-6 bg-gray-100 rounded-full flex items-center justify-center">
-            <svg className="w-10 h-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-            </svg>
+            <Package className="w-10 h-10 text-gray-400" />
           </div>
           <h3 className="text-xl font-bold text-gray-900 mb-2">Nema pronađenih proizvoda</h3>
           <p className="text-gray-500 mb-6">Počnite dodavanjem vašeg prvog proizvoda ili usluge.</p>
@@ -680,9 +651,7 @@ const Products: React.FC = () => {
             onClick={() => { resetForm(); setShowModal(true); }}
             className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-violet-600 to-purple-500 text-white rounded-xl font-semibold shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 transition-all"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
+            <Plus className="w-5 h-5" />
             Dodaj prvi proizvod
           </button>
         </div>
@@ -775,10 +744,10 @@ const Products: React.FC = () => {
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button onClick={() => openEditModal(product)} className="p-2 text-gray-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-colors">
-                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                          <Edit className="w-5 h-5" />
                         </button>
                         <button onClick={() => handleDelete(product.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                          <Trash2 className="w-5 h-5" />
                         </button>
                       </div>
                     </td>
@@ -827,9 +796,9 @@ const Products: React.FC = () => {
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
                   {editingProduct ? (
-                    <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                    <Edit className="w-5 h-5 text-white" />
                   ) : (
-                    <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                    <Plus className="w-5 h-5 text-white" />
                   )}
                 </div>
                 <div>
@@ -845,9 +814,7 @@ const Products: React.FC = () => {
               {/* Basic Info */}
               <div className="bg-gray-50 rounded-xl p-5">
                 <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
-                  <svg className="w-5 h-5 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
+                  <Info className="w-5 h-5 text-violet-600" />
                   Osnovni Podaci
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -915,9 +882,7 @@ const Products: React.FC = () => {
                 {/* Category */}
                 <div className="bg-gray-50 rounded-xl p-5">
                   <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
-                    <svg className="w-5 h-5 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                    </svg>
+                    <Tag className="w-5 h-5 text-violet-600" />
                     Kategorija
                   </h3>
                   <div className="space-y-4">
@@ -945,9 +910,7 @@ const Products: React.FC = () => {
                 {/* Pricing */}
                 <div className="bg-gray-50 rounded-xl p-5">
                   <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
-                    <svg className="w-5 h-5 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
+                    <DollarSign className="w-5 h-5 text-violet-600" />
                     Cene i PDV
                   </h3>
                   <div className="space-y-4">
@@ -994,9 +957,7 @@ const Products: React.FC = () => {
               {/* Inventory */}
               <div className="bg-gray-50 rounded-xl p-5">
                 <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
-                  <svg className="w-5 h-5 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                  </svg>
+                  <Boxes className="w-5 h-5 text-violet-600" />
                   Magacin
                 </h3>
                 
@@ -1054,9 +1015,7 @@ const Products: React.FC = () => {
               {/* Supplier & Manufacturer */}
               <div className="bg-gray-50 rounded-xl p-5">
                 <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
-                  <svg className="w-5 h-5 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                  </svg>
+                  <Building className="w-5 h-5 text-violet-600" />
                   Dobavljač i Proizvođač
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1086,14 +1045,17 @@ const Products: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => { setShowModal(false); resetForm(); }}
-                  className="px-6 py-2.5 border-2 border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 font-semibold transition-all"
+                  disabled={isSubmitting}
+                  className="px-6 py-2.5 border-2 border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 font-semibold transition-all disabled:opacity-50"
                 >
                   Otkaži
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 bg-gradient-to-r from-violet-600 to-purple-500 text-white rounded-xl font-semibold shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 transition-all"
+                  disabled={isSubmitting}
+                  className="px-6 py-2.5 bg-gradient-to-r from-violet-600 to-purple-500 text-white rounded-xl font-semibold shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 transition-all disabled:opacity-50 flex items-center gap-2"
                 >
+                  {isSubmitting && <LoadingSpinner />}
                   {editingProduct ? 'Sačuvaj Izmene' : 'Kreiraj Proizvod'}
                 </button>
               </div>
@@ -1110,10 +1072,7 @@ const Products: React.FC = () => {
             <div className="bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-5 rounded-t-2xl">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-                  <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
+                  <Settings className="w-5 h-5 text-white" />
                 </div>
                 <div>
                   <h2 className="text-xl font-bold text-white">Prilagođavanje Zaliha</h2>
@@ -1154,14 +1113,17 @@ const Products: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => { setShowStockModal(false); setStockAdjustment({ productId: '', adjustment: 0, note: '' }); }}
-                  className="px-6 py-2.5 border-2 border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 font-semibold transition-all"
+                  disabled={isAdjustingStock}
+                  className="px-6 py-2.5 border-2 border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 font-semibold transition-all disabled:opacity-50"
                 >
                   Otkaži
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-semibold shadow-lg shadow-amber-500/25 hover:shadow-amber-500/40 transition-all"
+                  disabled={isAdjustingStock}
+                  className="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-semibold shadow-lg shadow-amber-500/25 hover:shadow-amber-500/40 transition-all disabled:opacity-50 flex items-center gap-2"
                 >
+                  {isAdjustingStock && <LoadingSpinner />}
                   Potvrdi
                 </button>
               </div>
@@ -1177,7 +1139,7 @@ const Products: React.FC = () => {
             <div className="bg-gradient-to-r from-gray-700 to-gray-900 px-6 py-5 rounded-t-2xl flex justify-between items-center">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-                  <span className="text-2xl">🕒</span>
+                  <History className="w-5 h-5 text-white" />
                 </div>
                 <div>
                   <h2 className="text-xl font-bold text-white">Istorija Promena Zaliha</h2>
@@ -1188,9 +1150,7 @@ const Products: React.FC = () => {
                 onClick={() => setShowHistoryModal(false)}
                 className="text-white/70 hover:text-white transition-colors"
               >
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                <X className="w-6 h-6" />
               </button>
             </div>
             
@@ -1200,6 +1160,24 @@ const Products: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        onClose={() => setDeleteConfirm({ isOpen: false, productId: null, productName: '' })}
+        onConfirm={confirmDelete}
+        title="Brisanje Proizvoda"
+        message={
+          <span>
+            Da li ste sigurni da želite da obrišete proizvod <strong>"{deleteConfirm.productName}"</strong>?
+            <br />
+            <span className="text-gray-500 text-sm mt-2 block">Ova akcija se ne može poništiti.</span>
+          </span>
+        }
+        confirmText="Obriši"
+        variant="danger"
+        isLoading={isDeleting}
+      />
 
       {/* Import Modal */}
       <ImportModal

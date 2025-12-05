@@ -1,11 +1,42 @@
-import React, { useState, useEffect } from 'react';
+/**
+ * Calculation List Page - Lista Kalkulacija
+ * Pregled i upravljanje kalkulacijama cena
+ */
+
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import toast from 'react-hot-toast';
+import { toast } from 'react-hot-toast';
 import { calculationService, CalculationListParams } from '../../services/calculationService';
 import { Calculation, CalculationStatus } from '@sef-app/shared';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
+import {
+  Plus,
+  Calculator,
+  Search,
+  LayoutGrid,
+  List,
+  Calendar,
+  Check,
+  FileEdit,
+  X,
+  ChevronRight,
+  TrendingUp
+} from 'lucide-react';
 
-const StatusBadge = ({ status }: { status: string }) => {
+// Debounce hook
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+  
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(handler);
+  }, [value, delay]);
+  
+  return debouncedValue;
+}
+
+// Status Badge Component
+const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
   const getStatusConfig = (status: string) => {
     switch (status) {
       case CalculationStatus.POSTED:
@@ -13,33 +44,21 @@ const StatusBadge = ({ status }: { status: string }) => {
           bg: 'bg-gradient-to-r from-emerald-500 to-green-500',
           text: 'text-white',
           label: 'Proknjiženo',
-          icon: (
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-            </svg>
-          )
+          icon: <Check className="w-3.5 h-3.5" />
         };
       case CalculationStatus.DRAFT:
         return { 
           bg: 'bg-gray-100',
           text: 'text-gray-700',
           label: 'Nacrt',
-          icon: (
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-            </svg>
-          )
+          icon: <FileEdit className="w-3.5 h-3.5" />
         };
       case CalculationStatus.CANCELLED:
         return { 
           bg: 'bg-gradient-to-r from-red-500 to-rose-500',
           text: 'text-white',
           label: 'Stornirano',
-          icon: (
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          )
+          icon: <X className="w-3.5 h-3.5" />
         };
       default:
         return { 
@@ -61,25 +80,29 @@ const StatusBadge = ({ status }: { status: string }) => {
   );
 };
 
-const CalculationCard = ({ calculation, onPreview }: { 
-  calculation: Calculation; 
-  onPreview: () => void; 
-}) => {
+// Calculation Card Component
+interface CalculationCardProps {
+  calculation: Calculation;
+  onNavigate: () => void;
+}
+
+const CalculationCard: React.FC<CalculationCardProps> = ({ calculation, onNavigate }) => {
   return (
-    <div className="group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl hover:border-blue-200 transition-all duration-300 overflow-hidden">
+    <div className="group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl hover:border-indigo-200 transition-all duration-300 overflow-hidden">
       {/* Header */}
       <div className="p-5 pb-3">
         <div className="flex items-start justify-between mb-3">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <h3 className="text-lg font-bold text-gray-900 group-hover:text-blue-600 transition-colors">
+              <h3 className="text-lg font-bold text-gray-900 group-hover:text-indigo-600 transition-colors">
                 {calculation.number}
               </h3>
-              <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-xs font-medium rounded">{calculation.type}</span>
+              <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 text-xs font-medium rounded">
+                {calculation.type}
+              </span>
             </div>
             <p className="text-sm font-medium text-gray-700">
-              {/* Partner info would need to be fetched or included in the calculation object if expanded */}
-              Partner ID: {calculation.partnerId || 'N/A'}
+              {calculation.partnerId ? `Partner ID: ${calculation.partnerId}` : 'Bez partnera'}
             </p>
           </div>
           <StatusBadge status={calculation.status} />
@@ -98,7 +121,8 @@ const CalculationCard = ({ calculation, onPreview }: {
           </div>
           <div className="text-right">
             <p className="text-xs text-gray-500">Marža</p>
-            <p className="text-sm font-semibold text-emerald-600">
+            <p className="text-sm font-semibold text-emerald-600 flex items-center gap-1">
+              <TrendingUp className="w-3.5 h-3.5" />
               {Number(calculation.totalMargin || 0).toLocaleString('sr-RS', { minimumFractionDigits: 2 })} RSD
             </p>
           </div>
@@ -110,26 +134,19 @@ const CalculationCard = ({ calculation, onPreview }: {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-4 text-sm">
             <div className="flex items-center gap-1.5 text-gray-500">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
+              <Calendar className="w-4 h-4" />
               <span>{new Date(calculation.date).toLocaleDateString('sr-RS')}</span>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-          <div className="flex items-center gap-2">
-             {/* Actions like Print could go here */}
-          </div>
+        <div className="flex items-center justify-end pt-3 border-t border-gray-100">
           <Link
             to={`/calculations/${calculation.id}`}
             className="inline-flex items-center gap-1.5 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-xl transition-colors"
           >
             Detalji
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
+            <ChevronRight className="w-4 h-4" />
           </Link>
         </div>
       </div>
@@ -137,29 +154,34 @@ const CalculationCard = ({ calculation, onPreview }: {
   );
 };
 
+// Main CalculationList Component
 export const CalculationList: React.FC = () => {
   const navigate = useNavigate();
+  
+  // Data state
   const [calculations, setCalculations] = useState<Calculation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('all');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
-  const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
-  const handlePreview = (calculation: Calculation) => {
-    navigate(`/calculations/${calculation.id}`);
-  };
+  // Filters
+  const [activeTab, setActiveTab] = useState<string>('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  const [currentPage, setCurrentPage] = useState(1);
 
-  useEffect(() => {
-    fetchCalculations();
-  }, [currentPage, activeTab]);
+  // Debounced search
+  const debouncedSearch = useDebounce(searchTerm, 300);
 
-  const fetchCalculations = async () => {
+  // Fetch calculations
+  const fetchCalculations = useCallback(async () => {
     try {
       setLoading(true);
-      const params: CalculationListParams = { page: currentPage, limit: 12 };
+      const params: CalculationListParams = { 
+        page: currentPage, 
+        limit: 12,
+        search: debouncedSearch || undefined
+      };
       
       if (activeTab !== 'all') {
         params.status = activeTab as CalculationStatus;
@@ -177,21 +199,22 @@ export const CalculationList: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  }, [currentPage, activeTab, debouncedSearch]);
+
+  // Load calculations when filters change
+  useEffect(() => {
+    fetchCalculations();
+  }, [fetchCalculations]);
+
+  const handleNavigate = (calculation: Calculation) => {
+    navigate(`/calculations/${calculation.id}`);
   };
 
   const tabs = [
-    { id: 'all', name: 'Sve kalkulacije', count: totalCount, color: 'gray' },
-    { id: CalculationStatus.DRAFT, name: 'Nacrti', count: 0, color: 'gray' }, // Count logic needs backend support or separate queries
-    { id: CalculationStatus.POSTED, name: 'Proknjižene', count: 0, color: 'green' },
+    { id: 'all', name: 'Sve kalkulacije', color: 'gray' },
+    { id: CalculationStatus.DRAFT, name: 'Nacrti', color: 'gray' },
+    { id: CalculationStatus.POSTED, name: 'Proknjižene', color: 'green' },
   ];
-
-  const filteredCalculations = calculations.filter(calc => {
-    if (!searchTerm) return true;
-    const term = searchTerm.toLowerCase();
-    return (
-      calc.number.toLowerCase().includes(term)
-    );
-  });
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -206,9 +229,7 @@ export const CalculationList: React.FC = () => {
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
           <div className="space-y-4">
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full text-sm font-medium">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-              </svg>
+              <Calculator className="w-4 h-4" />
               Robno knjigovodstvo
             </div>
             <h1 className="text-4xl lg:text-5xl font-black tracking-tight">
@@ -224,9 +245,7 @@ export const CalculationList: React.FC = () => {
               to="/calculations/new"
               className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-indigo-600 rounded-xl font-semibold shadow-lg shadow-black/10 hover:shadow-xl hover:-translate-y-0.5 transition-all"
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
+              <Plus className="w-5 h-5" />
               Nova kalkulacija
             </Link>
           </div>
@@ -239,15 +258,16 @@ export const CalculationList: React.FC = () => {
           {/* Search */}
           <div className="flex-1">
             <div className="relative">
-              <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
                 type="text"
                 placeholder="Pretraži po broju kalkulacije..."
                 className="w-full pl-12 pr-4 py-3 border-2 border-gray-100 rounded-xl focus:outline-none focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all bg-gray-50 focus:bg-white"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(1);
+                }}
               />
             </div>
           </div>
@@ -258,17 +278,13 @@ export const CalculationList: React.FC = () => {
               onClick={() => setViewMode('grid')}
               className={`p-2.5 rounded-lg transition-colors ${viewMode === 'grid' ? 'bg-white shadow text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-              </svg>
+              <LayoutGrid className="w-5 h-5" />
             </button>
             <button
               onClick={() => setViewMode('table')}
               className={`p-2.5 rounded-lg transition-colors ${viewMode === 'table' ? 'bg-white shadow text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-              </svg>
+              <List className="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -306,12 +322,10 @@ export const CalculationList: React.FC = () => {
                 <p className="mt-4 text-gray-500">Učitavanje kalkulacija...</p>
               </div>
             </div>
-          ) : filteredCalculations.length === 0 ? (
+          ) : calculations.length === 0 ? (
             <div className="text-center py-16">
               <div className="w-20 h-20 mx-auto mb-6 bg-gray-100 rounded-full flex items-center justify-center">
-                <svg className="w-10 h-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                </svg>
+                <Calculator className="w-10 h-10 text-gray-400" />
               </div>
               <h3 className="text-xl font-bold text-gray-900 mb-2">Nema kalkulacija za prikaz</h3>
               <p className="text-gray-500 mb-6">
@@ -322,20 +336,18 @@ export const CalculationList: React.FC = () => {
                   to="/calculations/new"
                   className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-500 text-white rounded-xl font-semibold shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 transition-all"
                 >
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
+                  <Plus className="w-5 h-5" />
                   Kreiraj prvu kalkulaciju
                 </Link>
               )}
             </div>
           ) : viewMode === 'grid' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-              {filteredCalculations.map((calc) => (
+              {calculations.map((calc) => (
                 <CalculationCard
                   key={calc.id}
                   calculation={calc}
-                  onPreview={() => handlePreview(calc)}
+                  onNavigate={() => handleNavigate(calc)}
                 />
               ))}
             </div>
@@ -353,7 +365,7 @@ export const CalculationList: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {filteredCalculations.map((calc) => (
+                  {calculations.map((calc) => (
                     <tr key={calc.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-4">
                         <span className="font-semibold text-gray-900">{calc.number}</span>
@@ -375,9 +387,7 @@ export const CalculationList: React.FC = () => {
                           to={`/calculations/${calc.id}`}
                           className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors inline-block"
                         >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
+                          <ChevronRight className="w-4 h-4" />
                         </Link>
                       </td>
                     </tr>
@@ -389,11 +399,11 @@ export const CalculationList: React.FC = () => {
         </div>
 
         {/* Pagination */}
-        {filteredCalculations.length > 0 && totalPages > 1 && (
+        {calculations.length > 0 && totalPages > 1 && (
           <div className="px-6 py-4 border-t border-gray-100">
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-500">
-                Prikazano <span className="font-semibold text-gray-900">{filteredCalculations.length}</span> od <span className="font-semibold text-gray-900">{totalCount}</span> kalkulacija
+                Prikazano <span className="font-semibold text-gray-900">{calculations.length}</span> od <span className="font-semibold text-gray-900">{totalCount}</span> kalkulacija
               </p>
               <div className="flex items-center gap-2">
                 <button
@@ -421,3 +431,5 @@ export const CalculationList: React.FC = () => {
     </div>
   );
 };
+
+export default CalculationList;

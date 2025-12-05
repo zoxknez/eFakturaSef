@@ -4,6 +4,7 @@ import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
 import { SEFService } from './sefService';
 import { InventoryService } from './inventoryService';
+import { sanitizeSearchQuery } from '../utils/validation';
 
 export interface CreateIncomingInvoiceDTO {
   invoiceNumber: string;
@@ -36,6 +37,8 @@ export interface IncomingInvoiceFilters {
   dateFrom?: string;
   dateTo?: string;
   supplierPIB?: string;
+  sortBy?: 'issueDate' | 'receivedDate' | 'totalAmount' | 'invoiceNumber' | 'dueDate';
+  sortOrder?: 'asc' | 'desc';
 }
 
 export class IncomingInvoiceService {
@@ -122,16 +125,19 @@ export class IncomingInvoiceService {
    */
   static async list(companyId: string, filters: IncomingInvoiceFilters) {
     const page = filters.page || 1;
-    const limit = filters.limit || 20;
-    const skip = (page - 1) * limit;
+    const limit = Math.min(filters.limit || 20, 100); // Max limit 100
+    const skip = Math.min((page - 1) * limit, 10000); // Prevent deep pagination
+
+    // Sanitize search query if provided
+    const sanitizedSearch = filters.search ? sanitizeSearchQuery(filters.search) : undefined;
 
     const where: Prisma.IncomingInvoiceWhereInput = {
       companyId,
-      ...(filters.search && {
+      ...(sanitizedSearch && {
         OR: [
-          { invoiceNumber: { contains: filters.search, mode: 'insensitive' } },
-          { supplierName: { contains: filters.search, mode: 'insensitive' } },
-          { supplierPIB: { contains: filters.search } }
+          { invoiceNumber: { contains: sanitizedSearch, mode: 'insensitive' } },
+          { supplierName: { contains: sanitizedSearch, mode: 'insensitive' } },
+          { supplierPIB: { contains: sanitizedSearch } }
         ]
       }),
       ...(filters.status && { status: filters.status }),
@@ -141,13 +147,27 @@ export class IncomingInvoiceService {
       ...(filters.dateTo && { issueDate: { lte: new Date(filters.dateTo) } })
     };
 
+    // Build orderBy based on sortBy and sortOrder
+    const sortBy = filters.sortBy || 'issueDate';
+    const sortOrder = filters.sortOrder || 'desc';
+    
+    const orderByMap: Record<string, Prisma.IncomingInvoiceOrderByWithRelationInput> = {
+      issueDate: { issueDate: sortOrder },
+      receivedDate: { receivedDate: sortOrder },
+      totalAmount: { totalAmount: sortOrder },
+      invoiceNumber: { invoiceNumber: sortOrder },
+      dueDate: { dueDate: sortOrder }
+    };
+    
+    const orderBy = orderByMap[sortBy] || { issueDate: 'desc' };
+
     const [total, invoices] = await Promise.all([
       prisma.incomingInvoice.count({ where }),
       prisma.incomingInvoice.findMany({
         where,
         skip,
         take: limit,
-        orderBy: { issueDate: 'desc' },
+        orderBy,
         include: {
           lines: false // Don't fetch lines for list view to save bandwidth
         }
@@ -285,41 +305,40 @@ export class IncomingInvoiceService {
       try {
         // Check if exists
         const exists = await prisma.incomingInvoice.findUnique({
-          where: { sefId: sefInv.invoiceId?.toString() || sefInv.id?.toString() }
+          where: { sefId: sefInv.InvoiceId.toString() }
         });
 
         if (exists) {
           // Update status if changed
-          if (exists.sefStatus !== sefInv.status) {
+          if (exists.sefStatus !== sefInv.Status) {
             await prisma.incomingInvoice.update({
               where: { id: exists.id },
-              data: { sefStatus: sefInv.status }
+              data: { sefStatus: sefInv.Status }
             });
           }
           continue;
         }
 
-        // Map SEF data to our model
-        // Note: SEF API response structure needs to be handled carefully. 
-        // Assuming sefInv has necessary fields.
-        
+        // Fetch full invoice details from SEF API
+        // Note: SEFSimplePurchaseInvoiceDto has limited fields, so we use minimal data
+        // For full details, we would need to call a different endpoint or parse XML
         await IncomingInvoiceService.create(companyId, {
-          invoiceNumber: sefInv.invoiceNumber || 'UNKNOWN',
-          issueDate: sefInv.issueDate || new Date(),
-          dueDate: sefInv.dueDate,
-          supplierName: sefInv.supplierName || 'Unknown Supplier',
-          supplierPIB: sefInv.supplierPib || sefInv.supplierPIB || '000000000',
-          totalAmount: Number(sefInv.totalAmount || 0),
-          taxAmount: Number(sefInv.taxAmount || 0),
-          currency: sefInv.currency || 'RSD',
-          sefId: sefInv.invoiceId?.toString() || sefInv.id?.toString(),
+          invoiceNumber: `SEF-${sefInv.InvoiceId}`,
+          issueDate: sefInv.LastModifiedUtc ? new Date(sefInv.LastModifiedUtc) : new Date(),
+          dueDate: undefined,
+          supplierName: 'Unknown Supplier',
+          supplierPIB: '000000000',
+          totalAmount: 0,
+          taxAmount: 0,
+          currency: 'RSD',
+          sefId: sefInv.InvoiceId.toString(),
           status: IncomingInvoiceStatus.RECEIVED,
-          items: [] // We might need a separate call to get details for each invoice if list doesn't have items
+          items: []
         }, userId);
 
         syncedCount++;
       } catch (err) {
-        logger.error(`Failed to sync invoice ${sefInv.id}`, err);
+        logger.error(`Failed to sync invoice ${sefInv.InvoiceId}`, err);
         errorCount++;
       }
     }
@@ -362,5 +381,126 @@ export class IncomingInvoiceService {
     });
 
     return updatedLine;
+  }
+
+  /**
+   * Get status counts for tabs/filters
+   */
+  static async getStatusCounts(companyId: string) {
+    const counts = await prisma.incomingInvoice.groupBy({
+      by: ['status'],
+      where: { companyId },
+      _count: { id: true }
+    });
+
+    const result = {
+      all: 0,
+      received: 0,
+      pending: 0,
+      accepted: 0,
+      rejected: 0,
+      cancelled: 0
+    };
+
+    for (const item of counts) {
+      const count = item._count.id;
+      result.all += count;
+      
+      switch (item.status) {
+        case IncomingInvoiceStatus.RECEIVED:
+          result.received = count;
+          break;
+        case IncomingInvoiceStatus.PENDING:
+          result.pending = count;
+          break;
+        case IncomingInvoiceStatus.ACCEPTED:
+          result.accepted = count;
+          break;
+        case IncomingInvoiceStatus.REJECTED:
+          result.rejected = count;
+          break;
+        case IncomingInvoiceStatus.CANCELLED:
+          result.cancelled = count;
+          break;
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Get payment status counts
+   */
+  static async getPaymentCounts(companyId: string) {
+    const counts = await prisma.incomingInvoice.groupBy({
+      by: ['paymentStatus'],
+      where: { companyId },
+      _count: { id: true }
+    });
+
+    const result = {
+      all: 0,
+      unpaid: 0,
+      partiallyPaid: 0,
+      paid: 0,
+      overdue: 0
+    };
+
+    for (const item of counts) {
+      const count = item._count.id;
+      result.all += count;
+      
+      switch (item.paymentStatus) {
+        case InvoicePaymentStatus.UNPAID:
+          result.unpaid = count;
+          break;
+        case InvoicePaymentStatus.PARTIALLY_PAID:
+          result.partiallyPaid = count;
+          break;
+        case InvoicePaymentStatus.PAID:
+          result.paid = count;
+          break;
+        case InvoicePaymentStatus.OVERDUE:
+          result.overdue = count;
+          break;
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Bulk update status for multiple invoices
+   */
+  static async bulkUpdateStatus(
+    companyId: string,
+    invoiceIds: string[],
+    status: IncomingInvoiceStatus,
+    userId: string,
+    reason?: string
+  ) {
+    let processed = 0;
+    let failed = 0;
+    const errors: Array<{ id: string; error: string }> = [];
+
+    for (const id of invoiceIds) {
+      try {
+        await IncomingInvoiceService.updateStatus(id, companyId, status, userId, reason);
+        processed++;
+      } catch (error) {
+        failed++;
+        errors.push({
+          id,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+
+    return {
+      success: failed === 0,
+      processed,
+      failed,
+      errors
+    };
   }
 }

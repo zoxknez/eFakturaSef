@@ -1,62 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { logger } from '../utils/logger';
 import ExportModal from '../components/ExportModal';
+import { useDebounce } from '../hooks/useDebounce';
+import toast from 'react-hot-toast';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import type { 
+  InvoiceListItem, 
+  InvoiceStatusCounts, 
+  InvoiceFilterParams,
+  InvoiceSavedView
+} from '@sef-app/shared';
 
-interface Partner {
-  id: string;
-  name: string;
-  pib: string;
-  type: 'pravno_lice' | 'fizicko_lice' | 'preduzetnik';
-  address?: string;
-  city?: string;
-  email?: string;
-}
+// ================== BADGE COMPONENTS ==================
 
-interface Invoice {
-  id: string;
-  invoiceNumber: string;
-  issueDate: string;
-  dueDate?: string;
-  
-  // Partner integration (NEW)
-  partnerId?: string;
-  partner?: Partner;
-  
-  // Legacy buyer fields (backward compatibility)
-  buyerName?: string;
-  buyerPIB?: string;
-  
-  totalAmount: number;
-  taxAmount: number;
-  currency: string;
-  status: 'DRAFT' | 'SENT' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED';
-  type: 'OUTGOING' | 'INCOMING';
-  
-  paymentStatus?: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID' | 'OVERDUE';
-  
-  createdAt: string;
-  updatedAt: string;
-  
-  // Computed fields for display
-  isCorrection?: boolean;
-  isStorno?: boolean;
-  hasReverseCharge?: boolean;
-}
-
-interface InvoiceQueryParams {
-  page: number;
-  limit: number;
-  status?: string;
-  type?: string;
-  search?: string;
-}
-
-const StatusBadge = ({ status }: { status: Invoice['status'] }) => {
+const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
   const styles: Record<string, string> = {
     DRAFT: 'bg-gray-100 text-gray-800',
     SENT: 'bg-blue-100 text-blue-800',
+    APPROVED: 'bg-green-100 text-green-800',
     ACCEPTED: 'bg-green-100 text-green-800',
     REJECTED: 'bg-red-100 text-red-800',
     CANCELLED: 'bg-gray-100 text-gray-800'
@@ -65,16 +28,13 @@ const StatusBadge = ({ status }: { status: Invoice['status'] }) => {
   const labels: Record<string, string> = {
     DRAFT: 'Nacrt',
     SENT: 'Poslato',
+    APPROVED: 'Odobreno',
     ACCEPTED: 'Prihvaćeno',
     REJECTED: 'Odbijeno',
-    CANCELLED: 'Stornirano',
-    PAID: 'Plaćeno',
-    OVERDUE: 'Kasni',
-    PARTIALLY_PAID: 'Delimično plaćeno',
-    UNKNOWN: 'Nepoznato'
+    CANCELLED: 'Stornirano'
   };
 
-  const normalizedStatus = status ? status.toUpperCase() : 'UNKNOWN';
+  const normalizedStatus = status?.toUpperCase() || 'DRAFT';
 
   return (
     <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[normalizedStatus] || 'bg-gray-100 text-gray-800'}`}>
@@ -83,7 +43,7 @@ const StatusBadge = ({ status }: { status: Invoice['status'] }) => {
   );
 };
 
-const TypeBadge = ({ type }: { type: Invoice['type'] }) => (
+const TypeBadge: React.FC<{ type: string }> = ({ type }) => (
   <span className={`px-2 py-1 rounded-full text-xs font-medium ${
     type === 'OUTGOING' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'
   }`}>
@@ -91,363 +51,674 @@ const TypeBadge = ({ type }: { type: Invoice['type'] }) => (
   </span>
 );
 
-const PartnerBadge = ({ invoice }: { invoice: Invoice }) => {
-  if (invoice.partnerId && invoice.partner) {
+const PartnerBadge: React.FC<{ invoice: InvoiceListItem }> = ({ invoice }) => {
+  if (invoice.partner) {
     return (
       <span className="ml-2 px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
         ✅ Šifarnik
       </span>
     );
   }
-  return (
-    <span className="ml-2 px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">
-      📝 Ručno
-    </span>
-  );
+  return null;
 };
 
-const SpecialBadge = ({ invoice }: { invoice: Invoice }) => {
-  if (invoice.isCorrection) {
-    return <span className="px-2 py-1 bg-orange-100 text-orange-800 rounded-full text-xs font-medium">ISPRAVKA</span>;
-  }
-  if (invoice.isStorno) {
-    return <span className="px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs font-medium">STORNO</span>;
-  }
-  if (invoice.hasReverseCharge) {
-    return <span className="px-2 py-1 bg-indigo-100 text-indigo-800 rounded-full text-xs font-medium">RC</span>;
+const SpecialBadge: React.FC<{ invoice: InvoiceListItem }> = ({ invoice }) => {
+  if (invoice.sefId) {
+    return (
+      <span className="ml-1 px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-xs" title={`SEF ID: ${invoice.sefId}`}>
+        SEF
+      </span>
+    );
   }
   return null;
 };
 
+// ================== HELPER FUNCTIONS ==================
+
+const formatDate = (dateStr: string | null | undefined): string => {
+  if (!dateStr) return '-';
+  try {
+    return new Date(dateStr).toLocaleDateString('sr-RS');
+  } catch {
+    return dateStr;
+  }
+};
+
+const formatDateTime = (dateStr: string | null | undefined): string => {
+  if (!dateStr) return '-';
+  try {
+    return new Date(dateStr).toLocaleString('sr-RS', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch {
+    return dateStr;
+  }
+};
+
+const formatAmount = (amount: number | undefined, currency = 'RSD'): string => {
+  if (amount === undefined || amount === null) return '-';
+  return new Intl.NumberFormat('sr-RS', {
+    style: 'currency',
+    currency: currency || 'RSD',
+    minimumFractionDigits: 2
+  }).format(amount);
+};
+
+const getPartnerName = (invoice: InvoiceListItem): string => {
+  if (invoice.partner?.name) return invoice.partner.name;
+  return invoice.buyerName || 'Nepoznat kupac';
+};
+
+const getPartnerPIB = (invoice: InvoiceListItem): string => {
+  if (invoice.partner?.pib) return invoice.partner.pib;
+  return invoice.buyerPIB || '-';
+};
+
+const getVatRate = (invoice: InvoiceListItem): number => {
+  if (!invoice.lines || invoice.lines.length === 0) return 20;
+  return invoice.lines[0]?.taxRate || 20;
+};
+
+const getVatBase = (invoice: InvoiceListItem): number => {
+  return invoice.totalAmount - invoice.taxAmount;
+};
+
+// ================== SAVED VIEWS PERSISTENCE ==================
+
+const SAVED_VIEWS_KEY = 'invoice-saved-views';
+
+const getDefaultViews = (): InvoiceSavedView[] => [
+  { id: 'unpaid', name: 'Neplaćene', icon: '💰', filters: { status: 'SENT' }, createdAt: new Date().toISOString() },
+  { id: 'this-month', name: 'Ovaj mesec', icon: '📅', filters: { dateFrom: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0] }, createdAt: new Date().toISOString() },
+  { id: 'drafts', name: 'Nacrti', icon: '📝', filters: { status: 'DRAFT' }, createdAt: new Date().toISOString() },
+];
+
+const loadSavedViews = (): InvoiceSavedView[] => {
+  try {
+    const stored = localStorage.getItem(SAVED_VIEWS_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    logger.error('Failed to load saved views', e);
+  }
+  return getDefaultViews();
+};
+
+const saveSavedViews = (views: InvoiceSavedView[]) => {
+  try {
+    localStorage.setItem(SAVED_VIEWS_KEY, JSON.stringify(views));
+  } catch (e) {
+    logger.error('Failed to save views', e);
+  }
+};
+
+// ================== DATE RANGE OPTIONS ==================
+
+interface DateRangeOption {
+  label: string;
+  value: string;
+  getRange: () => { dateFrom?: string; dateTo?: string };
+}
+
+const dateRangeOptions: DateRangeOption[] = [
+  { label: 'Sve fakture', value: 'all', getRange: () => ({}) },
+  { 
+    label: 'Danas', 
+    value: 'today', 
+    getRange: () => {
+      const today = new Date().toISOString().split('T')[0];
+      return { dateFrom: today, dateTo: today };
+    }
+  },
+  { 
+    label: 'Ova nedelja', 
+    value: 'this-week', 
+    getRange: () => {
+      const now = new Date();
+      const dayOfWeek = now.getDay() || 7;
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - dayOfWeek + 1);
+      return { dateFrom: monday.toISOString().split('T')[0], dateTo: now.toISOString().split('T')[0] };
+    }
+  },
+  { 
+    label: 'Ovaj mesec', 
+    value: 'this-month', 
+    getRange: () => {
+      const now = new Date();
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      return { dateFrom: firstDay.toISOString().split('T')[0], dateTo: now.toISOString().split('T')[0] };
+    }
+  },
+  { 
+    label: 'Prošli mesec', 
+    value: 'last-month', 
+    getRange: () => {
+      const now = new Date();
+      const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
+      return { dateFrom: firstDay.toISOString().split('T')[0], dateTo: lastDay.toISOString().split('T')[0] };
+    }
+  },
+  { 
+    label: 'Ova godina', 
+    value: 'this-year', 
+    getRange: () => {
+      const now = new Date();
+      const firstDay = new Date(now.getFullYear(), 0, 1);
+      return { dateFrom: firstDay.toISOString().split('T')[0], dateTo: now.toISOString().split('T')[0] };
+    }
+  },
+];
+
+// ================== MAIN COMPONENT ==================
+
 export const AdvancedInvoiceList: React.FC = () => {
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const navigate = useNavigate();
+  
+  // Data state
+  const [invoices, setInvoices] = useState<InvoiceListItem[]>([]);
+  const [statusCounts, setStatusCounts] = useState<InvoiceStatusCounts>({
+    all: 0, draft: 0, sent: 0, approved: 0, rejected: 0, cancelled: 0
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  const [selectedInvoices, setSelectedInvoices] = useState<string[]>([]);
-  const [currentView, setCurrentView] = useState('svi');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showSideDrawer, setShowSideDrawer] = useState(false);
-  const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
-  
-  // Pagination
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
+  // Pagination state
+  const [hasNext, setHasNext] = useState(false);
+  const [hasPrev, setHasPrev] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [prevCursor, setPrevCursor] = useState<string | null>(null);
   const [totalCount, setTotalCount] = useState(0);
-  const pageSize = 20;
+  const [pageSize] = useState(20);
   
-  // Filters
-  const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
-  const [typeFilter, setTypeFilter] = useState<string | undefined>(undefined);
+  // Filter state
+  const [activeTab, setActiveTab] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [dateRange, setDateRange] = useState('all');
+  const [sortBy, setSortBy] = useState<InvoiceFilterParams['sortBy']>('issueDate');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   
-  // Export Modal
+  // UI state
+  const [selectedInvoices, setSelectedInvoices] = useState<string[]>([]);
+  const [selectedInvoice, setSelectedInvoice] = useState<InvoiceListItem | null>(null);
+  const [showSideDrawer, setShowSideDrawer] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [savedViews, setSavedViews] = useState<InvoiceSavedView[]>(loadSavedViews);
   
-  // Fetch invoices on mount and when filters change
-  useEffect(() => {
-    fetchInvoices();
-  }, [currentPage, statusFilter, typeFilter, searchQuery]);
+  // Bulk operation state
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
   
-  const fetchInvoices = async () => {
+  // Dialog states
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; count: number; ids: string[] | null }>({ open: false, count: 0, ids: null });
+  const [saveViewDialog, setSaveViewDialog] = useState<{ open: boolean; name: string }>({ open: false, name: '' });
+  
+  // Debounced search
+  const debouncedSearch = useDebounce(searchQuery, 300);
+  
+  // Views for tabs
+  const views = useMemo(() => [
+    { id: 'all', label: 'Sve', count: statusCounts.all },
+    { id: 'draft', label: 'Nacrti', count: statusCounts.draft },
+    { id: 'sent', label: 'Poslato', count: statusCounts.sent },
+    { id: 'approved', label: 'Odobreno', count: statusCounts.approved },
+    { id: 'rejected', label: 'Odbijeno', count: statusCounts.rejected },
+    { id: 'cancelled', label: 'Stornirano', count: statusCounts.cancelled },
+  ], [statusCounts]);
+
+  // ================== DATA FETCHING ==================
+  
+  const fetchStatusCounts = useCallback(async () => {
     try {
-      setLoading(true);
-      setError(null);
+      const response = await api.getInvoiceStatusCounts();
+      if (response.success && response.data) {
+        setStatusCounts(response.data);
+      }
+    } catch (err) {
+      logger.error('Failed to fetch status counts', err);
+    }
+  }, []);
+  
+  const fetchInvoices = useCallback(async (cursor?: string, direction?: 'next' | 'prev') => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const dateRangeOption = dateRangeOptions.find(o => o.value === dateRange);
+      const dateFilters = dateRangeOption?.getRange() || {};
       
-      const params: InvoiceQueryParams = {
-        page: currentPage,
-        limit: pageSize
+      const params: InvoiceFilterParams = {
+        status: activeTab !== 'all' ? activeTab.toUpperCase() : undefined,
+        search: debouncedSearch || undefined,
+        sortBy,
+        sortOrder,
+        limit: pageSize,
+        cursor: cursor || undefined,
+        direction: direction || undefined,
+        ...dateFilters,
       };
-      
-      if (statusFilter && statusFilter !== 'all') {
-        params.status = statusFilter;
-      }
-      
-      if (typeFilter && typeFilter !== 'all') {
-        params.type = typeFilter;
-      }
-      
-      // TODO: Backend doesn't support search yet, will need to add
-      // if (searchQuery) {
-      //   params.search = searchQuery;
-      // }
       
       const response = await api.getInvoices(params);
       
       if (response.success && response.data) {
-        setInvoices(response.data.data || []);
-        setTotalCount(response.data.pagination.total || 0);
-        setTotalPages(response.data.pagination.pages || 1);
+        setInvoices(response.data.data);
+        setHasNext(response.data.pagination.hasNext);
+        setHasPrev(response.data.pagination.hasPrev);
+        setNextCursor(response.data.pagination.nextCursor);
+        setPrevCursor(response.data.pagination.prevCursor);
+        if (response.data.pagination.total !== undefined) {
+          setTotalCount(response.data.pagination.total);
+        }
+        if (response.data.counts) {
+          setStatusCounts(response.data.counts);
+        }
       } else {
-        setError(response.error || 'Greška pri učitavanju faktura');
+        setError(response.error || 'Failed to load invoices');
       }
     } catch (err: unknown) {
-      logger.error('Error fetching invoices', err);
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError('Greška pri učitavanju faktura');
-      }
+      const message = err instanceof Error ? err.message : 'Neuspešno učitavanje faktura';
+      setError(message);
+      logger.error('Failed to fetch invoices', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeTab, debouncedSearch, dateRange, sortBy, sortOrder, pageSize]);
+
+  // Initial load
+  useEffect(() => {
+    fetchInvoices();
+    fetchStatusCounts();
+  }, [fetchInvoices, fetchStatusCounts]);
+
+  // ================== SELECTION HANDLERS ==================
   
-  const views = [
-    { id: 'svi', label: 'Svi', count: totalCount },
-    { id: 'izlazne', label: 'Izlazne', count: invoices.filter(i => i.type === 'OUTGOING').length },
-    { id: 'ulazne', label: 'Ulazne', count: invoices.filter(i => i.type === 'INCOMING').length },
-    { id: 'nacrti', label: 'Nacrti', count: invoices.filter(i => i.status === 'DRAFT').length },
-    { id: 'odbijene', label: 'Odbijene', count: invoices.filter(i => i.status === 'REJECTED').length }
-  ];
-
-  const savedViews = [
-    'Visoki iznosi > 100k',
-    'Prosečni mesec',
-    'Kritični rokovi',
-    'Spremno za izvoz'
-  ];
-
-  const handleSelectInvoice = (invoiceId: string) => {
-    setSelectedInvoices(prev => 
-      prev.includes(invoiceId) 
-        ? prev.filter(id => id !== invoiceId)
-        : [...prev, invoiceId]
-    );
-  };
-
   const handleSelectAll = () => {
-    setSelectedInvoices(
-      selectedInvoices.length === invoices.length ? [] : invoices.map(i => i.id)
+    if (selectedInvoices.length === invoices.length) {
+      setSelectedInvoices([]);
+    } else {
+      setSelectedInvoices(invoices.map(inv => inv.id));
+    }
+  };
+
+  const handleSelectInvoice = (id: string) => {
+    setSelectedInvoices(prev => 
+      prev.includes(id) 
+        ? prev.filter(i => i !== id)
+        : [...prev, id]
     );
   };
 
-  const handleRowClick = (invoice: Invoice) => {
-    setSelectedInvoiceId(invoice.id);
+  const handleRowClick = (invoice: InvoiceListItem) => {
+    setSelectedInvoice(invoice);
     setShowSideDrawer(true);
   };
 
-  const formatAmount = (amount: number, currency: string) => {
-    return new Intl.NumberFormat('sr-RS', {
-      style: 'currency',
-      currency: currency === 'RSD' ? 'RSD' : 'EUR'
-    }).format(amount);
-  };
+  // ================== BULK OPERATIONS ==================
   
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('sr-RS');
-  };
-  
-  const formatDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleString('sr-RS');
-  };
-  
-  // Get display name for partner (Partner name if exists, fallback to buyerName)
-  const getPartnerName = (invoice: Invoice): string => {
-    return invoice.partner?.name || invoice.buyerName || 'N/A';
-  };
-  
-  // Get display PIB for partner
-  const getPartnerPIB = (invoice: Invoice): string => {
-    return invoice.partner?.pib || invoice.buyerPIB || 'N/A';
-  };
-  
-  // Calculate VAT base (totalAmount - taxAmount)
-  const getVatBase = (invoice: Invoice): number => {
-    return invoice.totalAmount - invoice.taxAmount;
-  };
-  
-  // Calculate VAT rate percentage
-  const getVatRate = (invoice: Invoice): number => {
-    const base = getVatBase(invoice);
-    if (base === 0) return 0;
-    return Math.round((invoice.taxAmount / base) * 100);
+  const handleBulkSend = async () => {
+    if (selectedInvoices.length === 0) return;
+    
+    const draftIds = invoices
+      .filter(inv => selectedInvoices.includes(inv.id) && inv.status === 'DRAFT')
+      .map(inv => inv.id);
+    
+    if (draftIds.length === 0) {
+      setBulkError('Nema nacrta za slanje. Samo nacrti mogu biti poslati na SEF.');
+      return;
+    }
+    
+    setBulkLoading(true);
+    setBulkError(null);
+    
+    try {
+      const response = await api.bulkSendInvoices(draftIds);
+      if (response.success) {
+        await fetchInvoices();
+        await fetchStatusCounts();
+        setSelectedInvoices([]);
+        toast.success(`Uspešno poslato ${response.data?.processed || draftIds.length} faktura na SEF.`);
+      } else {
+        setBulkError(response.error || 'Greška pri slanju faktura');
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Neuspešno slanje faktura';
+      setBulkError(message);
+    } finally {
+      setBulkLoading(false);
+    }
   };
 
-  const selectedInvoice = selectedInvoiceId ? invoices.find(i => i.id === selectedInvoiceId) : null;
+  const handleBulkDelete = async () => {
+    if (selectedInvoices.length === 0) return;
+    
+    const draftIds = invoices
+      .filter(inv => selectedInvoices.includes(inv.id) && inv.status === 'DRAFT')
+      .map(inv => inv.id);
+    
+    if (draftIds.length === 0) {
+      setBulkError('Nema nacrta za brisanje. Samo nacrti mogu biti obrisani.');
+      return;
+    }
+    
+    setDeleteConfirm({ open: true, count: draftIds.length, ids: draftIds });
+  };
 
+  const handleConfirmBulkDelete = async () => {
+    if (!deleteConfirm.ids) return;
+    const draftIds = deleteConfirm.ids;
+    setDeleteConfirm({ open: false, count: 0, ids: null });
+    
+    setBulkLoading(true);
+    setBulkError(null);
+    
+    try {
+      const response = await api.bulkDeleteInvoices(draftIds);
+      if (response.success) {
+        await fetchInvoices();
+        await fetchStatusCounts();
+        setSelectedInvoices([]);
+        toast.success(`Uspešno obrisano ${response.data?.processed || draftIds.length} faktura.`);
+      } else {
+        setBulkError(response.error || 'Greška pri brisanju faktura');
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Neuspešno brisanje faktura';
+      setBulkError(message);
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  // ================== DOWNLOAD HANDLERS ==================
+  
+  const handleDownloadPDF = async (invoiceId: string, invoiceNumber: string) => {
+    try {
+      const blob = await api.downloadInvoicePDF(invoiceId);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `faktura-${invoiceNumber}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      logger.error('Failed to download PDF', err);
+      toast.error('Greška pri preuzimanju PDF-a');
+    }
+  };
+
+  const handleDownloadXML = async (invoiceId: string, invoiceNumber: string) => {
+    try {
+      const blob = await api.downloadInvoiceXML(invoiceId);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `faktura-${invoiceNumber}.xml`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      logger.error('Failed to download XML', err);
+      toast.error('Greška pri preuzimanju XML-a');
+    }
+  };
+
+  // ================== SAVED VIEWS ==================
+  
+  const handleSaveViewClick = () => {
+    setSaveViewDialog({ open: true, name: '' });
+  };
+
+  const handleSaveViewConfirm = () => {
+    const name = saveViewDialog.name.trim();
+    if (!name) {
+      toast.error('Unesite naziv za pogled');
+      return;
+    }
+    setSaveViewDialog({ open: false, name: '' });
+    
+    const newView: InvoiceSavedView = {
+      id: `custom-${Date.now()}`,
+      name,
+      icon: '📌',
+      filters: {
+        status: activeTab !== 'all' ? activeTab.toUpperCase() : undefined,
+        search: debouncedSearch || undefined,
+        ...(dateRangeOptions.find(o => o.value === dateRange)?.getRange() || {}),
+      },
+      createdAt: new Date().toISOString(),
+    };
+    
+    const updatedViews = [...savedViews, newView];
+    setSavedViews(updatedViews);
+    saveSavedViews(updatedViews);
+  };
+
+  const handleApplyView = (view: InvoiceSavedView) => {
+    if (view.filters.status) {
+      setActiveTab(view.filters.status.toLowerCase());
+    } else {
+      setActiveTab('all');
+    }
+    if (view.filters.search) {
+      setSearchQuery(view.filters.search);
+    }
+    // Apply date filter if present
+    if (view.filters.dateFrom) {
+      // Find matching preset or set to custom
+      const matchingOption = dateRangeOptions.find(opt => {
+        const range = opt.getRange();
+        return range.dateFrom === view.filters.dateFrom;
+      });
+      if (matchingOption) {
+        setDateRange(matchingOption.value);
+      }
+    }
+  };
+
+  const handleRemoveView = (viewId: string) => {
+    const updatedViews = savedViews.filter(v => v.id !== viewId);
+    setSavedViews(updatedViews);
+    saveSavedViews(updatedViews);
+  };
+
+  // ================== RENDER ==================
+  
   return (
-    <div className="space-y-6 animate-fadeIn">
-      {/* Hero Section */}
-      <div className="relative bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 rounded-[2rem] p-8 lg:p-10 text-white overflow-hidden">
-        {/* Animated background elements */}
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute -top-24 -right-24 w-96 h-96 bg-white/10 rounded-full blur-3xl animate-pulse"></div>
-          <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-indigo-400/20 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
-          
-          {/* Floating elements */}
-          <div className="absolute top-10 right-20 w-20 h-20 bg-white/5 rounded-2xl rotate-12 floating"></div>
-          <div className="absolute bottom-10 right-40 w-14 h-14 bg-white/5 rounded-xl -rotate-12 floating" style={{ animationDelay: '2s' }}></div>
-          
-          {/* Document icons */}
-          <div className="absolute top-8 right-16 opacity-10">
-            <svg className="w-24 h-24" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm4 18H6V4h7v5h5v11z"/>
-            </svg>
-          </div>
-        </div>
-        
-        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-          <div className="space-y-4">
-            <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full text-sm font-medium">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Napredna lista • SEF integracija
-            </div>
-            <h1 className="text-4xl lg:text-5xl font-black tracking-tight">
-              Fakture
-            </h1>
-            <p className="text-xl text-blue-100 max-w-xl">
-              Upravljanje izlaznim i ulaznim fakturama sa naprednim filterima i pretragom.
+    <div className="space-y-6">
+      {/* Hero Header */}
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl p-8 text-white">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">Fakture</h1>
+            <p className="text-blue-100">
+              Ukupno {statusCounts.all} faktura • {statusCounts.draft} nacrta čeka slanje
             </p>
           </div>
-          
-          <div className="flex flex-wrap gap-3">
-            <button 
+          <div className="flex gap-3">
+            <button
               onClick={() => setShowExportModal(true)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/10 backdrop-blur-sm border border-white/20 text-white rounded-xl font-medium hover:bg-white/20 transition-all"
+              className="px-4 py-2 bg-white/20 backdrop-blur rounded-lg hover:bg-white/30 transition-colors"
             >
-              📊 Export
+              📊 Izveštaj
             </button>
-            <Link 
-              to="/invoices/create" 
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-blue-600 rounded-xl font-semibold shadow-lg shadow-black/10 hover:shadow-xl hover:-translate-y-0.5 transition-all"
+            <Link
+              to="/invoices/create"
+              className="px-4 py-2 bg-white text-blue-600 rounded-lg hover:bg-blue-50 transition-colors font-medium"
             >
-              📄 Nova faktura
+              ➕ Nova faktura
             </Link>
           </div>
         </div>
       </div>
 
-      {/* Search and Filters */}
-      <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50">
-        <div className="flex flex-col lg:flex-row gap-4">
-          <div className="flex-1">
-            <div className="relative">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Pretraži po broju, partneru, PIB-u, statusu..."
-                className="w-full px-4 py-3 pl-12 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-              <div className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400">
-                🔍
-              </div>
-            </div>
-          </div>
-          
-          <div className="flex flex-wrap gap-2">
-            <select 
-              value={statusFilter || 'all'}
-              onChange={(e) => setStatusFilter(e.target.value === 'all' ? undefined : e.target.value)}
-              className="px-4 py-2 border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">Svi statusi</option>
-              <option value="DRAFT">Nacrt</option>
-              <option value="SENT">Poslato</option>
-              <option value="ACCEPTED">Prihvaćeno</option>
-              <option value="REJECTED">Odbijeno</option>
-              <option value="CANCELLED">Stornirano</option>
-            </select>
-            
-            <select 
-              value={typeFilter || 'all'}
-              onChange={(e) => setTypeFilter(e.target.value === 'all' ? undefined : e.target.value)}
-              className="px-4 py-2 border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">Svi tipovi</option>
-              <option value="OUTGOING">Izlazne</option>
-              <option value="INCOMING">Ulazne</option>
-            </select>
-            
-            <select className="px-4 py-2 border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500">
-              <option>Ovaj mesec</option>
-              <option>Prošli mesec</option>
-              <option>Ovaj kvartal</option>
-              <option>Ova godina</option>
-            </select>
+      {/* Quick Filters Bar */}
+      <div className="flex items-center gap-4 flex-wrap">
+        {/* Search */}
+        <div className="flex-1 min-w-[300px]">
+          <div className="relative">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Pretraži po broju, partneru, PIB-u..."
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
           </div>
         </div>
-
-        {/* Saved Views */}
-        <div className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-100">
-          <span className="text-sm text-gray-600">Sačuvani pregledi:</span>
-          {savedViews.map((view, index) => (
-            <button
-              key={index}
-              className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm hover:bg-gray-200 transition-colors"
-            >
-              {view}
-            </button>
+        
+        {/* Date Range Filter */}
+        <select
+          value={dateRange}
+          onChange={(e) => setDateRange(e.target.value)}
+          className="text-sm border-gray-300 rounded-lg border px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
+        >
+          {dateRangeOptions.map(option => (
+            <option key={option.value} value={option.value}>{option.label}</option>
           ))}
-          <button className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm hover:bg-blue-200 transition-colors">
-            + Sačuvaj pregled
-          </button>
-        </div>
+        </select>
+        
+        {/* Sort */}
+        <select
+          value={`${sortBy}-${sortOrder}`}
+          onChange={(e) => {
+            const [field, order] = e.target.value.split('-');
+            setSortBy(field as InvoiceFilterParams['sortBy']);
+            setSortOrder(order as 'asc' | 'desc');
+          }}
+          className="text-sm border-gray-300 rounded-lg border px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
+        >
+          <option value="issueDate-desc">Datum (najnovije)</option>
+          <option value="issueDate-asc">Datum (najstarije)</option>
+          <option value="totalAmount-desc">Iznos (najviše)</option>
+          <option value="totalAmount-asc">Iznos (najmanje)</option>
+          <option value="invoiceNumber-asc">Broj fakture (A-Z)</option>
+          <option value="invoiceNumber-desc">Broj fakture (Z-A)</option>
+        </select>
+        
+        {/* Save View Button */}
+        <button
+          onClick={handleSaveViewClick}
+          className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg"
+          title="Sačuvaj trenutni pogled"
+        >
+          💾 Sačuvaj pogled
+        </button>
       </div>
 
-      {/* View Tabs */}
-      <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-200/50 overflow-hidden">
-        <div className="flex border-b border-gray-200">
-          {views.map((view) => (
+      {/* Saved Views */}
+      {savedViews.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm text-gray-500">Brzi pogledi:</span>
+          {savedViews.map(view => (
+            <div key={view.id} className="flex items-center gap-1">
+              <button
+                onClick={() => handleApplyView(view)}
+                className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                {view.icon} {view.name}
+              </button>
+              {view.id.startsWith('custom-') && (
+                <button
+                  onClick={() => handleRemoveView(view.id)}
+                  className="text-gray-400 hover:text-red-500"
+                  title="Ukloni"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Status Tabs */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex gap-6">
+          {views.map(view => (
             <button
               key={view.id}
-              onClick={() => setCurrentView(view.id)}
-              className={`px-6 py-4 font-medium transition-colors ${
-                currentView === view.id
-                  ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              onClick={() => setActiveTab(view.id)}
+              className={`py-3 px-1 border-b-2 text-sm font-medium transition-colors ${
+                activeTab === view.id
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
               {view.label}
-              <span className="ml-2 px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-xs">
+              <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
+                activeTab === view.id ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-600'
+              }`}>
                 {view.count}
               </span>
             </button>
           ))}
-        </div>
+        </nav>
+      </div>
 
-        {/* Bulk Actions */}
-        {selectedInvoices.length > 0 && (
-          <div className="p-4 bg-blue-50 border-b border-blue-200">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-blue-900">
-                {selectedInvoices.length} dokumenata izabrano
-              </span>
-              <div className="flex space-x-2">
-                <button className="px-3 py-1 bg-green-500 text-white rounded text-sm hover:bg-green-600">
-                  ✅ Prihvati
-                </button>
-                <button className="px-3 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600">
-                  ❌ Odbij
-                </button>
-                <button className="px-3 py-1 bg-orange-500 text-white rounded text-sm hover:bg-orange-600">
-                  🔄 Ponovo pošalji
-                </button>
-                <button className="px-3 py-1 bg-purple-500 text-white rounded text-sm hover:bg-purple-600">
-                  📄 Export
-                </button>
-              </div>
-            </div>
+      {/* Bulk Actions */}
+      {selectedInvoices.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center justify-between">
+          <span className="text-blue-700 font-medium">
+            Izabrano {selectedInvoices.length} faktura
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={handleBulkSend}
+              disabled={bulkLoading}
+              className="px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50"
+            >
+              {bulkLoading ? '⏳' : '📤'} Pošalji na SEF ({selectedInvoices.length})
+            </button>
+            <button
+              onClick={handleBulkDelete}
+              disabled={bulkLoading}
+              className="px-3 py-1.5 text-sm text-red-600 hover:bg-red-100 rounded-lg transition-colors disabled:opacity-50"
+            >
+              {bulkLoading ? '⏳' : '🗑️'} Obriši
+            </button>
+            <button
+              onClick={() => setSelectedInvoices([])}
+              className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              ✕ Poništi izbor
+            </button>
           </div>
-        )}
+        </div>
+      )}
+      
+      {bulkError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+          ⚠️ {bulkError}
+        </div>
+      )}
 
+      {/* Main Content Card */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         {/* Loading State */}
         {loading && (
           <div className="p-12 text-center">
-            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-            <p className="mt-4 text-gray-600">Učitavanje faktura...</p>
+            <div className="animate-spin text-4xl mb-4">⏳</div>
+            <p className="text-gray-500">Učitavanje faktura...</p>
           </div>
         )}
 
         {/* Error State */}
-        {error && !loading && (
+        {!loading && error && (
           <div className="p-12 text-center">
-            <div className="text-red-600 text-lg mb-2">⚠️ Greška</div>
-            <p className="text-gray-600">{error}</p>
+            <div className="text-red-500 text-4xl mb-4">⚠️</div>
+            <p className="text-red-600 mb-4">{error}</p>
             <button 
-              onClick={fetchInvoices}
+              onClick={() => fetchInvoices()}
               className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
             >
               Pokušaj ponovo
@@ -479,7 +750,7 @@ export const AdvancedInvoiceList: React.FC = () => {
                   <th className="px-6 py-4 text-left">
                     <input
                       type="checkbox"
-                      checked={selectedInvoices.length === invoices.length}
+                      checked={selectedInvoices.length === invoices.length && invoices.length > 0}
                       onChange={handleSelectAll}
                       className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
@@ -573,14 +844,20 @@ export const AdvancedInvoiceList: React.FC = () => {
                           👁️
                         </Link>
                         <button 
-                          onClick={(e) => { e.stopPropagation(); }}
+                          onClick={(e) => { 
+                            e.stopPropagation(); 
+                            handleDownloadPDF(invoice.id, invoice.invoiceNumber);
+                          }}
                           className="text-green-600 hover:text-green-900"
                           title="PDF"
                         >
                           📄
                         </button>
                         <button 
-                          onClick={(e) => { e.stopPropagation(); }}
+                          onClick={(e) => { 
+                            e.stopPropagation(); 
+                            handleDownloadXML(invoice.id, invoice.invoiceNumber);
+                          }}
                           className="text-purple-600 hover:text-purple-900"
                           title="XML"
                         >
@@ -596,25 +873,22 @@ export const AdvancedInvoiceList: React.FC = () => {
         )}
         
         {/* Pagination */}
-        {!loading && !error && invoices.length > 0 && totalPages > 1 && (
+        {!loading && !error && invoices.length > 0 && (
           <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
             <div className="text-sm text-gray-600">
-              Prikazano {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, totalCount)} od {totalCount}
+              Prikazano {invoices.length} faktura {totalCount > 0 && `od ${totalCount}`}
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
+                onClick={() => fetchInvoices(prevCursor || undefined, 'prev')}
+                disabled={!hasPrev}
                 className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 ← Prethodna
               </button>
-              <span className="px-3 py-1 border border-blue-500 bg-blue-50 text-blue-600 rounded">
-                {currentPage} / {totalPages}
-              </span>
               <button
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
+                onClick={() => fetchInvoices(nextCursor || undefined, 'next')}
+                disabled={!hasNext}
                 className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Sledeća →
@@ -695,18 +969,37 @@ export const AdvancedInvoiceList: React.FC = () => {
                       <p className="text-sm text-gray-900">{formatDate(selectedInvoice.dueDate)}</p>
                     </div>
                   )}
+                  
+                  {selectedInvoice.sefId && (
+                    <div>
+                      <label className="text-sm font-medium text-gray-500">SEF ID</label>
+                      <p className="text-sm text-gray-900">{selectedInvoice.sefId}</p>
+                    </div>
+                  )}
                 </div>
               </div>
               
-              <div className="p-6 border-t border-gray-200">
-                <div className="flex space-x-3">
-                  <Link 
-                    to={`/invoices/${selectedInvoice.id}`}
-                    className="flex-1 btn-primary bg-blue-500 hover:bg-blue-600 text-center"
+              <div className="p-6 border-t border-gray-200 space-y-3">
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleDownloadPDF(selectedInvoice.id, selectedInvoice.invoiceNumber)}
+                    className="flex-1 px-3 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm"
                   >
-                    📄 Detaljan pregled
-                  </Link>
+                    📄 PDF
+                  </button>
+                  <button
+                    onClick={() => handleDownloadXML(selectedInvoice.id, selectedInvoice.invoiceNumber)}
+                    className="flex-1 px-3 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg text-sm"
+                  >
+                    📋 XML
+                  </button>
                 </div>
+                <Link 
+                  to={`/invoices/${selectedInvoice.id}`}
+                  className="block w-full px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm text-center"
+                >
+                  📄 Detaljan pregled
+                </Link>
               </div>
             </div>
           </div>
@@ -720,6 +1013,50 @@ export const AdvancedInvoiceList: React.FC = () => {
         exportType="invoices"
         title="Export faktura"
       />
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={deleteConfirm.open}
+        onClose={() => setDeleteConfirm({ open: false, count: 0, ids: null })}
+        onConfirm={handleConfirmBulkDelete}
+        title="Brisanje faktura"
+        message={`Da li ste sigurni da želite da obrišete ${deleteConfirm.count} faktura?`}
+        confirmText="Obriši"
+        variant="danger"
+      />
+
+      {/* Save View Dialog */}
+      {saveViewDialog.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl">
+            <h3 className="text-lg font-semibold mb-4">Sačuvaj pogled</h3>
+            <input
+              type="text"
+              value={saveViewDialog.name}
+              onChange={(e) => setSaveViewDialog(prev => ({ ...prev, name: e.target.value }))}
+              placeholder="Unesite naziv za sačuvani pogled"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              autoFocus
+            />
+            <div className="flex justify-end gap-3 mt-4">
+              <button
+                onClick={() => setSaveViewDialog({ open: false, name: '' })}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
+              >
+                Odustani
+              </button>
+              <button
+                onClick={handleSaveViewConfirm}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Sačuvaj
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
+export default AdvancedInvoiceList;

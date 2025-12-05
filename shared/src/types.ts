@@ -420,3 +420,833 @@ export const TravelOrderSchema = z.object({
 
 export type TravelOrder = z.infer<typeof TravelOrderSchema>;
 export type TravelOrderExpense = z.infer<typeof TravelOrderExpenseSchema>;
+
+// =====================================================
+// DASHBOARD TYPES
+// =====================================================
+
+// Dashboard Overview Statistics
+export interface DashboardOverview {
+  totalInvoices: number;
+  acceptedInvoices: number;
+  pendingInvoices: number;
+  rejectedInvoices: number;
+  totalRevenue: number;
+  acceptanceRate: number;
+  trends: {
+    invoices: { value: number; positive: boolean };
+    revenue: { value: number; positive: boolean };
+  };
+}
+
+// Dashboard Charts Data
+export interface DashboardCharts {
+  revenueByMonth: Array<{ month: string; revenue: number }>;
+  invoicesByStatus: Array<{ status: string; count: number; color: string }>;
+}
+
+// Recent Invoice for Dashboard
+export interface DashboardInvoice {
+  id: string;
+  invoiceNumber: string;
+  type: 'OUTGOING' | 'INCOMING';
+  hasPartner: boolean;
+  partnerName: string;
+  partnerPIB: string;
+  totalAmount: number;
+  currency: string;
+  createdAt: string;
+  issueDate: string;
+  status: string;
+}
+
+// Dashboard Alerts
+export interface DashboardAlerts {
+  overdueInvoices: {
+    count: number;
+    totalAmount: number;
+    items: Array<{
+      id: string;
+      invoiceNumber: string;
+      partnerName: string;
+      totalAmount: number;
+      dueDate: string;
+      daysOverdue: number;
+    }>;
+  };
+  lowStockProducts: {
+    count: number;
+    items: Array<{
+      id: string;
+      name: string;
+      sku: string;
+      currentStock: number;
+      minStock: number;
+      unit: string;
+    }>;
+  };
+  deadlines: {
+    critical: number;
+    warning: number;
+    aging: number;
+  };
+}
+
+// SEF Health Status
+export interface SEFHealthStatus {
+  isOnline: boolean;
+  lastPingAt: string | null;
+  lastPingLatencyMs: number | null;
+  queueStats: {
+    waiting: number;
+    active: number;
+    completed: number;
+    failed: number;
+    delayed: number;
+  };
+  errors24h: number;
+  successRate24h: number;
+  retryTrend: {
+    value: number;
+    positive: boolean;
+  };
+  environment: 'demo' | 'production';
+  lastSuccessfulSync: string | null;
+}
+
+// Saved Search
+export interface SavedSearch {
+  id: string;
+  name: string;
+  query: string;
+  createdAt: string;
+  usageCount: number;
+}
+
+// Dashboard Settings
+export interface DashboardSettings {
+  autoRefreshInterval: number; // seconds, 0 = disabled
+  showSEFHealth: boolean;
+  showAlerts: boolean;
+  showRecentInvoices: boolean;
+  showCharts: boolean;
+  defaultDateRange: 'week' | 'month' | 'quarter' | 'year';
+}
+
+// ================== INVOICE LIST TYPES ==================
+
+// Invoice List Item (for table display)
+export interface InvoiceListItem {
+  id: string;
+  invoiceNumber: string;
+  issueDate: string;
+  dueDate: string | null;
+  status: InvoiceStatus;
+  type: InvoiceType;
+  buyerName: string;
+  buyerPIB: string;
+  totalAmount: number;
+  taxAmount: number;
+  currency: string;
+  sefId: string | null;
+  sefStatus: string | null;
+  createdAt: string;
+  updatedAt: string;
+  partner: {
+    id: string;
+    name: string;
+    pib: string;
+    type: 'SUPPLIER' | 'CUSTOMER' | 'BOTH';
+  } | null;
+  company: {
+    id: string;
+    name: string;
+    pib: string;
+  } | null;
+  lines: {
+    id: string;
+    lineNumber: number;
+    itemName: string;
+    quantity: number;
+    unitPrice: number;
+    taxRate: number;
+    amount: number;
+  }[];
+}
+
+// Invoice Status Counts (for tabs/filters)
+export interface InvoiceStatusCounts {
+  all: number;
+  draft: number;
+  sent: number;
+  approved: number;
+  rejected: number;
+  cancelled: number;
+}
+
+// Invoice List Response (paginated)
+export interface InvoiceListResponse {
+  data: InvoiceListItem[];
+  pagination: {
+    hasNext: boolean;
+    hasPrev: boolean;
+    nextCursor: string | null;
+    prevCursor: string | null;
+    total?: number;
+  };
+  counts: InvoiceStatusCounts;
+}
+
+// Invoice Filter Params
+export interface InvoiceFilterParams {
+  status?: string;
+  type?: string;
+  search?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  sortBy?: 'issueDate' | 'dueDate' | 'totalAmount' | 'invoiceNumber' | 'createdAt';
+  sortOrder?: 'asc' | 'desc';
+  cursor?: string;
+  limit?: number;
+  direction?: 'next' | 'prev';
+}
+
+// Bulk Operation Result
+export interface BulkOperationResult {
+  success: boolean;
+  processed: number;
+  failed: number;
+  errors: Array<{
+    id: string;
+    error: string;
+  }>;
+  jobIds?: string[];
+}
+
+// Invoice Saved View
+export interface InvoiceSavedView {
+  id: string;
+  name: string;
+  icon: string;
+  filters: Partial<InvoiceFilterParams>;
+  isDefault?: boolean;
+  createdAt: string;
+}
+
+// ================== INCOMING INVOICE TYPES ==================
+
+// Incoming Invoice Status (matches Prisma enum)
+export enum IncomingInvoiceStatus {
+  RECEIVED = 'RECEIVED',
+  PENDING = 'PENDING',
+  ACCEPTED = 'ACCEPTED',
+  REJECTED = 'REJECTED',
+  CANCELLED = 'CANCELLED'
+}
+
+// Payment Status (matches Prisma enum)
+export enum InvoicePaymentStatus {
+  UNPAID = 'UNPAID',
+  PARTIALLY_PAID = 'PARTIALLY_PAID',
+  PAID = 'PAID',
+  OVERDUE = 'OVERDUE'
+}
+
+// Incoming Invoice Line Item
+export interface IncomingInvoiceLineItem {
+  id: string;
+  lineNumber: number;
+  itemName: string;
+  quantity: number;
+  unitPrice: number;
+  taxRate: number;
+  taxAmount: number;
+  amount: number;
+  productId: string | null;
+  product: {
+    id: string;
+    name: string;
+    code: string;
+    unit: string;
+  } | null;
+}
+
+// Incoming Invoice List Item (for table display)
+export interface IncomingInvoiceListItem {
+  id: string;
+  invoiceNumber: string;
+  issueDate: string;
+  dueDate: string | null;
+  receivedDate: string;
+  status: IncomingInvoiceStatus;
+  paymentStatus: InvoicePaymentStatus;
+  supplierName: string;
+  supplierPIB: string;
+  supplierAddress: string | null;
+  totalAmount: number;
+  taxAmount: number;
+  paidAmount: number;
+  currency: string;
+  sefId: string | null;
+  sefStatus: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Incoming Invoice Detail (full data)
+export interface IncomingInvoiceDetail extends IncomingInvoiceListItem {
+  acceptedAt: string | null;
+  rejectedAt: string | null;
+  rejectionReason: string | null;
+  partnerId: string | null;
+  lines: IncomingInvoiceLineItem[];
+}
+
+// Incoming Invoice Status Counts
+export interface IncomingInvoiceStatusCounts {
+  all: number;
+  received: number;
+  pending: number;
+  accepted: number;
+  rejected: number;
+  cancelled: number;
+}
+
+// Incoming Invoice Payment Status Counts
+export interface IncomingInvoicePaymentCounts {
+  all: number;
+  unpaid: number;
+  partiallyPaid: number;
+  paid: number;
+  overdue: number;
+}
+
+// Incoming Invoice List Response
+export interface IncomingInvoiceListResponse {
+  data: IncomingInvoiceListItem[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+  statusCounts?: IncomingInvoiceStatusCounts;
+  paymentCounts?: IncomingInvoicePaymentCounts;
+}
+
+// Incoming Invoice Filter Params
+export interface IncomingInvoiceFilterParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: IncomingInvoiceStatus | string;
+  paymentStatus?: InvoicePaymentStatus | string;
+  dateFrom?: string;
+  dateTo?: string;
+  supplierPIB?: string;
+  sortBy?: 'issueDate' | 'receivedDate' | 'totalAmount' | 'invoiceNumber' | 'dueDate';
+  sortOrder?: 'asc' | 'desc';
+}
+
+// Create Incoming Invoice DTO
+export interface CreateIncomingInvoiceDTO {
+  invoiceNumber: string;
+  issueDate: string;
+  dueDate?: string;
+  supplierName: string;
+  supplierPIB: string;
+  supplierAddress?: string;
+  totalAmount: number;
+  taxAmount: number;
+  currency?: string;
+  items: Array<{
+    name: string;
+    quantity: number;
+    unitPrice: number;
+    taxRate: number;
+    amount: number;
+  }>;
+  paymentStatus?: InvoicePaymentStatus;
+}
+
+// Sync Result
+export interface IncomingInvoiceSyncResult {
+  synced: number;
+  errors: number;
+  details?: Array<{
+    sefId: string;
+    status: 'created' | 'updated' | 'error';
+    error?: string;
+  }>;
+}
+
+// =====================================================
+// PARTNER & PRODUCT AUTOCOMPLETE TYPES
+// =====================================================
+
+// Partner autocomplete result
+export interface PartnerAutocompleteItem {
+  id: string;
+  name: string;
+  pib: string;
+  type?: PartnerType;
+  city?: string;
+  address?: string;
+  postalCode?: string;
+  email?: string;
+  phone?: string;
+  defaultPaymentTerms?: number;
+  vatPayer?: boolean;
+}
+
+// Partner list item (full details for list view)
+export interface PartnerListItem {
+  id: string;
+  companyId: string;
+  type: PartnerType | 'BUYER' | 'SUPPLIER' | 'BOTH';
+  pib: string;
+  name: string;
+  shortName?: string;
+  address: string;
+  city: string;
+  postalCode: string;
+  country: string;
+  email?: string;
+  phone?: string;
+  fax?: string;
+  website?: string;
+  contactPerson?: string;
+  vatPayer: boolean;
+  vatNumber?: string;
+  defaultPaymentTerms: number;
+  creditLimit?: number;
+  discount?: number;
+  note?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  _count?: {
+    invoices: number;
+    incomingInvoices?: number;
+  };
+}
+
+// Create/Update Partner DTO
+export interface CreatePartnerDTO {
+  type: PartnerType | 'BUYER' | 'SUPPLIER' | 'BOTH';
+  pib: string;
+  name: string;
+  shortName?: string;
+  address: string;
+  city: string;
+  postalCode: string;
+  country?: string;
+  email?: string;
+  phone?: string;
+  fax?: string;
+  website?: string;
+  contactPerson?: string;
+  vatPayer?: boolean;
+  vatNumber?: string;
+  defaultPaymentTerms?: number;
+  creditLimit?: number;
+  discount?: number;
+  note?: string;
+}
+
+export type UpdatePartnerDTO = Partial<CreatePartnerDTO>;
+
+// Partner Summary (for stats)
+export interface PartnerSummary {
+  total: number;
+  buyers: number;
+  suppliers: number;
+  both: number;
+  active: number;
+  inactive: number;
+}
+
+// Product autocomplete result
+export interface ProductAutocompleteItem {
+  id: string;
+  name: string;
+  sku?: string;
+  unitPrice: number;
+  taxRate: number;
+  unit: string;
+  currentStock?: number;
+  trackInventory?: boolean;
+}
+
+// =====================================================
+// CREATE INVOICE TYPES
+// =====================================================
+
+// Unit of measure options
+export type UnitOfMeasure = 'kom' | 'kg' | 'l' | 'm' | 'm2' | 'm3' | 'h' | 'dan' | 'mes' | 'god' | 'pkt' | 'set';
+
+// Invoice payment method
+export type PaymentMethod = 'TRANSFER' | 'CASH' | 'CARD' | 'COMPENSATION';
+
+// Create invoice line item
+export interface CreateInvoiceLineDTO {
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  taxRate: number;
+  discount?: number;
+  unit?: UnitOfMeasure | string;
+  productId?: string;
+}
+
+// Create invoice DTO (outgoing)
+export interface CreateInvoiceDTO {
+  companyId: string;
+  invoiceNumber: string;
+  issueDate: string;
+  dueDate?: string;
+  currency: string;
+  paymentMethod?: PaymentMethod;
+  note?: string;
+  status?: InvoiceStatus;
+  
+  // Partner (if from database)
+  partnerId?: string;
+  
+  // Or manual buyer info
+  buyerName?: string;
+  buyerPIB?: string;
+  buyerAddress?: string;
+  buyerCity?: string;
+  buyerPostalCode?: string;
+  
+  // Invoice lines
+  lines: CreateInvoiceLineDTO[];
+}
+
+// Invoice totals calculation
+export interface InvoiceTotals {
+  subtotal: number;
+  totalDiscount: number;
+  taxableAmount: number;
+  tax: number;
+  total: number;
+}
+
+// =====================================================
+// ADVANCE INVOICE TYPES
+// =====================================================
+
+// Advance Invoice Status (matches Prisma enum)
+export enum AdvanceInvoiceStatus {
+  DRAFT = 'DRAFT',
+  SENT = 'SENT',
+  ISSUED = 'ISSUED',      // Alias for compatibility
+  PAID = 'PAID',          // After payment received
+  PARTIALLY_USED = 'PARTIALLY_USED',
+  FULLY_USED = 'FULLY_USED',
+  CANCELLED = 'CANCELLED'
+}
+
+// Advance Invoice List Item
+export interface AdvanceInvoiceListItem {
+  id: string;
+  companyId: string;
+  invoiceNumber: string;
+  
+  // Partner
+  partnerId: string;
+  partner?: {
+    id: string;
+    name: string;
+    pib: string;
+  };
+  
+  // Dates
+  issueDate: string;
+  sentAt?: string;
+  
+  // Amounts (advanceAmount = netAmount = base before VAT)
+  advanceAmount: number;  // Backend field name
+  netAmount?: number;     // Alias for advanceAmount (compatibility)
+  taxAmount: number;
+  totalAmount: number;
+  usedAmount: number;
+  remainingAmount: number;
+  
+  currency: string;
+  
+  // Status
+  status: AdvanceInvoiceStatus | string;
+  
+  // SEF
+  sefId?: string;
+  sefStatus?: string;
+  
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Advance Invoice Detail
+export interface AdvanceInvoiceDetail extends AdvanceInvoiceListItem {
+  // Additional relations
+  company?: {
+    id: string;
+    name: string;
+    pib: string;
+  };
+  closedByInvoices?: string[];
+  linkedInvoices?: Array<{
+    id: string;
+    invoiceNumber: string;
+    amount: number;
+  }>;
+}
+
+// Create Advance Invoice DTO
+export interface CreateAdvanceInvoiceDTO {
+  partnerId: string;
+  issueDate: string;
+  advanceAmount: number;  // Base amount before VAT
+  taxRate: number;        // VAT rate (20, 10, 0)
+  currency?: string;
+  note?: string;
+}
+
+// Use Advance DTO (for linking to final invoice)
+export interface UseAdvanceDTO {
+  amount: number;
+  finalInvoiceId: string;
+  notes?: string;
+}
+
+// Advance Invoice Summary (for dashboard/reports)
+export interface AdvanceInvoiceSummary {
+  totalCount: number;
+  totalAmount: number;
+  usedAmount: number;
+  remainingAmount: number;
+  byStatus: Record<string, { count: number; amount: number }>;
+}
+
+// Advance Invoice List Response
+export interface AdvanceInvoiceListResponse {
+  data: AdvanceInvoiceListItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+  summary?: AdvanceInvoiceSummary;
+}
+
+// Advance Invoice Filter Params
+export interface AdvanceInvoiceFilterParams {
+  status?: AdvanceInvoiceStatus | string;
+  partnerId?: string;
+  fromDate?: string;
+  toDate?: string;
+  hasRemaining?: boolean;
+  page?: number;
+  limit?: number;
+}
+
+// =====================
+// RECURRING INVOICE TYPES
+// =====================
+
+export enum RecurringFrequency {
+  WEEKLY = 'WEEKLY',
+  MONTHLY = 'MONTHLY',
+  QUARTERLY = 'QUARTERLY',
+  YEARLY = 'YEARLY'
+}
+
+export enum RecurringInvoiceStatus {
+  ACTIVE = 'ACTIVE',
+  PAUSED = 'PAUSED',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED'
+}
+
+// Recurring Invoice Item (template)
+export interface RecurringInvoiceItem {
+  id?: string;
+  productId?: string;
+  name: string;
+  quantity: number;
+  unit?: string;
+  unitPrice: number;
+  price?: number; // Alias for unitPrice
+  vatRate?: number;
+  taxRate?: number; // Alias for vatRate (either vatRate or taxRate should be set)
+  totalAmount?: number;
+}
+
+// Recurring Invoice List Item
+export interface RecurringInvoiceListItem {
+  id: string;
+  companyId: string;
+  
+  // Schedule
+  frequency: RecurringFrequency | string;
+  startDate: string;
+  endDate?: string;
+  nextRunAt: string;
+  lastRunAt?: string;
+  
+  // Status
+  status: RecurringInvoiceStatus | string;
+  
+  // Partner
+  partnerId: string;
+  partner?: {
+    id: string;
+    name: string;
+    pib: string;
+    email?: string;
+  };
+  
+  // Template data
+  currency: string;
+  items: RecurringInvoiceItem[];
+  note?: string;
+  
+  // Stats (from backend aggregation)
+  generatedCount?: number;
+  
+  // Audit
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Create Recurring Invoice DTO
+export interface CreateRecurringInvoiceDTO {
+  partnerId: string;
+  frequency: RecurringFrequency | string;
+  startDate: string;
+  endDate?: string;
+  currency?: string;
+  items: RecurringInvoiceItem[];
+  note?: string;
+}
+
+// Update Recurring Invoice DTO
+export interface UpdateRecurringInvoiceDTO {
+  frequency?: RecurringFrequency | string;
+  endDate?: string | null;
+  status?: RecurringInvoiceStatus | string;
+  items?: RecurringInvoiceItem[];
+  note?: string;
+}
+
+// Recurring Invoice Summary
+export interface RecurringInvoiceSummary {
+  total: number;
+  active: number;
+  paused: number;
+  completed: number;
+  cancelled: number;
+}
+
+// =====================
+// PRODUCT PAGE TYPES
+// =====================
+
+// Product list item (matching backend response)
+export interface ProductListItem {
+  id: string;
+  code: string;
+  barcode?: string | null;
+  name: string;
+  description?: string | null;
+  category?: string | null;
+  subcategory?: string | null;
+  unitPrice: number;
+  costPrice?: number | null;
+  vatRate: number;
+  unit: string;
+  trackInventory: boolean;
+  currentStock: number;
+  minStock?: number | null;
+  maxStock?: number | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  _count?: {
+    invoiceLines: number;
+  };
+}
+
+// Create Product DTO
+export interface CreateProductDTO {
+  code: string;
+  barcode?: string;
+  name: string;
+  description?: string;
+  category?: string;
+  subcategory?: string;
+  unitPrice: number;
+  costPrice?: number;
+  vatRate?: number;
+  unit?: string;
+  trackInventory?: boolean;
+  currentStock?: number;
+  minStock?: number;
+  maxStock?: number;
+  supplier?: string;
+  manufacturer?: string;
+  isActive?: boolean;
+  note?: string;
+}
+
+// Update Product DTO (all optional)
+export type UpdateProductDTO = Partial<CreateProductDTO>;
+
+// Product Summary (for stats cards)
+export interface ProductSummary {
+  total: number;
+  withInventory: number;
+  lowStock: number;
+  active: number;
+}
+
+// Product paginated response
+export interface ProductPaginatedResponse {
+  success: boolean;
+  data: ProductListItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+  summary?: ProductSummary;
+}
+
+// Stock adjustment request
+export interface StockAdjustmentRequest {
+  adjustment: number;
+  note?: string;
+}
+
+// Inventory transaction (for history)
+export interface InventoryTransaction {
+  id: string;
+  productId: string;
+  type: 'IN' | 'OUT' | 'ADJUSTMENT' | 'INITIAL' | 'SALE' | 'PURCHASE' | 'RETURN';
+  quantity: number;
+  previousStock: number;
+  newStock: number;
+  referenceType?: string | null;
+  referenceId?: string | null;
+  note?: string | null;
+  createdBy?: string;
+  createdAt: string;
+  user?: {
+    firstName: string;
+    lastName: string;
+  };
+}

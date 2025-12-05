@@ -49,6 +49,7 @@ const PPPDV = lazy(() => import('./pages/PPPDV'));
 const AdvanceInvoices = lazy(() => import('./pages/AdvanceInvoices'));
 const CashFlow = lazy(() => import('./pages/CashFlow'));
 const EmailNotifications = lazy(() => import('./pages/EmailNotifications'));
+const SEFPortal = lazy(() => import('./pages/SEFPortal'));
 
 // Calculations
 const CalculationList = lazy(() => import('./pages/calculations/CalculationList').then(m => ({ default: m.CalculationList })));
@@ -128,6 +129,7 @@ const AppContent: React.FC = () => {
             <Route path="/aging" element={<AgingReports />} />
             
             {/* New Module Routes */}
+            <Route path="/sef" element={<SEFPortal />} />
             <Route path="/kpo" element={<KPO />} />
             <Route path="/compensations" element={<Compensations />} />
             <Route path="/ios" element={<IOS />} />

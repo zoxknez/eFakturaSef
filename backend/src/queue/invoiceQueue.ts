@@ -160,8 +160,8 @@ invoiceQueue.process(async (job: Job<InvoiceJobData>) => {
     await prisma.invoice.update({
       where: { id: invoiceId },
       data: {
-        sefId: sefResponse.invoiceId,
-        sefStatus: sefResponse.status,
+        sefId: sefResponse.InvoiceId.toString(),
+        sefStatus: 'SENT', // SEFMiniInvoiceDto doesn't have Status, assume SENT if response received
         status: 'SENT',
         sentAt: new Date(),
         ublXml,
@@ -175,16 +175,15 @@ invoiceQueue.process(async (job: Job<InvoiceJobData>) => {
         entityId: invoiceId,
         action: 'sent',
         newData: {
-          sefId: sefResponse.invoiceId,
-          sefStatus: sefResponse.status,
+          sefId: sefResponse.InvoiceId.toString(),
+          sefStatus: 'SENT',
         },
         userId,
       },
     });
 
     logger.info(`Invoice ${invoiceId} sent successfully`, {
-      sefId: sefResponse.invoiceId,
-      status: sefResponse.status,
+      sefId: sefResponse.InvoiceId,
     });
 
     // Record success metrics
@@ -196,8 +195,8 @@ invoiceQueue.process(async (job: Job<InvoiceJobData>) => {
     return {
       success: true,
       invoiceId,
-      sefId: sefResponse.invoiceId,
-      status: sefResponse.status,
+      sefId: sefResponse.InvoiceId.toString(),
+      status: 'SENT',
     };
   } catch (error: any) {
     logger.error(`Failed to process invoice ${invoiceId}`, {

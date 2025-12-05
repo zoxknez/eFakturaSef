@@ -20,6 +20,7 @@ interface SearchResult {
 // Predefined pages and actions for quick access
 const staticResults: SearchResult[] = [
   { id: 'page-dashboard', type: 'page', title: 'Komandna tabla', subtitle: 'Početna stranica', icon: '📊', url: '/', keywords: ['home', 'dashboard', 'pocetna'] },
+  { id: 'page-sef', type: 'page', title: 'SEF Portal', subtitle: 'Sistem Elektronskih Faktura', icon: '🏛️', url: '/sef', keywords: ['sef', 'efaktura', 'elektronska', 'portal', 'api'] },
   { id: 'page-invoices', type: 'page', title: 'Fakture', subtitle: 'Lista svih faktura', icon: '📄', url: '/invoices', keywords: ['invoice', 'racun', 'lista'] },
   { id: 'page-new-invoice', type: 'action', title: 'Nova faktura', subtitle: 'Kreiraj novu fakturu', icon: '➕', url: '/invoices/new', keywords: ['new', 'nova', 'create', 'kreiraj'] },
   { id: 'page-partners', type: 'page', title: 'Partneri', subtitle: 'Šifarnik partnera', icon: '👥', url: '/partners', keywords: ['partner', 'buyer', 'kupac', 'dobavljac'] },

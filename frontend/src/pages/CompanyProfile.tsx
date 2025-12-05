@@ -5,7 +5,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
-import axios from 'axios';
+import api from '../services/api';
 import {
   Building2,
   Link,
@@ -26,21 +26,10 @@ import {
   User,
   Monitor,
   Key,
-  Lock
+  Lock,
+  RefreshCw,
+  Activity
 } from 'lucide-react';
-
-const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3001/api',
-  headers: { 'Content-Type': 'application/json' }
-});
-
-apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('accessToken');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
 
 interface Company {
   id: string;
@@ -125,8 +114,11 @@ export default function CompanyProfile() {
   const { data: company, isLoading: companyLoading } = useQuery({
     queryKey: ['company'],
     queryFn: async () => {
-      const response = await apiClient.get<Company>('/api/company');
-      return response.data;
+      const response = await api.getCompanyProfile();
+      if (response.success && response.data) {
+        return response.data as Company;
+      }
+      throw new Error(response.error || 'Failed to fetch company');
     }
   });
 
@@ -142,15 +134,22 @@ export default function CompanyProfile() {
   const { data: users, isLoading: usersLoading } = useQuery({
     queryKey: ['users'],
     queryFn: async () => {
-      const response = await apiClient.get<{ success: boolean; data: User[] }>('/api/users');
-      return response.data.data || [];
+      const response = await api.getUsers();
+      if (response.success && response.data) {
+        const userData = response.data as { data?: User[] };
+        return userData.data || [];
+      }
+      return [];
     }
   });
 
   // Update company mutation
   const updateCompanyMutation = useMutation({
     mutationFn: async (data: Partial<Company>) => {
-      const response = await apiClient.put('/api/company', data);
+      const response = await api.updateCompanyProfile(data);
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to update company');
+      }
       return response.data;
     },
     onSuccess: () => {
@@ -158,38 +157,36 @@ export default function CompanyProfile() {
       toast.success('Podaci kompanije uspešno ažurirani');
       setIsEditing(false);
     },
-    onError: (error: unknown) => {
-      if (axios.isAxiosError(error)) {
-        toast.error(error.response?.data?.message || 'Greška pri ažuriranju');
-      } else {
-        toast.error('Greška pri ažuriranju');
-      }
+    onError: (error: Error) => {
+      toast.error(error.message || 'Greška pri ažuriranju');
     }
   });
 
   // Update settings mutation
   const updateSettingsMutation = useMutation({
     mutationFn: async (data: Partial<CompanySettings>) => {
-      const response = await apiClient.put('/api/company/settings', data);
+      const response = await api.updateCompanySettings(data);
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to update settings');
+      }
       return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['company'] });
       toast.success('Podešavanja uspešno sačuvana');
     },
-    onError: (error: unknown) => {
-      if (axios.isAxiosError(error)) {
-        toast.error(error.response?.data?.message || 'Greška pri čuvanju podešavanja');
-      } else {
-        toast.error('Greška pri čuvanju podešavanja');
-      }
+    onError: (error: Error) => {
+      toast.error(error.message || 'Greška pri čuvanju podešavanja');
     }
   });
 
   // Create user mutation
   const createUserMutation = useMutation({
     mutationFn: async (data: typeof userForm) => {
-      const response = await apiClient.post('/api/users', data);
+      const response = await api.createUser(data);
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to create user');
+      }
       return response.data;
     },
     onSuccess: () => {
@@ -198,49 +195,48 @@ export default function CompanyProfile() {
       setShowUserModal(false);
       setUserForm({ email: '', firstName: '', lastName: '', role: 'OPERATOR', password: '' });
     },
-    onError: (error: unknown) => {
-      if (axios.isAxiosError(error)) {
-        toast.error(error.response?.data?.message || 'Greška pri kreiranju korisnika');
-      } else {
-        toast.error('Greška pri kreiranju korisnika');
-      }
+    onError: (error: Error) => {
+      toast.error(error.message || 'Greška pri kreiranju korisnika');
     }
   });
 
   // Toggle user status mutation
   const toggleUserMutation = useMutation({
     mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
-      const response = await apiClient.patch(`/api/users/${id}/status`, { isActive });
+      const response = await api.toggleUserStatus(id, isActive);
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to toggle user status');
+      }
       return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       toast.success('Status korisnika ažuriran');
     },
-    onError: (error: unknown) => {
-      if (axios.isAxiosError(error)) {
-        toast.error(error.response?.data?.message || 'Greška');
-      } else {
-        toast.error('Greška');
-      }
+    onError: (error: Error) => {
+      toast.error(error.message || 'Greška');
     }
   });
 
   // Test SEF connection
   const testSefMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiClient.post('/api/sef/test-connection');
+      const response = await api.testSEFConnection();
+      if (!response.success) {
+        throw new Error(response.error || 'Connection test failed');
+      }
       return response.data;
     },
-    onSuccess: (data: { success: boolean; message?: string }) => {
-      if (data.success) {
+    onSuccess: (data) => {
+      const result = data as { success?: boolean; message?: string };
+      if (result.success !== false) {
         toast.success('Konekcija sa SEF-om uspešna!');
       } else {
-        toast.error('Konekcija neuspešna: ' + data.message);
+        toast.error('Konekcija neuspešna: ' + (result.message || 'Nepoznata greška'));
       }
     },
-    onError: () => {
-      toast.error('Greška pri testiranju konekcije');
+    onError: (error: Error) => {
+      toast.error(error.message || 'Greška pri testiranju konekcije');
     }
   });
 

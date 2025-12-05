@@ -9,6 +9,7 @@ import { logger } from '../utils/logger';
 import { z } from 'zod';
 import { toDecimal, toNumber } from '../utils/decimal';
 import cacheService from './cacheService';
+import { sanitizeSearchQuery } from '../utils/validation';
 
 // ========================================
 // VALIDATION SCHEMAS
@@ -155,52 +156,58 @@ export class JournalService {
       data.lines.reduce((sum, l) => sum + (l.creditAmount || 0), 0)
     ));
 
-    // Create entry with lines
-    const entry = await prisma.journalEntry.create({
-      data: {
-        entryNumber,
-        date: data.date,
-        description: data.description,
-        type: data.type,
-        referenceType: data.referenceType,
-        referenceId: data.referenceId,
-        fiscalYearId,
-        totalDebit,
-        totalCredit,
-        companyId,
-        createdBy: userId,
-        lines: {
-          create: data.lines.map((line, index) => ({
-            lineNumber: index + 1,
-            accountId: line.accountId,
-            debitAmount: line.debitAmount || 0,
-            creditAmount: line.creditAmount || 0,
-            description: line.description,
-            partnerId: line.partnerId,
-          })),
+    // Create entry with lines in a transaction to ensure atomicity
+    const entry = await prisma.$transaction(async (tx) => {
+      const created = await tx.journalEntry.create({
+        data: {
+          entryNumber,
+          date: data.date,
+          description: data.description,
+          type: data.type,
+          referenceType: data.referenceType,
+          referenceId: data.referenceId,
+          fiscalYearId,
+          totalDebit,
+          totalCredit,
+          companyId,
+          createdBy: userId,
+          lines: {
+            create: data.lines.map((line, index) => ({
+              lineNumber: index + 1,
+              accountId: line.accountId,
+              debitAmount: line.debitAmount || 0,
+              creditAmount: line.creditAmount || 0,
+              description: line.description,
+              partnerId: line.partnerId,
+            })),
+          },
         },
-      },
-      include: {
-        lines: {
-          include: {
-            account: {
-              select: {
-                id: true,
-                code: true,
-                name: true,
+        include: {
+          lines: {
+            include: {
+              account: {
+                select: {
+                  id: true,
+                  code: true,
+                  name: true,
+                },
               },
             },
+            orderBy: { lineNumber: 'asc' },
           },
-          orderBy: { lineNumber: 'asc' },
+          fiscalYear: true,
         },
-        fiscalYear: true,
-      },
-    });
+      });
 
-    logger.info(`Journal entry created: ${entryNumber}`, { companyId, userId });
+      logger.info(`Journal entry created: ${entryNumber}`, { companyId, userId });
+      
+      return created;
+    });
     
-    // Invalidate dashboard cache
-    await cacheService.invalidate.dashboard(companyId);
+    // Invalidate dashboard cache after successful transaction
+    await cacheService.invalidate.dashboard(companyId).catch(err => {
+      logger.warn('Failed to invalidate dashboard cache', { error: err });
+    });
 
     return entry;
   }
@@ -254,12 +261,9 @@ export class JournalService {
         data.lines.reduce((sum, l) => sum + (l.creditAmount || 0), 0)
       ));
 
-      // Delete existing lines and create new ones
-      await prisma.journalLine.deleteMany({
-        where: { journalEntryId: id },
-      });
-
+      // Delete existing lines and create new ones in transaction
       updateData.lines = {
+        deleteMany: {},
         create: data.lines.map((line, index) => ({
           lineNumber: index + 1,
           accountId: line.accountId,
@@ -271,20 +275,23 @@ export class JournalService {
       };
     }
 
-    const updated = await prisma.journalEntry.update({
-      where: { id },
-      data: updateData,
-      include: {
-        lines: {
-          include: {
-            account: {
-              select: { id: true, code: true, name: true },
+    // Update entry with lines in a transaction to ensure atomicity
+    const updated = await prisma.$transaction(async (tx) => {
+      return await tx.journalEntry.update({
+        where: { id },
+        data: updateData,
+        include: {
+          lines: {
+            include: {
+              account: {
+                select: { id: true, code: true, name: true },
+              },
             },
+            orderBy: { lineNumber: 'asc' },
           },
-          orderBy: { lineNumber: 'asc' },
+          fiscalYear: true,
         },
-        fiscalYear: true,
-      },
+      });
     });
 
     logger.info(`Journal entry updated: ${entry.entryNumber}`, { id, userId });
@@ -320,26 +327,31 @@ export class JournalService {
       throw new Error('Journal entry is not balanced');
     }
 
-    const posted = await prisma.journalEntry.update({
-      where: { id },
-      data: {
-        status: JournalStatus.POSTED,
-        postedAt: new Date(),
-        postedBy: userId,
-      },
-      include: {
-        lines: {
-          include: {
-            account: { select: { id: true, code: true, name: true } },
+    // Post entry in transaction (even though it's simple, ensures consistency)
+    const posted = await prisma.$transaction(async (tx) => {
+      return await tx.journalEntry.update({
+        where: { id },
+        data: {
+          status: JournalStatus.POSTED,
+          postedAt: new Date(),
+          postedBy: userId,
+        },
+        include: {
+          lines: {
+            include: {
+              account: { select: { id: true, code: true, name: true } },
+            },
           },
         },
-      },
+      });
     });
 
     logger.info(`Journal entry posted: ${entry.entryNumber}`, { id, userId });
     
-    // Invalidate dashboard cache
-    await cacheService.invalidate.dashboard(companyId);
+    // Invalidate dashboard cache after successful transaction
+    await cacheService.invalidate.dashboard(companyId).catch(err => {
+      logger.warn('Failed to invalidate dashboard cache', { error: err });
+    });
 
     return posted;
   }
@@ -442,9 +454,24 @@ export class JournalService {
       throw new Error('Only draft entries can be deleted');
     }
 
-    await prisma.journalEntry.delete({ where: { id } });
+    // Delete entry and lines in transaction (cascade will handle lines, but explicit is better)
+    await prisma.$transaction(async (tx) => {
+      // Delete lines first (explicit)
+      await tx.journalLine.deleteMany({
+        where: { journalEntryId: id },
+      });
+      
+      // Delete entry
+      await tx.journalEntry.delete({ where: { id } });
+    });
 
     logger.info(`Journal entry deleted: ${entry.entryNumber}`);
+    
+    // Invalidate cache after successful deletion
+    await cacheService.invalidate.dashboard(companyId).catch(err => {
+      logger.warn('Failed to invalidate dashboard cache', { error: err });
+    });
+    
     return { message: 'Journal entry deleted' };
   }
 
@@ -511,10 +538,14 @@ export class JournalService {
       if (options.toDate) where.date.lte = options.toDate;
     }
     if (options?.search) {
-      where.OR = [
-        { entryNumber: { contains: options.search } },
-        { description: { contains: options.search, mode: 'insensitive' } },
-      ];
+      // Sanitize search query
+      const sanitizedSearch = sanitizeSearchQuery(options.search);
+      if (sanitizedSearch) {
+        where.OR = [
+          { entryNumber: { contains: sanitizedSearch } },
+          { description: { contains: sanitizedSearch, mode: 'insensitive' } },
+        ];
+      }
     }
 
     const [entries, total] = await Promise.all([

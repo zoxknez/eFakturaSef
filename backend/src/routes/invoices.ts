@@ -72,6 +72,47 @@ router.get('/', InvoiceController.getAll);
 
 /**
  * @openapi
+ * /api/invoices/counts:
+ *   get:
+ *     summary: Get invoice status counts
+ *     description: Retrieve counts of invoices grouped by status
+ *     tags:
+ *       - Invoices
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Invoice counts retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     all:
+ *                       type: integer
+ *                     draft:
+ *                       type: integer
+ *                     sent:
+ *                       type: integer
+ *                     approved:
+ *                       type: integer
+ *                     rejected:
+ *                       type: integer
+ *                     cancelled:
+ *                       type: integer
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ */
+router.get('/counts', InvoiceController.getStatusCounts);
+
+/**
+ * @openapi
  * /api/invoices/{id}:
  *   get:
  *     summary: Get invoice by ID
@@ -381,5 +422,37 @@ router.post('/:id/cancel', idempotency({ ttl: 3600, required: true }), InvoiceCo
  *         $ref: '#/components/responses/UnauthorizedError'
  */
 router.get('/:id/pdf', InvoiceController.exportPDF);
+
+/**
+ * @openapi
+ * /api/invoices/{id}/xml:
+ *   get:
+ *     summary: Generate UBL XML for invoice
+ *     description: Generate and download a UBL 2.1 XML version of the invoice
+ *     tags:
+ *       - Invoices
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Invoice ID
+ *     responses:
+ *       200:
+ *         description: XML generated successfully
+ *         content:
+ *           application/xml:
+ *             schema:
+ *               type: string
+ *       404:
+ *         $ref: '#/components/responses/NotFoundError'
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ */
+router.get('/:id/xml', InvoiceController.exportXML);
 
 export default router;

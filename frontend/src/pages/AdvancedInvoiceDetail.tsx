@@ -4,6 +4,7 @@ import api from '../services/api';
 import PaymentModal from '../components/PaymentModal';
 import PaymentHistory from '../components/PaymentHistory';
 import { logger } from '../utils/logger';
+import toast from 'react-hot-toast';
 
 /** ==== Types (tvoja šema, sa par helpera) ==== */
 
@@ -58,6 +59,7 @@ interface InvoiceDetail {
   id: string;
   invoiceNumber: string;
   sefId?: string;
+  sefStatus?: string;
   issueDate: string;
   dueDate?: string;
 
@@ -68,6 +70,7 @@ interface InvoiceDetail {
   buyerPIB?: string;
   buyerAddress?: string;
   buyerCity?: string;
+  buyerPostalCode?: string;
 
   totalAmount: number; // ukupno (sa PDV-om)
   taxAmount: number;   // samo PDV deo (ako dostupno)
@@ -89,6 +92,8 @@ interface InvoiceDetail {
   timeline?: TimelineEvent[];
   attachments?: Attachment[];
   relatedDocuments?: RelatedDoc[];
+  relatedDocs?: RelatedDoc[];
+  payments?: unknown[];
 }
 
 /** ==== UI helpers ==== */
@@ -233,7 +238,50 @@ export const AdvancedInvoiceDetail: React.FC = () => {
       setError(null);
       const response = await api.getInvoice(id);
       if (response?.success && response.data) {
-        setInvoice(response.data as InvoiceDetail);
+        // Transform API response to InvoiceDetail format
+        const apiData = response.data;
+        const invoiceDetail: InvoiceDetail = {
+          id: apiData.id,
+          invoiceNumber: apiData.invoiceNumber,
+          sefId: apiData.sefId || undefined,
+          issueDate: apiData.issueDate,
+          dueDate: apiData.dueDate || undefined,
+          status: apiData.status as InvoiceDetail['status'],
+          sefStatus: apiData.sefStatus || undefined,
+          type: apiData.type as 'OUTGOING' | 'INCOMING',
+          buyerName: apiData.buyerName,
+          buyerPIB: apiData.buyerPIB,
+          buyerAddress: (apiData as unknown as { buyerAddress?: string }).buyerAddress,
+          buyerCity: (apiData as unknown as { buyerCity?: string }).buyerCity,
+          buyerPostalCode: (apiData as unknown as { buyerPostalCode?: string }).buyerPostalCode,
+          partner: apiData.partner ? {
+            id: apiData.partner.id,
+            name: apiData.partner.name,
+            pib: apiData.partner.pib,
+            type: apiData.partner.type === 'CUSTOMER' ? 'pravno_lice' : 
+                  apiData.partner.type === 'SUPPLIER' ? 'pravno_lice' : 'pravno_lice',
+            vatPayer: true,
+            defaultPaymentTerms: 15,
+          } : undefined,
+          lines: apiData.lines?.map(line => ({
+            id: line.id,
+            name: line.itemName,
+            quantity: line.quantity,
+            unitPrice: line.unitPrice,
+            taxRate: line.taxRate,
+            totalAmount: line.amount,
+          })) || [],
+          totalAmount: apiData.totalAmount,
+          taxAmount: apiData.taxAmount,
+          currency: apiData.currency,
+          createdAt: apiData.createdAt,
+          updatedAt: apiData.updatedAt,
+          attachments: [],
+          relatedDocs: [],
+          timeline: [],
+          payments: [],
+        };
+        setInvoice(invoiceDetail);
       } else {
         setError(response?.error || 'Greška pri učitavanju fakture.');
       }
@@ -286,7 +334,7 @@ export const AdvancedInvoiceDetail: React.FC = () => {
       window.open(url, '_blank', 'noopener,noreferrer');
     } catch (e) {
       logger.error('Failed to download PDF', e);
-      alert('Nije moguće preuzeti PDF.');
+      toast.error('Nije moguće preuzeti PDF.');
     }
   };
 
@@ -302,7 +350,7 @@ export const AdvancedInvoiceDetail: React.FC = () => {
       URL.revokeObjectURL(url);
     } catch (e) {
       logger.error('Failed to download XML', e);
-      alert('Nije moguće preuzeti XML.');
+      toast.error('Nije moguće preuzeti XML.');
     }
   };
 
@@ -310,9 +358,10 @@ export const AdvancedInvoiceDetail: React.FC = () => {
     if (!invoice?.sefId) return;
     try {
       await navigator.clipboard.writeText(invoice.sefId);
-      // mali vizuelni feedback – možeš zameniti toastom
-      alert('SEF ID je kopiran.');
-    } catch {}
+      toast.success('SEF ID je kopiran.');
+    } catch {
+      toast.error('Nije moguće kopirati SEF ID');
+    }
   };
 
   const stepDone = (step: 'created' | 'sent' | 'accepted' | 'paid') => {

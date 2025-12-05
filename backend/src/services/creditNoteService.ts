@@ -258,8 +258,8 @@ export class CreditNoteService {
       where: { id },
       data: {
         status: CreditNoteStatus.SENT,
-        sefId: result.invoiceId?.toString() || result.id?.toString(),
-        sefStatus: result.status,
+        sefId: result.InvoiceId.toString(),
+        sefStatus: 'SENT', // SEFMiniInvoiceDto doesn't have Status, assume SENT if response received
         sentAt: new Date(),
       },
       include: { lines: true },

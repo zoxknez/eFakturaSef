@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { logger } from '../utils/logger';
 import { PaymentService, CreatePaymentSchema, ListPaymentsQuerySchema } from '../services/paymentService';
 import { AuthenticatedRequest } from '../middleware/auth';
-import { getErrorMessage } from '../types/common';
+import { AppError, Errors, handleControllerError, getAuthenticatedCompanyId } from '../utils/errorHandler';
 
 export class PaymentController {
   /**
@@ -12,32 +12,22 @@ export class PaymentController {
   static async create(req: Request, res: Response) {
     try {
       const authReq = req as AuthenticatedRequest;
-      const user = authReq.user;
-      if (!user?.companyId) {
-        return res.status(403).json({ error: 'User not associated with a company' });
+      const companyId = getAuthenticatedCompanyId(authReq.user);
+      
+      if (!authReq.user?.id) {
+        throw Errors.unauthorized('User not authenticated');
       }
 
       // Validate request body
       const validationResult = CreatePaymentSchema.safeParse(req.body);
       if (!validationResult.success) {
-        return res.status(400).json({
-          error: 'Validation failed',
-          details: validationResult.error.format(),
-        });
+        throw Errors.validationError(validationResult.error.errors);
       }
 
-      const result = await PaymentService.createPayment(user.companyId, validationResult.data, user.id);
-      return res.status(201).json(result);
+      const result = await PaymentService.createPayment(companyId, validationResult.data, authReq.user.id);
+      return res.status(201).json({ success: true, data: result });
     } catch (error: unknown) {
-      const message = getErrorMessage(error);
-      logger.error('Failed to record payment:', error);
-      if (message === 'Invoice not found') {
-        return res.status(404).json({ error: message });
-      }
-      if (message.includes('exceeds remaining balance')) {
-        return res.status(400).json({ error: message });
-      }
-      return res.status(500).json({ error: 'Failed to record payment' });
+      return handleControllerError('PaymentController.create', error, res);
     }
   }
 
@@ -48,23 +38,17 @@ export class PaymentController {
   static async list(req: Request, res: Response) {
     try {
       const authReq = req as AuthenticatedRequest;
-      const user = authReq.user;
-      if (!user?.companyId) {
-        return res.status(403).json({ error: 'User not associated with a company' });
-      }
+      const companyId = getAuthenticatedCompanyId(authReq.user);
 
       // Validate query params
       const queryResult = ListPaymentsQuerySchema.safeParse(req.query);
       if (!queryResult.success) {
-        return res.status(400).json({
-          error: 'Invalid query parameters',
-          details: queryResult.error.format(),
-        });
+        throw Errors.validationError(queryResult.error.errors);
       }
 
       const { page, limit, invoiceId, method, status, dateFrom, dateTo, sortBy, sortOrder } = queryResult.data;
 
-      const result = await PaymentService.listPayments(user.companyId, {
+      const result = await PaymentService.listPayments(companyId, {
         page: parseInt(page),
         limit: parseInt(limit),
         invoiceId,
@@ -76,10 +60,9 @@ export class PaymentController {
         sortOrder: sortOrder as 'asc' | 'desc',
       });
 
-      return res.json(result);
+      return res.json({ success: true, ...result });
     } catch (error: unknown) {
-      logger.error('Failed to list payments:', error);
-      return res.status(500).json({ error: 'Failed to fetch payments' });
+      return handleControllerError('PaymentController.list', error, res);
     }
   }
 
@@ -90,22 +73,17 @@ export class PaymentController {
   static async get(req: Request, res: Response) {
     try {
       const authReq = req as AuthenticatedRequest;
-      const user = authReq.user;
+      const companyId = getAuthenticatedCompanyId(authReq.user);
       const id = req.params.id as string;
-
-      if (!user?.companyId) {
-        return res.status(403).json({ error: 'User not associated with a company' });
+      
+      if (!id) {
+        throw Errors.badRequest('Payment ID is required');
       }
 
-      const payment = await PaymentService.getPayment(id, user.companyId);
-      return res.json(payment);
+      const payment = await PaymentService.getPayment(id, companyId);
+      return res.json({ success: true, data: payment });
     } catch (error: unknown) {
-      const message = getErrorMessage(error);
-      logger.error('Failed to get payment:', error);
-      if (message === 'Payment not found') {
-        return res.status(404).json({ error: message });
-      }
-      return res.status(500).json({ error: 'Failed to fetch payment' });
+      return handleControllerError('PaymentController.get', error, res);
     }
   }
 
@@ -116,25 +94,21 @@ export class PaymentController {
   static async cancel(req: Request, res: Response) {
     try {
       const authReq = req as AuthenticatedRequest;
-      const user = authReq.user;
+      const companyId = getAuthenticatedCompanyId(authReq.user);
       const id = req.params.id as string;
-
-      if (!user?.companyId) {
-        return res.status(403).json({ error: 'User not associated with a company' });
+      
+      if (!id) {
+        throw Errors.badRequest('Payment ID is required');
+      }
+      
+      if (!authReq.user?.id) {
+        throw Errors.unauthorized('User not authenticated');
       }
 
-      const result = await PaymentService.cancelPayment(id, user.companyId, user.id);
-      return res.json(result);
+      const result = await PaymentService.cancelPayment(id, companyId, authReq.user.id);
+      return res.json({ success: true, data: result });
     } catch (error: unknown) {
-      const message = getErrorMessage(error);
-      logger.error('Failed to cancel payment:', error);
-      if (message === 'Payment not found') {
-        return res.status(404).json({ error: message });
-      }
-      if (message === 'Payment is already cancelled') {
-        return res.status(400).json({ error: message });
-      }
-      return res.status(500).json({ error: 'Failed to cancel payment' });
+      return handleControllerError('PaymentController.cancel', error, res);
     }
   }
 
@@ -145,23 +119,18 @@ export class PaymentController {
   static async stats(req: Request, res: Response) {
     try {
       const authReq = req as AuthenticatedRequest;
-      const user = authReq.user;
+      const companyId = getAuthenticatedCompanyId(authReq.user);
       const { dateFrom, dateTo } = req.query;
 
-      if (!user?.companyId) {
-        return res.status(403).json({ error: 'User not associated with a company' });
-      }
-
       const stats = await PaymentService.getStats(
-        user.companyId, 
+        companyId, 
         typeof dateFrom === 'string' ? dateFrom : undefined,
         typeof dateTo === 'string' ? dateTo : undefined
       );
       
-      return res.json(stats);
+      return res.json({ success: true, data: stats });
     } catch (error: unknown) {
-      logger.error('Failed to get payment stats:', error);
-      return res.status(500).json({ error: 'Failed to fetch payment statistics' });
+      return handleControllerError('PaymentController.stats', error, res);
     }
   }
 
@@ -172,22 +141,17 @@ export class PaymentController {
   static async getInvoicePayments(req: Request, res: Response) {
     try {
       const authReq = req as AuthenticatedRequest;
-      const user = authReq.user;
+      const companyId = getAuthenticatedCompanyId(authReq.user);
       const invoiceId = req.params.invoiceId as string;
-
-      if (!user?.companyId) {
-        return res.status(403).json({ error: 'User not associated with a company' });
+      
+      if (!invoiceId) {
+        throw Errors.badRequest('Invoice ID is required');
       }
 
-      const payments = await PaymentService.getInvoicePayments(invoiceId, user.companyId);
-      return res.json(payments);
+      const payments = await PaymentService.getInvoicePayments(invoiceId, companyId);
+      return res.json({ success: true, data: payments });
     } catch (error: unknown) {
-      const message = getErrorMessage(error);
-      logger.error('Failed to get invoice payments:', error);
-      if (message === 'Invoice not found') {
-        return res.status(404).json({ error: message });
-      }
-      return res.status(500).json({ error: 'Failed to fetch invoice payments' });
+      return handleControllerError('PaymentController.getInvoicePayments', error, res);
     }
   }
 }

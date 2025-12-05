@@ -2,6 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../services/api';
 import { logger } from '../utils/logger';
+import { 
+  TrendingUp, 
+  ChevronRight, 
+  Send, 
+  CheckCircle, 
+  Clock, 
+  DollarSign, 
+  Plus, 
+  FileText,
+  ArrowRight
+} from 'lucide-react';
 
 interface Activity {
   id: string;
@@ -82,9 +93,7 @@ const StatCard = ({ title, value, subtitle, icon, gradient, trend, delay = 0 }: 
                 ? 'bg-emerald-50 text-emerald-600' 
                 : 'bg-red-50 text-red-600'
             }`}>
-              <svg className={`w-4 h-4 mr-1 ${trend.positive ? '' : 'rotate-180'}`} fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
-              </svg>
+              <TrendingUp className={`w-4 h-4 mr-1 ${trend.positive ? '' : 'rotate-180'}`} />
               {trend.value}
             </div>
           )}
@@ -132,9 +141,7 @@ const ActivityItem = ({ title, time, status, icon, description }: {
         {description && <p className="text-sm text-gray-500 mb-1">{description}</p>}
         <p className="text-xs text-gray-400 font-medium">{time}</p>
       </div>
-      <svg className="w-5 h-5 text-gray-300 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-      </svg>
+      <ChevronRight className="w-5 h-5 text-gray-300 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" />
     </div>
   );
 };
@@ -163,9 +170,7 @@ const QuickActionButton = ({ icon, label, description, gradient, to, primary = f
       <p className="font-semibold">{label}</p>
       <p className={`text-xs ${primary ? 'text-white/80' : 'text-gray-500'}`}>{description}</p>
     </div>
-    <svg className={`w-5 h-5 ${primary ? 'text-white/60' : 'text-gray-400'} group-hover:translate-x-1 transition-transform`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-    </svg>
+    <ArrowRight className={`w-5 h-5 ${primary ? 'text-white/60' : 'text-gray-400'} group-hover:translate-x-1 transition-transform`} />
   </Link>
 );
 
@@ -305,18 +310,12 @@ export const Dashboard: React.FC = () => {
             </p>
             <div className="flex flex-wrap gap-3 pt-4">
               <Link to="/invoices/new" className="group inline-flex items-center gap-2 bg-white text-slate-900 px-6 py-3.5 rounded-xl font-bold hover:bg-blue-50 transition-all duration-300 shadow-lg shadow-white/25 hover:shadow-xl hover:shadow-white/30 hover:-translate-y-0.5">
-                <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
+                <Plus className="w-5 h-5 text-blue-600" />
                 Nova faktura
-                <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                </svg>
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </Link>
               <Link to="/invoices" className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm text-white px-6 py-3.5 rounded-xl font-bold hover:bg-white/20 transition-all duration-300 border border-white/20">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
+                <FileText className="w-5 h-5" />
                 Pregledaj fakture
               </Link>
             </div>
@@ -342,7 +341,7 @@ export const Dashboard: React.FC = () => {
           title="Poslate fakture"
           value={overview?.totalInvoices || 0}
           subtitle="Ovaj mesec"
-          icon={<svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>}
+          icon={<Send className="w-7 h-7" />}
           gradient="bg-gradient-to-br from-blue-500 to-cyan-500"
           trend={overview?.trends?.invoices ? { 
             value: `${overview.trends.invoices.positive ? '+' : ''}${overview.trends.invoices.value}%`, 
@@ -354,7 +353,7 @@ export const Dashboard: React.FC = () => {
           title="Prihvaćene fakture"
           value={overview?.acceptedInvoices || 0}
           subtitle={`${overview?.acceptanceRate || 0}% stopa prihvatanja`}
-          icon={<svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+          icon={<CheckCircle className="w-7 h-7" />}
           gradient="bg-gradient-to-br from-emerald-500 to-green-500"
           trend={{ value: "+0%", positive: true }} // Backend doesn't provide trend for accepted yet
           delay={200}
@@ -363,7 +362,7 @@ export const Dashboard: React.FC = () => {
           title="Na čekanju"
           value={overview?.pendingInvoices || 0}
           subtitle="Čeka odluku"
-          icon={<svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+          icon={<Clock className="w-7 h-7" />}
           gradient="bg-gradient-to-br from-amber-500 to-orange-500"
           trend={{ value: "0%", positive: true }}
           delay={300}
@@ -372,7 +371,7 @@ export const Dashboard: React.FC = () => {
           title="Ukupan promet"
           value={formatCurrency(overview?.totalRevenue || 0)}
           subtitle="RSD ovaj mesec"
-          icon={<svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+          icon={<DollarSign className="w-7 h-7" />}
           gradient="bg-gradient-to-br from-violet-500 to-purple-500"
           trend={overview?.trends?.revenue ? { 
             value: `${overview.trends.revenue.positive ? '+' : ''}${overview.trends.revenue.value}%`, 
@@ -394,9 +393,7 @@ export const Dashboard: React.FC = () => {
               </div>
               <Link to="/audit-logs" className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-semibold group">
                 Pogledaj sve
-                <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                </svg>
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </Link>
             </div>
             <div className="space-y-2">
@@ -409,8 +406,8 @@ export const Dashboard: React.FC = () => {
                     title={`Faktura #${activity.invoiceNumber}`}
                     description={`Partner: ${activity.partnerName} • Iznos: ${formatCurrency(activity.totalAmount)}`}
                     time={formatTimeAgo(activity.createdAt)}
-                    status={getStatusType(activity.status) as any}
-                    icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+                    status={getStatusType(activity.status) as 'success' | 'warning' | 'info' | 'error'}
+                    icon={<CheckCircle className="w-5 h-5" />}
                   />
                 ))
               )}
@@ -425,7 +422,7 @@ export const Dashboard: React.FC = () => {
             <h3 className="text-lg font-bold text-gray-900 mb-4">Brze akcije</h3>
             <div className="space-y-3">
               <QuickActionButton
-                icon={<svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>}
+                icon={<Plus className="w-6 h-6 text-white" />}
                 label="Kreiraj fakturu"
                 description="Nova izlazna faktura"
                 gradient="bg-gradient-to-r from-blue-600 to-cyan-500"

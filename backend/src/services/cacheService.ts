@@ -63,6 +63,8 @@ export enum CachePrefix {
   USER = 'user',
   STATS = 'stats',
   SEF_STATUS = 'sef_status',
+  PARTNER = 'partner',
+  PRODUCT = 'product',
 }
 
 /**

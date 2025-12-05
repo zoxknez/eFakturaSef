@@ -20,6 +20,7 @@ import {
   createSearchFilter,
   combineFilters,
 } from '../utils/pagination';
+import { sanitizeSearchQuery, validateInvoiceNumber, validateDateNotFuture } from '../utils/validation';
 
 export type InvoiceLineInput = {
   name: string;
@@ -61,6 +62,10 @@ export interface InvoiceListParams {
   status?: string;
   type?: string;
   search?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  sortBy?: 'issueDate' | 'dueDate' | 'totalAmount' | 'invoiceNumber' | 'createdAt';
+  sortOrder?: 'asc' | 'desc';
   cursor?: string;
   limit?: number;
   direction?: 'next' | 'prev';
@@ -230,9 +235,19 @@ export class InvoiceService {
       finalBuyerPostalCode = buyerPostalCode?.trim();
     }
 
-    // Date parsing
+    // Validate invoice number format
+    if (!validateInvoiceNumber(invoiceNumber)) {
+      throw new Error('Invalid invoice number format');
+    }
+
+    // Date parsing and validation
     const issueDateObj = this.parseDate(issueDate);
     if (!issueDateObj) throw new Error('Invalid issueDate');
+    
+    // Validate issue date is not in the future
+    if (!validateDateNotFuture(issueDateObj, true)) {
+      throw new Error('Issue date cannot be in the future');
+    }
 
     const dueDateObj = dueDate ? this.parseDate(dueDate) : null;
     if (dueDate && !dueDateObj) throw new Error('Invalid dueDate');
@@ -605,7 +620,7 @@ export class InvoiceService {
 
     const sefResponse = await sefService.cancelSalesInvoice({
       invoiceId: parseInt(invoice.sefId, 10),
-      cancelComments: reason,
+      cancelComments: reason || 'Cancelled by user',
     });
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -613,7 +628,7 @@ export class InvoiceService {
         where: { id },
         data: {
           status: InvoiceStatus.CANCELLED,
-          sefStatus: sefResponse?.status ?? 'CANCELLED',
+          sefStatus: sefResponse?.Status ?? 'CANCELLED',
         },
       });
 
@@ -624,7 +639,7 @@ export class InvoiceService {
       return updatedInvoice;
     });
 
-    logger.info(`Invoice cancelled: ${id}`, { sefStatus: sefResponse?.status });
+    logger.info(`Invoice cancelled: ${id}`, { sefStatus: sefResponse?.Status });
     return { invoice: updated, sefResponse };
   }
 
@@ -632,7 +647,7 @@ export class InvoiceService {
    * List invoices with cursor-based pagination and filters
    */
   static async listInvoices(companyId: string, params: InvoiceListParams) {
-    const { status, type, search } = params;
+    const { status, type, search, dateFrom, dateTo, sortBy, sortOrder } = params;
 
     // Parse cursor pagination params
     const paginationParams = parseCursorPagination({
@@ -659,20 +674,61 @@ export class InvoiceService {
       if (typeEnum) filters.push({ type: typeEnum });
     }
 
-    // Search filter (invoice number, buyer name, buyer PIB)
-    const searchFilter = createSearchFilter(search, [
-      'invoiceNumber',
-      'buyerName',
-      'buyerPIB',
-    ]);
-    if (searchFilter) {
-      filters.push(searchFilter);
+    // Date range filter
+    if (dateFrom || dateTo) {
+      const dateFilter: { issueDate?: { gte?: Date; lte?: Date } } = { issueDate: {} };
+      if (dateFrom) {
+        const fromDate = this.parseDate(dateFrom);
+        if (fromDate) dateFilter.issueDate!.gte = fromDate;
+      }
+      if (dateTo) {
+        const toDate = this.parseDate(dateTo);
+        if (toDate) {
+          // Set to end of day
+          toDate.setHours(23, 59, 59, 999);
+          dateFilter.issueDate!.lte = toDate;
+        }
+      }
+      if (Object.keys(dateFilter.issueDate || {}).length > 0) {
+        filters.push(dateFilter);
+      }
+    }
+
+    // Search filter (invoice number, buyer name, buyer PIB, partner name)
+    let searchFilter: any = undefined;
+    if (search) {
+      // Sanitize search query to prevent injection
+      const sanitizedSearch = sanitizeSearchQuery(search);
+      if (sanitizedSearch) {
+        searchFilter = {
+          OR: [
+            { invoiceNumber: { contains: sanitizedSearch, mode: 'insensitive' } },
+            { buyerName: { contains: sanitizedSearch, mode: 'insensitive' } },
+            { buyerPIB: { contains: sanitizedSearch } },
+            { 
+              partner: {
+                OR: [
+                  { name: { contains: sanitizedSearch, mode: 'insensitive' } },
+                  { pib: { contains: sanitizedSearch } }
+                ]
+              }
+            }
+          ]
+        };
+        filters.push(searchFilter);
+      }
     }
 
     const where = combineFilters(...filters);
 
     // Build cursor query
     const query = buildCursorQuery(paginationParams, where);
+
+    // Apply custom sorting if specified
+    if (sortBy) {
+      const order = sortOrder === 'asc' ? 'asc' : 'desc';
+      query.orderBy = { [sortBy]: order };
+    }
 
     // Fetch invoices
     const invoices = await prisma.invoice.findMany({
@@ -687,6 +743,14 @@ export class InvoiceService {
             unitPrice: true,
             taxRate: true,
             amount: true,
+          },
+        },
+        partner: {
+          select: {
+            id: true,
+            name: true,
+            pib: true,
+            type: true,
           },
         },
         company: {
@@ -774,5 +838,116 @@ export class InvoiceService {
     }
 
     return sefStatus;
+  }
+
+  /**
+   * Get invoice status counts for all statuses
+   */
+  static async getStatusCounts(companyId: string) {
+    const counts = await prisma.invoice.groupBy({
+      by: ['status'],
+      where: { companyId },
+      _count: { id: true },
+    });
+
+    const result = {
+      all: 0,
+      draft: 0,
+      sent: 0,
+      approved: 0,
+      rejected: 0,
+      cancelled: 0,
+    };
+
+    for (const item of counts) {
+      const count = item._count.id;
+      result.all += count;
+      
+      switch (item.status) {
+        case InvoiceStatus.DRAFT:
+          result.draft = count;
+          break;
+        case InvoiceStatus.SENT:
+          result.sent = count;
+          break;
+        case InvoiceStatus.ACCEPTED:
+        case InvoiceStatus.DELIVERED:
+          result.approved = count;
+          break;
+        case InvoiceStatus.REJECTED:
+          result.rejected = count;
+          break;
+        case InvoiceStatus.CANCELLED:
+        case InvoiceStatus.STORNO:
+          result.cancelled = count;
+          break;
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Generate UBL XML for an invoice
+   */
+  static async generateUBLXML(id: string): Promise<string> {
+    const invoice = await prisma.invoice.findUnique({
+      where: { id },
+      include: {
+        lines: true,
+        company: true,
+      },
+    });
+
+    if (!invoice) throw new Error('Invoice not found');
+    if (!invoice.company) throw new Error('Issuer company is missing');
+
+    const ublData = {
+      invoiceNumber: invoice.invoiceNumber,
+      issueDate: invoice.issueDate,
+      dueDate: invoice.dueDate || undefined,
+      currency: invoice.currency,
+      supplier: {
+        name: invoice.company.name,
+        pib: invoice.company.pib || '',
+        address: invoice.company.address ?? '',
+        city: invoice.company.city ?? '',
+        postalCode: invoice.company.postalCode ?? '',
+        country: invoice.company.country ?? 'RS',
+      },
+      buyer: {
+        name: invoice.buyerName ?? 'Unknown',
+        pib: invoice.buyerPIB || '',
+        address: invoice.buyerAddress ?? '',
+        city: invoice.buyerCity ?? '',
+        postalCode: invoice.buyerPostalCode ?? '',
+        country: 'RS',
+      },
+      lines: invoice.lines.map((line) => {
+        const lineTotals = calculateLineTotal(
+          Number(line.quantity),
+          Number(line.unitPrice),
+          Number(line.taxRate)
+        );
+        return {
+          id: line.lineNumber,
+          name: line.itemName,
+          quantity: Number(line.quantity),
+          unitCode: 'C62',
+          unitPrice: Number(line.unitPrice),
+          taxRate: Number(line.taxRate),
+          taxAmount: toNumber(lineTotals.taxAmount),
+          lineAmount: Number(line.amount),
+        };
+      }),
+      totals: {
+        taxExclusiveAmount: toNumber(toDecimal(Number(invoice.totalAmount) - Number(invoice.taxAmount))),
+        taxInclusiveAmount: toNumber(toDecimal(Number(invoice.totalAmount))),
+        taxAmount: toNumber(toDecimal(Number(invoice.taxAmount))),
+        payableAmount: toNumber(toDecimal(Number(invoice.totalAmount))),
+      },
+    };
+
+    return UBLGenerator.generateInvoiceXML(ublData);
   }
 }

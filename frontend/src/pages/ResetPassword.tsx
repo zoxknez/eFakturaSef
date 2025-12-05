@@ -5,14 +5,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Lock, ArrowLeft, CheckCircle, AlertTriangle } from 'lucide-react';
-import axios from 'axios';
+import { Lock, ArrowLeft, CheckCircle, AlertTriangle, Loader2 } from 'lucide-react';
+import api from '../services/api';
 import { PasswordStrengthMeter } from '../components/PasswordStrengthMeter';
 import { validatePassword } from '../utils/passwordValidation';
-
-const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3001/api',
-});
 
 export function ResetPassword() {
   const [searchParams] = useSearchParams();
@@ -36,8 +32,8 @@ export function ResetPassword() {
       }
 
       try {
-        await apiClient.get(`/auth/verify-reset-token?token=${token}`);
-        setTokenValid(true);
+        const response = await api.validateResetToken(token);
+        setTokenValid(response.success && response.data?.valid === true);
       } catch {
         setTokenValid(false);
       }
@@ -58,18 +54,19 @@ export function ResetPassword() {
     setIsLoading(true);
 
     try {
-      await apiClient.post('/auth/reset-password', {
-        token,
-        password
-      });
-      setIsSuccess(true);
-      
-      // Redirektuj na login nakon 3 sekunde
-      setTimeout(() => {
-        navigate('/login');
-      }, 3000);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Došlo je do greške. Pokušajte ponovo.');
+      const response = await api.resetPassword(token!, password);
+      if (response.success) {
+        setIsSuccess(true);
+        
+        // Redirektuj na login nakon 3 sekunde
+        setTimeout(() => {
+          navigate('/login');
+        }, 3000);
+      } else {
+        setError(response.error || 'Došlo je do greške. Pokušajte ponovo.');
+      }
+    } catch (err: unknown) {
+      setError('Došlo je do greške. Pokušajte ponovo.');
     } finally {
       setIsLoading(false);
     }
@@ -270,10 +267,7 @@ export function ResetPassword() {
             >
               {isLoading ? (
                 <span className="flex items-center justify-center gap-2">
-                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
+                  <Loader2 className="h-5 w-5 animate-spin" />
                   Čuvam...
                 </span>
               ) : (

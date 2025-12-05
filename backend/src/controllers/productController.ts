@@ -4,7 +4,7 @@ import { ProductService, CreateProductSchema, UpdateProductSchema } from '../ser
 import { InventoryService } from '../services/inventoryService';
 import { z } from 'zod';
 import { AuthenticatedRequest } from '../middleware/auth';
-import { getErrorMessage } from '../types/common';
+import { AppError, Errors, handleControllerError, getAuthenticatedCompanyId } from '../utils/errorHandler';
 
 const ListProductsQuerySchema = z.object({
   page: z.string().optional().default('1'),
@@ -25,23 +25,17 @@ export class ProductController {
   static async list(req: Request, res: Response) {
     try {
       const authReq = req as AuthenticatedRequest;
-      const user = authReq.user;
-      if (!user?.companyId) {
-        return res.status(403).json({ error: 'User not associated with a company' });
-      }
+      const companyId = getAuthenticatedCompanyId(authReq.user);
 
       // Validate query params
       const queryResult = ListProductsQuerySchema.safeParse(req.query);
       if (!queryResult.success) {
-        return res.status(400).json({ 
-          error: 'Invalid query parameters',
-          details: queryResult.error.format(),
-        });
+        throw Errors.validationError(queryResult.error.errors);
       }
 
       const { page, limit, search, category, trackInventory, isActive, sortBy, sortOrder } = queryResult.data;
 
-      const result = await ProductService.listProducts(user.companyId, {
+      const result = await ProductService.listProducts(companyId, {
         page: parseInt(page),
         limit: parseInt(limit),
         search,
@@ -52,10 +46,9 @@ export class ProductController {
         sortOrder: sortOrder as 'asc' | 'desc',
       });
 
-      return res.json(result);
+      return res.json({ success: true, ...result });
     } catch (error: unknown) {
-      logger.error('Failed to list products:', error);
-      return res.status(500).json({ error: 'Failed to fetch products' });
+      return handleControllerError('ProductController.list', error, res);
     }
   }
 
@@ -66,22 +59,17 @@ export class ProductController {
   static async get(req: Request, res: Response) {
     try {
       const authReq = req as AuthenticatedRequest;
-      const user = authReq.user;
+      const companyId = getAuthenticatedCompanyId(authReq.user);
       const id = req.params.id as string;
-
-      if (!user?.companyId) {
-        return res.status(403).json({ error: 'User not associated with a company' });
+      
+      if (!id) {
+        throw Errors.badRequest('Product ID is required');
       }
 
-      const product = await ProductService.getProduct(id, user.companyId);
-      return res.json(product);
+      const product = await ProductService.getProduct(id, companyId);
+      return res.json({ success: true, data: product });
     } catch (error: unknown) {
-      const message = getErrorMessage(error);
-      logger.error('Failed to get product:', error);
-      if (message === 'Product not found') {
-        return res.status(404).json({ error: message });
-      }
-      return res.status(500).json({ error: 'Failed to fetch product' });
+      return handleControllerError('ProductController.get', error, res);
     }
   }
 
@@ -92,29 +80,22 @@ export class ProductController {
   static async create(req: Request, res: Response) {
     try {
       const authReq = req as AuthenticatedRequest;
-      const user = authReq.user;
-      if (!user?.companyId) {
-        return res.status(403).json({ error: 'User not associated with a company' });
+      const companyId = getAuthenticatedCompanyId(authReq.user);
+      
+      if (!authReq.user?.id) {
+        throw Errors.unauthorized('User not authenticated');
       }
 
       // Validate request body
       const validationResult = CreateProductSchema.safeParse(req.body);
       if (!validationResult.success) {
-        return res.status(400).json({
-          error: 'Validation failed',
-          details: validationResult.error.format(),
-        });
+        throw Errors.validationError(validationResult.error.errors);
       }
 
-      const product = await ProductService.createProduct(user.companyId, validationResult.data, user.id);
-      return res.status(201).json(product);
+      const product = await ProductService.createProduct(companyId, validationResult.data, authReq.user.id);
+      return res.status(201).json({ success: true, data: product });
     } catch (error: unknown) {
-      const message = getErrorMessage(error);
-      logger.error('Failed to create product:', error);
-      if (message.includes('already exists')) {
-        return res.status(409).json({ error: message });
-      }
-      return res.status(500).json({ error: 'Failed to create product' });
+      return handleControllerError('ProductController.create', error, res);
     }
   }
 
@@ -125,34 +106,27 @@ export class ProductController {
   static async update(req: Request, res: Response) {
     try {
       const authReq = req as AuthenticatedRequest;
-      const user = authReq.user;
+      const companyId = getAuthenticatedCompanyId(authReq.user);
       const id = req.params.id as string;
-
-      if (!user?.companyId) {
-        return res.status(403).json({ error: 'User not associated with a company' });
+      
+      if (!id) {
+        throw Errors.badRequest('Product ID is required');
+      }
+      
+      if (!authReq.user?.id) {
+        throw Errors.unauthorized('User not authenticated');
       }
 
       // Validate request body
       const validationResult = UpdateProductSchema.safeParse(req.body);
       if (!validationResult.success) {
-        return res.status(400).json({
-          error: 'Validation failed',
-          details: validationResult.error.format(),
-        });
+        throw Errors.validationError(validationResult.error.errors);
       }
 
-      const product = await ProductService.updateProduct(id, user.companyId, validationResult.data, user.id);
-      return res.json(product);
+      const product = await ProductService.updateProduct(id, companyId, validationResult.data, authReq.user.id);
+      return res.json({ success: true, data: product });
     } catch (error: unknown) {
-      const message = getErrorMessage(error);
-      logger.error('Failed to update product:', error);
-      if (message === 'Product not found') {
-        return res.status(404).json({ error: message });
-      }
-      if (message.includes('already exists')) {
-        return res.status(409).json({ error: message });
-      }
-      return res.status(500).json({ error: 'Failed to update product' });
+      return handleControllerError('ProductController.update', error, res);
     }
   }
 
@@ -163,22 +137,21 @@ export class ProductController {
   static async delete(req: Request, res: Response) {
     try {
       const authReq = req as AuthenticatedRequest;
-      const user = authReq.user;
+      const companyId = getAuthenticatedCompanyId(authReq.user);
       const id = req.params.id as string;
-
-      if (!user?.companyId) {
-        return res.status(403).json({ error: 'User not associated with a company' });
+      
+      if (!id) {
+        throw Errors.badRequest('Product ID is required');
+      }
+      
+      if (!authReq.user?.id) {
+        throw Errors.unauthorized('User not authenticated');
       }
 
-      const result = await ProductService.deleteProduct(id, user.companyId, user.id);
-      return res.json(result);
+      const result = await ProductService.deleteProduct(id, companyId, authReq.user.id);
+      return res.json({ success: true, data: result });
     } catch (error: unknown) {
-      const message = getErrorMessage(error);
-      logger.error('Failed to delete product:', error);
-      if (message === 'Product not found') {
-        return res.status(404).json({ error: message });
-      }
-      return res.status(500).json({ error: 'Failed to delete product' });
+      return handleControllerError('ProductController.delete', error, res);
     }
   }
 
@@ -193,18 +166,18 @@ export class ProductController {
       const { q } = req.query;
 
       if (!q || typeof q !== 'string') {
-        return res.status(400).json({ error: 'Query parameter "q" is required' });
+        return res.status(400).json({ success: false, error: 'Query parameter "q" is required' });
       }
 
       if (!user?.companyId) {
-        return res.status(403).json({ error: 'User not associated with a company' });
+        return res.status(403).json({ success: false, error: 'User not associated with a company' });
       }
 
       const products = await ProductService.autocomplete(user.companyId, q);
-      return res.json(products);
+      return res.json({ success: true, data: products });
     } catch (error: unknown) {
       logger.error('Failed to autocomplete products:', error);
-      return res.status(500).json({ error: 'Failed to search products' });
+      return res.status(500).json({ success: false, error: 'Failed to search products' });
     }
   }
 
@@ -215,22 +188,17 @@ export class ProductController {
   static async stats(req: Request, res: Response) {
     try {
       const authReq = req as AuthenticatedRequest;
-      const user = authReq.user;
+      const companyId = getAuthenticatedCompanyId(authReq.user);
       const id = req.params.id as string;
-
-      if (!user?.companyId) {
-        return res.status(403).json({ error: 'User not associated with a company' });
+      
+      if (!id) {
+        throw Errors.badRequest('Product ID is required');
       }
 
-      const stats = await ProductService.getStats(id, user.companyId);
-      return res.json(stats);
+      const stats = await ProductService.getStats(id, companyId);
+      return res.json({ success: true, data: stats });
     } catch (error: unknown) {
-      const message = getErrorMessage(error);
-      logger.error('Failed to get product stats:', error);
-      if (message === 'Product not found') {
-        return res.status(404).json({ error: message });
-      }
-      return res.status(500).json({ error: 'Failed to fetch product statistics' });
+      return handleControllerError('ProductController.stats', error, res);
     }
   }
 
@@ -241,30 +209,26 @@ export class ProductController {
   static async updateStock(req: Request, res: Response) {
     try {
       const authReq = req as AuthenticatedRequest;
-      const user = authReq.user;
+      const companyId = getAuthenticatedCompanyId(authReq.user);
       const id = req.params.id as string;
       const { adjustment, note } = req.body;
-
+      
+      if (!id) {
+        throw Errors.badRequest('Product ID is required');
+      }
+      
       if (typeof adjustment !== 'number') {
-        return res.status(400).json({ error: 'Adjustment value is required and must be a number' });
+        throw Errors.badRequest('Adjustment value is required and must be a number');
+      }
+      
+      if (!authReq.user?.id) {
+        throw Errors.unauthorized('User not authenticated');
       }
 
-      if (!user?.companyId) {
-        return res.status(403).json({ error: 'User not associated with a company' });
-      }
-
-      const updatedProduct = await ProductService.updateStock(id, user.companyId, adjustment, note, user.id);
-      return res.json(updatedProduct);
+      const updatedProduct = await ProductService.updateStock(id, companyId, adjustment, note, authReq.user.id);
+      return res.json({ success: true, data: updatedProduct });
     } catch (error: unknown) {
-      const message = getErrorMessage(error);
-      logger.error('Failed to update product stock:', error);
-      if (message === 'Product not found') {
-        return res.status(404).json({ error: message });
-      }
-      if (message.includes('Insufficient stock') || message.includes('not enabled')) {
-        return res.status(400).json({ error: message });
-      }
-      return res.status(500).json({ error: 'Failed to update stock' });
+      return handleControllerError('ProductController.updateStock', error, res);
     }
   }
 
@@ -275,16 +239,12 @@ export class ProductController {
   static async lowStock(req: Request, res: Response) {
     try {
       const authReq = req as AuthenticatedRequest;
-      const user = authReq.user;
-      if (!user?.companyId) {
-        return res.status(403).json({ error: 'User not associated with a company' });
-      }
+      const companyId = getAuthenticatedCompanyId(authReq.user);
 
-      const lowStockProducts = await ProductService.getLowStock(user.companyId);
-      return res.json(lowStockProducts);
+      const lowStockProducts = await ProductService.getLowStock(companyId);
+      return res.json({ success: true, data: lowStockProducts });
     } catch (error: unknown) {
-      logger.error('Failed to get low stock products:', error);
-      return res.status(500).json({ error: 'Failed to fetch low stock products' });
+      return handleControllerError('ProductController.lowStock', error, res);
     }
   }
 
@@ -295,15 +255,15 @@ export class ProductController {
   static async getInventoryHistory(req: Request, res: Response) {
     try {
       const authReq = req as AuthenticatedRequest;
-      const user = authReq.user;
+      const companyId = getAuthenticatedCompanyId(authReq.user);
       const id = req.params.id as string;
       const { page, limit, startDate, endDate, type } = req.query;
-
-      if (!user?.companyId) {
-        return res.status(403).json({ error: 'User not associated with a company' });
+      
+      if (!id) {
+        throw Errors.badRequest('Product ID is required');
       }
 
-      const history = await InventoryService.getProductHistory(user.companyId, id, {
+      const history = await InventoryService.getProductHistory(companyId, id, {
         page: page ? parseInt(page as string) : 1,
         limit: limit ? parseInt(limit as string) : 50,
         startDate: startDate ? new Date(startDate as string) : undefined,
@@ -311,10 +271,9 @@ export class ProductController {
         type: type as any,
       });
 
-      return res.json(history);
+      return res.json({ success: true, data: history });
     } catch (error: unknown) {
-      logger.error('Failed to get inventory history:', error);
-      return res.status(500).json({ error: 'Failed to fetch inventory history' });
+      return handleControllerError('ProductController.getInventoryHistory', error, res);
     }
   }
 
@@ -325,16 +284,12 @@ export class ProductController {
   static async categories(req: Request, res: Response) {
     try {
       const authReq = req as AuthenticatedRequest;
-      const user = authReq.user;
-      if (!user?.companyId) {
-        return res.status(403).json({ error: 'User not associated with a company' });
-      }
+      const companyId = getAuthenticatedCompanyId(authReq.user);
 
-      const categories = await ProductService.getCategories(user.companyId);
-      return res.json(categories);
+      const categories = await ProductService.getCategories(companyId);
+      return res.json({ success: true, data: categories });
     } catch (error: unknown) {
-      logger.error('Failed to get product categories:', error);
-      return res.status(500).json({ error: 'Failed to fetch categories' });
+      return handleControllerError('ProductController.categories', error, res);
     }
   }
 }

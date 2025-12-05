@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { LoadingSpinner } from '../components/LoadingSpinner';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import {
   FileText,
   Plus,
@@ -66,6 +67,10 @@ export const PPPDV: React.FC = () => {
   });
   const [calculating, setCalculating] = useState(false);
   const [previewData, setPreviewData] = useState<PPPDVCalculation | null>(null);
+
+  // Confirm dialogs
+  const [submitConfirm, setSubmitConfirm] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
   // Fetch reports
   useEffect(() => {
@@ -174,7 +179,7 @@ export const PPPDV: React.FC = () => {
   };
 
   const handleSubmit = async (reportId: string) => {
-    if (!confirm('Da li ste sigurni da želite da pošaljete prijavu na ePorezi?')) return;
+    setSubmitConfirm({ open: false, id: null });
     
     try {
       const response = await pppdvService.submit(companyId, reportId);
@@ -190,7 +195,7 @@ export const PPPDV: React.FC = () => {
   };
 
   const handleDelete = async (reportId: string) => {
-    if (!confirm('Da li ste sigurni da želite da obrišete ovu prijavu?')) return;
+    setDeleteConfirm({ open: false, id: null });
     
     try {
       const response = await pppdvService.delete(companyId, reportId);
@@ -387,14 +392,14 @@ export const PPPDV: React.FC = () => {
                               <Download className="w-4 h-4" />
                             </button>
                             <button
-                              onClick={() => handleSubmit(report.id)}
+                              onClick={() => setSubmitConfirm({ open: true, id: report.id })}
                               className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
                               title="Pošalji na ePorezi"
                             >
                               <Send className="w-4 h-4" />
                             </button>
                             <button
-                              onClick={() => handleDelete(report.id)}
+                              onClick={() => setDeleteConfirm({ open: true, id: report.id })}
                               className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg"
                               title="Obriši"
                             >
@@ -675,6 +680,30 @@ export const PPPDV: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Submit Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={submitConfirm.open}
+        onClose={() => setSubmitConfirm({ open: false, id: null })}
+        onConfirm={() => submitConfirm.id && handleSubmit(submitConfirm.id)}
+        title="Slanje na ePorezi"
+        message="Da li ste sigurni da želite da pošaljete prijavu na ePorezi?"
+        confirmText="Pošalji"
+        cancelText="Odustani"
+        variant="info"
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={deleteConfirm.open}
+        onClose={() => setDeleteConfirm({ open: false, id: null })}
+        onConfirm={() => deleteConfirm.id && handleDelete(deleteConfirm.id)}
+        title="Brisanje prijave"
+        message="Da li ste sigurni da želite da obrišete ovu prijavu?"
+        confirmText="Obriši"
+        cancelText="Odustani"
+        variant="danger"
+      />
     </div>
   );
 };

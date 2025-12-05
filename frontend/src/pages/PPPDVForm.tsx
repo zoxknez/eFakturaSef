@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { logger } from '../utils/logger';
+import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
 import { apiClient } from '../services/api';
 import { 
@@ -427,9 +428,10 @@ const PPPDVForm: React.FC = () => {
     setGenerating(true);
     try {
       await new Promise(resolve => setTimeout(resolve, 1500));
-      alert('PDF generisanje će biti implementirano sa pravim PDF bibliotekom');
+      toast('PDF generisanje će biti implementirano sa pravim PDF bibliotekom', { icon: 'ℹ️' });
     } catch (error) {
       logger.error('Failed to generate PDF', error);
+      toast.error('Greška pri generisanju PDF-a');
     } finally {
       setGenerating(false);
     }

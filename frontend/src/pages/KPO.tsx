@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { toast } from 'react-hot-toast';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { apiClient } from '../services/api';
 import { logger } from '../utils/logger';
@@ -99,6 +100,7 @@ const KPOPage: React.FC = () => {
       }
     } catch (error) {
       logger.error('Failed to fetch KPO data', error);
+      toast.error('Greška pri učitavanju KPO podataka');
     } finally {
       setLoading(false);
     }
@@ -116,11 +118,13 @@ const KPOPage: React.FC = () => {
       });
 
       if (response.data.success) {
+        toast.success('KPO stavke uspešno generisane');
         await fetchData();
         setShowAutoGenerate(false);
       }
     } catch (error) {
       logger.error('Failed to auto-generate KPO', error);
+      toast.error('Greška pri auto-generisanju KPO');
     } finally {
       setGenerating(false);
     }
@@ -146,8 +150,10 @@ const KPOPage: React.FC = () => {
       document.body.appendChild(link);
       link.click();
       link.remove();
+      toast.success('KPO uspešno eksportovan');
     } catch (error) {
       logger.error('Failed to export KPO', error);
+      toast.error('Greška pri eksportu KPO');
     }
   };
 

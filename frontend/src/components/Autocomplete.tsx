@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 export interface AutocompleteOption {
   id: string;
   label: string;
   sublabel?: string;
-  data?: any;
+  data?: unknown;
 }
 
 interface AutocompleteProps {
@@ -18,6 +18,37 @@ interface AutocompleteProps {
   disabled?: boolean;
   allowCustom?: boolean; // Allow manual input if no match
   minChars?: number; // Minimum characters to trigger search
+  debounceMs?: number; // Debounce delay in milliseconds
+}
+
+// Debounce hook
+function useDebounce<T extends (...args: Parameters<T>) => void>(
+  callback: T,
+  delay: number
+): T {
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const debouncedCallback = useCallback(
+    (...args: Parameters<T>) => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      timeoutRef.current = setTimeout(() => {
+        callback(...args);
+      }, delay);
+    },
+    [callback, delay]
+  ) as T;
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  return debouncedCallback;
 }
 
 export const Autocomplete: React.FC<AutocompleteProps> = ({
@@ -30,7 +61,8 @@ export const Autocomplete: React.FC<AutocompleteProps> = ({
   error,
   disabled = false,
   allowCustom = false,
-  minChars = 2
+  minChars = 2,
+  debounceMs = 300
 }) => {
   const [inputValue, setInputValue] = useState(value);
   const [options, setOptions] = useState<AutocompleteOption[]>([]);
@@ -38,6 +70,7 @@ export const Autocomplete: React.FC<AutocompleteProps> = ({
   const [loading, setLoading] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     setInputValue(value);
@@ -54,7 +87,35 @@ export const Autocomplete: React.FC<AutocompleteProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleInputChange = async (query: string) => {
+  // Perform the actual search
+  const performSearch = useCallback(async (query: string) => {
+    // Cancel previous request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+
+    setLoading(true);
+    setIsOpen(true);
+
+    try {
+      const results = await onSearch(query);
+      setOptions(results);
+    } catch (error) {
+      // Ignore abort errors
+      if (error instanceof Error && error.name !== 'AbortError') {
+        console.error('Autocomplete search error:', error);
+      }
+      setOptions([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [onSearch]);
+
+  // Debounced search
+  const debouncedSearch = useDebounce(performSearch, debounceMs);
+
+  const handleInputChange = (query: string) => {
     setInputValue(query);
     setSelectedIndex(-1);
 
@@ -67,18 +128,8 @@ export const Autocomplete: React.FC<AutocompleteProps> = ({
       return;
     }
 
-    setLoading(true);
-    setIsOpen(true);
-
-    try {
-      const results = await onSearch(query);
-      setOptions(results);
-    } catch (error) {
-      console.error('Autocomplete search error:', error);
-      setOptions([]);
-    } finally {
-      setLoading(false);
-    }
+    // Use debounced search
+    debouncedSearch(query);
   };
 
   const handleSelect = (option: AutocompleteOption) => {

@@ -3,8 +3,11 @@
  * Management of credit notes / refunds
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { LoadingSpinner } from '../components/LoadingSpinner';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { toast } from 'react-hot-toast';
+import api from '../services/api';
 import {
   FileCheck,
   Plus,
@@ -14,7 +17,11 @@ import {
   Send,
   X,
   AlertCircle,
-  Eye
+  Eye,
+  Download,
+  RefreshCw,
+  Trash2,
+  Ban
 } from 'lucide-react';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -100,53 +107,55 @@ export const CreditNotes: React.FC = () => {
     { itemName: '', quantity: '1', unitPrice: '', taxRate: '20' },
   ]);
 
+  // Dialog states
+  const [sendConfirm, setSendConfirm] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+  const [cancelDialog, setCancelDialog] = useState<{ open: boolean; id: string | null; reason: string }>({ open: false, id: null, reason: '' });
+
   useEffect(() => {
     fetchCreditNotes();
     fetchInvoices();
   }, [filterStatus, dateFrom, dateTo, searchTerm]);
 
-  const fetchCreditNotes = async () => {
+  const fetchCreditNotes = useCallback(async () => {
     try {
       setLoading(true);
-      const params = new URLSearchParams();
-      if (filterStatus) params.append('status', filterStatus);
-      if (dateFrom) params.append('fromDate', dateFrom);
-      if (dateTo) params.append('toDate', dateTo);
-      if (searchTerm) params.append('search', searchTerm);
-
-      const response = await fetch(`/api/credit-notes?${params}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
+      const response = await api.getCreditNotes({
+        status: filterStatus || undefined,
+        fromDate: dateFrom || undefined,
+        toDate: dateTo || undefined,
+        search: searchTerm || undefined
       });
 
-      if (!response.ok) throw new Error('Failed to fetch credit notes');
-
-      const data = await response.json();
-      setCreditNotes(data.data || []);
+      if (response.success && response.data) {
+        setCreditNotes((response.data.data as CreditNote[]) || []);
+      } else {
+        setError(response.error || 'Greška pri učitavanju');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Greška pri učitavanju');
     } finally {
       setLoading(false);
     }
-  };
+  }, [filterStatus, dateFrom, dateTo, searchTerm]);
 
-  const fetchInvoices = async () => {
+  const fetchInvoices = useCallback(async () => {
     try {
-      const response = await fetch('/api/invoices?status=APPROVED&limit=100', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
+      const response = await api.getInvoices({ status: 'APPROVED', limit: 100 });
 
-      if (!response.ok) throw new Error('Failed to fetch invoices');
-
-      const data = await response.json();
-      setInvoices(data.data || []);
+      if (response.success && response.data) {
+        setInvoices(response.data.data?.map(inv => ({
+          id: inv.id,
+          invoiceNumber: inv.invoiceNumber,
+          partnerName: inv.partner?.name || 'N/A',
+          total: Number(inv.totalAmount) || 0,
+          issueDate: inv.issueDate
+        })) || []);
+      }
     } catch (err) {
       console.error('Error fetching invoices:', err);
     }
-  };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -168,115 +177,102 @@ export const CreditNotes: React.FC = () => {
     }
 
     try {
-      const response = await fetch('/api/credit-notes', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ...formData,
-          lines: validLines.map((l, i) => ({
-            lineNumber: i + 1,
-            itemName: l.itemName,
-            quantity: parseFloat(l.quantity) || 1,
-            unitPrice: parseFloat(l.unitPrice) || 0,
-            taxRate: parseFloat(l.taxRate) || 20,
-          })),
-        }),
+      const response = await api.createCreditNote({
+        ...formData,
+        lines: validLines.map((l, i) => ({
+          lineNumber: i + 1,
+          itemName: l.itemName,
+          quantity: parseFloat(l.quantity) || 1,
+          unitPrice: parseFloat(l.unitPrice) || 0,
+          taxRate: parseFloat(l.taxRate) || 20,
+        })),
       });
 
-      if (!response.ok) throw new Error('Failed to create credit note');
-
-      setShowModal(false);
-      resetForm();
-      await fetchCreditNotes();
+      if (response.success) {
+        setShowModal(false);
+        resetForm();
+        await fetchCreditNotes();
+        toast.success('Knjižno odobrenje kreirano');
+      } else {
+        setError(response.error || 'Greška pri kreiranju');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Greška pri kreiranju');
     }
   };
 
   const handleSendToSEF = async (id: string) => {
-    if (!confirm('Da li ste sigurni da želite da pošaljete knjižno odobrenje na SEF?')) return;
+    setSendConfirm({ open: false, id: null });
 
     try {
-      const response = await fetch(`/api/credit-notes/${id}/send`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
+      toast.loading('Slanje na SEF...', { id: 'send-sef' });
+      const response = await api.sendCreditNoteToSEF(id);
 
-      if (!response.ok) throw new Error('Failed to send to SEF');
-
-      await fetchCreditNotes();
-      setSelectedNote(null);
+      if (response.success) {
+        await fetchCreditNotes();
+        setSelectedNote(null);
+        toast.success('Knjižno odobrenje poslato na SEF', { id: 'send-sef' });
+      } else {
+        toast.error(response.error || 'Greška pri slanju na SEF', { id: 'send-sef' });
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Greška pri slanju na SEF');
+      toast.error(err instanceof Error ? err.message : 'Greška pri slanju na SEF', { id: 'send-sef' });
     }
   };
 
-  const handleCancel = async (id: string) => {
-    const reason = prompt('Unesite razlog otkazivanja:');
-    if (!reason) return;
+  const handleCancel = async () => {
+    if (!cancelDialog.id || !cancelDialog.reason.trim()) return;
+    const id = cancelDialog.id;
+    const reason = cancelDialog.reason;
+    setCancelDialog({ open: false, id: null, reason: '' });
 
     try {
-      const response = await fetch(`/api/credit-notes/${id}/cancel`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ reason }),
-      });
+      toast.loading('Otkazivanje...', { id: 'cancel-cn' });
+      const response = await api.cancelCreditNote(id, reason);
 
-      if (!response.ok) throw new Error('Failed to cancel credit note');
-
-      await fetchCreditNotes();
-      setSelectedNote(null);
+      if (response.success) {
+        await fetchCreditNotes();
+        setSelectedNote(null);
+        toast.success('Knjižno odobrenje otkazano', { id: 'cancel-cn' });
+      } else {
+        toast.error(response.error || 'Greška pri otkazivanju', { id: 'cancel-cn' });
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Greška pri otkazivanju');
+      toast.error(err instanceof Error ? err.message : 'Greška pri otkazivanju', { id: 'cancel-cn' });
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Da li ste sigurni da želite da obrišete ovo knjižno odobrenje?')) return;
+    setDeleteConfirm({ open: false, id: null });
 
     try {
-      const response = await fetch(`/api/credit-notes/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
+      toast.loading('Brisanje...', { id: 'delete-cn' });
+      const response = await api.deleteCreditNote(id);
 
-      if (!response.ok) throw new Error('Failed to delete credit note');
-
-      await fetchCreditNotes();
+      if (response.success) {
+        await fetchCreditNotes();
+        toast.success('Knjižno odobrenje obrisano', { id: 'delete-cn' });
+      } else {
+        toast.error(response.error || 'Greška pri brisanju', { id: 'delete-cn' });
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Greška pri brisanju');
+      toast.error(err instanceof Error ? err.message : 'Greška pri brisanju', { id: 'delete-cn' });
     }
   };
 
   const downloadPDF = async (id: string, number: string) => {
     try {
-      const response = await fetch(`/api/credit-notes/${id}/pdf`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
-
-      if (!response.ok) throw new Error('Failed to download PDF');
-
-      const blob = await response.blob();
+      toast.loading('Preuzimanje PDF-a...', { id: 'pdf-download' });
+      const blob = await api.downloadCreditNotePDF(id);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `knjizno-odobrenje-${number}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
+      toast.success('PDF preuzet', { id: 'pdf-download' });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Greška pri preuzimanju PDF-a');
+      toast.error(err instanceof Error ? err.message : 'Greška pri preuzimanju PDF-a', { id: 'pdf-download' });
     }
   };
 
@@ -545,14 +541,14 @@ export const CreditNotes: React.FC = () => {
                       {note.status === 'DRAFT' && (
                         <>
                           <button
-                            onClick={() => handleSendToSEF(note.id)}
+                            onClick={() => setSendConfirm({ open: true, id: note.id })}
                             className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-all duration-200"
                             title="Pošalji na SEF"
                           >
                             <Send className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => handleDelete(note.id)}
+                            onClick={() => setDeleteConfirm({ open: true, id: note.id })}
                             className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
                             title="Obriši"
                           >
@@ -562,7 +558,7 @@ export const CreditNotes: React.FC = () => {
                       )}
                       {note.status === 'SENT' && (
                         <button
-                          onClick={() => handleCancel(note.id)}
+                          onClick={() => setCancelDialog({ open: true, id: note.id, reason: '' })}
                           className="p-2 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-all duration-200"
                           title="Otkaži"
                         >
@@ -707,7 +703,7 @@ export const CreditNotes: React.FC = () => {
                 </button>
                 {selectedNote.status === 'DRAFT' && (
                   <button
-                    onClick={() => handleSendToSEF(selectedNote.id)}
+                    onClick={() => setSendConfirm({ open: true, id: selectedNote.id })}
                     className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl hover:opacity-90 transition-all duration-200"
                   >
                     <Send className="w-4 h-4" />
@@ -883,6 +879,69 @@ export const CreditNotes: React.FC = () => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Send Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={sendConfirm.open}
+        onClose={() => setSendConfirm({ open: false, id: null })}
+        onConfirm={() => sendConfirm.id && handleSendToSEF(sendConfirm.id)}
+        title="Slanje na SEF"
+        message="Da li ste sigurni da želite da pošaljete knjižno odobrenje na SEF?"
+        confirmText="Pošalji"
+        cancelText="Odustani"
+        variant="info"
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={deleteConfirm.open}
+        onClose={() => setDeleteConfirm({ open: false, id: null })}
+        onConfirm={() => deleteConfirm.id && handleDelete(deleteConfirm.id)}
+        title="Brisanje knjižnog odobrenja"
+        message="Da li ste sigurni da želite da obrišete ovo knjižno odobrenje?"
+        confirmText="Obriši"
+        cancelText="Odustani"
+        variant="danger"
+      />
+
+      {/* Cancel Dialog with Reason Input */}
+      {cancelDialog.open && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">Otkazivanje knjižnog odobrenja</h3>
+            </div>
+            <div className="p-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Razlog otkazivanja
+              </label>
+              <textarea
+                value={cancelDialog.reason}
+                onChange={(e) => setCancelDialog(prev => ({ ...prev, reason: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                rows={4}
+                placeholder="Unesite razlog otkazivanja..."
+                autoFocus
+              />
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 flex gap-3">
+              <button
+                onClick={() => setCancelDialog({ open: false, id: null, reason: '' })}
+                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200"
+              >
+                Odustani
+              </button>
+              <button
+                onClick={handleCancel}
+                disabled={!cancelDialog.reason.trim()}
+                className="flex-1 px-4 py-2 bg-orange-600 text-white rounded-xl hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Otkaži
+              </button>
             </div>
           </div>
         </div>

@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import toast from 'react-hot-toast';
+import { Plus, Minus } from 'lucide-react';
 import { pettyCashService } from '../../services/pettyCashService';
 import { PettyCashEntrySchema, PettyCashType } from '@sef-app/shared';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
@@ -91,13 +92,9 @@ export const PettyCashEntryModal: React.FC<PettyCashEntryModalProps> = ({
                 type === PettyCashType.DEPOSIT ? 'bg-green-100' : 'bg-red-100'
               }`}>
                 {type === PettyCashType.DEPOSIT ? (
-                  <svg className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
+                  <Plus className="h-6 w-6 text-green-600" />
                 ) : (
-                  <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-                  </svg>
+                  <Minus className="h-6 w-6 text-red-600" />
                 )}
               </div>
               <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">

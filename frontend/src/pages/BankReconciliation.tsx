@@ -1,7 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { toast } from 'react-hot-toast';
 import api, { apiClient } from '../services/api';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { logger } from '../utils/logger';
+import {
+  Landmark,
+  CreditCard,
+  Upload,
+  Zap,
+  Loader2,
+  RefreshCw,
+  Settings,
+  X,
+  Link2
+} from 'lucide-react';
 
 interface BankTransaction {
   id: string;
@@ -189,9 +201,10 @@ const BankReconciliation: React.FC = () => {
       );
       setSelectedTransaction(null);
       setSuggestedMatches([]);
+      toast.success('Transakcija uspešno uparena');
     } catch (error) {
       logger.error('Failed to match transaction', error);
-      alert('Greška pri uparivanju transakcije');
+      toast.error('Greška pri uparivanju transakcije');
     }
   };
 
@@ -207,6 +220,7 @@ const BankReconciliation: React.FC = () => {
     );
     setSelectedTransaction(null);
     setSuggestedMatches([]);
+    toast.success('Transakcija označena kao ignorisana');
   };
 
   const handleAutoMatch = async () => {
@@ -214,9 +228,11 @@ const BankReconciliation: React.FC = () => {
     try {
       // Simulate auto-matching process
       await new Promise(resolve => setTimeout(resolve, 2000));
-      fetchTransactions();
+      await fetchTransactions();
+      toast.success('Auto-uparivanje završeno');
     } catch (error) {
       logger.error('Auto-match failed', error);
+      toast.error('Greška pri auto-uparivanju');
     } finally {
       setAutoMatchInProgress(false);
     }
@@ -251,11 +267,12 @@ const BankReconciliation: React.FC = () => {
         setImportFile(null);
         setImportProgress(0);
         fetchTransactions();
+        toast.success('Izvod uspešno uvezen');
       }, 500);
     } catch (error) {
       logger.error('Import failed', error);
       setImportProgress(0);
-      alert('Greška pri uvozu izvoda');
+      toast.error('Greška pri uvozu izvoda');
     }
   };
 
@@ -323,18 +340,14 @@ const BankReconciliation: React.FC = () => {
           
           {/* Bank icon pattern */}
           <div className="absolute top-8 right-16 opacity-10">
-            <svg className="w-24 h-24" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M3 21h18v-2H3v2zm0-4h18v-2H3v2zm0-4h18v-2H3v2zm0-4h18V7H3v2zm0-6v2h18V3H3z"/>
-            </svg>
+            <Landmark className="w-24 h-24" />
           </div>
         </div>
         
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
           <div className="space-y-4">
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full text-sm font-medium">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-              </svg>
+              <CreditCard className="w-4 h-4" />
               Bankovni izvodi • Automatsko uparivanje
             </div>
             <h1 className="text-4xl lg:text-5xl font-black tracking-tight">
@@ -350,9 +363,7 @@ const BankReconciliation: React.FC = () => {
               onClick={() => setShowImportModal(true)}
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/10 backdrop-blur-sm border border-white/20 text-white rounded-xl font-medium hover:bg-white/20 transition-all"
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-              </svg>
+              <Upload className="w-5 h-5" />
               Uvoz izvoda
             </button>
             <button
@@ -362,17 +373,12 @@ const BankReconciliation: React.FC = () => {
             >
               {autoMatchInProgress ? (
                 <>
-                  <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
+                  <Loader2 className="w-5 h-5 animate-spin" />
                   Uparivanje...
                 </>
               ) : (
                 <>
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
+                  <Zap className="w-5 h-5" />
                   Auto uparivanje
                 </>
               )}

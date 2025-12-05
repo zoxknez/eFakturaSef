@@ -6,7 +6,9 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, formatDistanceToNow } from 'date-fns';
 import { sr } from 'date-fns/locale';
-import axios from 'axios';
+import { toast } from 'react-hot-toast';
+import api from '../services/api';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { 
   Bell, 
   Check, 
@@ -25,21 +27,10 @@ import {
   Ban,
   DollarSign,
   AlertCircle,
-  Settings
+  Settings,
+  Filter,
+  Archive
 } from 'lucide-react';
-
-const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3001/api',
-  headers: { 'Content-Type': 'application/json' }
-});
-
-apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('accessToken');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
 
 interface Notification {
   id: string;
@@ -108,53 +99,80 @@ export default function Notifications() {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<FilterType>('all');
   const [selectedNotifications, setSelectedNotifications] = useState<Set<string>>(new Set());
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
-  // Fetch notifications
-  const { data: notifications = [], isLoading } = useQuery({
-    queryKey: ['notifications'],
+  // Fetch notifications using central API client
+  const { data: notificationsResponse, isLoading, refetch } = useQuery({
+    queryKey: ['notifications', filter],
     queryFn: async () => {
-      const response = await apiClient.get<Notification[]>('/api/notifications');
-      return response.data;
+      const params: { unreadOnly?: boolean; type?: string } = {};
+      if (filter === 'unread') params.unreadOnly = true;
+      else if (filter !== 'all') params.type = filter;
+      
+      const response = await api.getNotifications(params);
+      return response;
     },
     refetchInterval: 30000 // Refetch every 30 seconds
   });
 
+  const notifications: Notification[] = (notificationsResponse?.data?.data as Notification[]) || [];
+
   // Mark as read mutation
   const markAsReadMutation = useMutation({
-    mutationFn: async (ids: string[]) => {
-      await apiClient.post('/api/notifications/mark-read', { ids });
+    mutationFn: async (id: string) => {
+      return await api.markNotificationAsRead(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      toast.success('Notifikacija označena kao pročitana');
+    },
+    onError: () => {
+      toast.error('Greška pri označavanju notifikacije');
     }
   });
 
   // Mark all as read mutation
   const markAllAsReadMutation = useMutation({
     mutationFn: async () => {
-      await apiClient.post('/api/notifications/mark-all-read');
+      return await api.markAllNotificationsAsRead();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      toast.success('Sve notifikacije označene kao pročitane');
+    },
+    onError: () => {
+      toast.error('Greška pri označavanju notifikacija');
     }
   });
 
   // Delete notification mutation
   const deleteNotificationMutation = useMutation({
-    mutationFn: async (ids: string[]) => {
-      await apiClient.delete('/api/notifications', { data: { ids } });
+    mutationFn: async (id: string) => {
+      return await api.deleteNotification(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
       setSelectedNotifications(new Set());
+      toast.success('Notifikacija obrisana');
+    },
+    onError: () => {
+      toast.error('Greška pri brisanju notifikacije');
     }
   });
 
-  // Filter notifications
-  const filteredNotifications = notifications.filter((n: Notification) => {
-    if (filter === 'all') return true;
-    if (filter === 'unread') return !n.isRead;
-    return n.type === filter;
+  // Clear all notifications mutation
+  const clearAllMutation = useMutation({
+    mutationFn: async () => {
+      return await api.clearAllNotifications();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      setSelectedNotifications(new Set());
+      toast.success('Sve notifikacije obrisane');
+    },
+    onError: () => {
+      toast.error('Greška pri brisanju notifikacija');
+    }
   });
 
   // Stats
@@ -176,22 +194,31 @@ export default function Notifications() {
   };
 
   const selectAll = () => {
-    if (selectedNotifications.size === filteredNotifications.length) {
+    if (selectedNotifications.size === notifications.length) {
       setSelectedNotifications(new Set());
     } else {
-      setSelectedNotifications(new Set(filteredNotifications.map((n: Notification) => n.id)));
+      setSelectedNotifications(new Set(notifications.map((n: Notification) => n.id)));
     }
   };
 
   const handleMarkSelectedAsRead = () => {
-    markAsReadMutation.mutate(Array.from(selectedNotifications));
+    // Mark each selected notification as read
+    selectedNotifications.forEach(id => {
+      markAsReadMutation.mutate(id);
+    });
     setSelectedNotifications(new Set());
   };
 
   const handleDeleteSelected = () => {
-    if (confirm(`Da li ste sigurni da želite da obrišete ${selectedNotifications.size} notifikacija?`)) {
-      deleteNotificationMutation.mutate(Array.from(selectedNotifications));
-    }
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDelete = () => {
+    // Delete each selected notification
+    selectedNotifications.forEach(id => {
+      deleteNotificationMutation.mutate(id);
+    });
+    setDeleteConfirmOpen(false);
   };
 
   const formatDate = (dateString: string) => {
@@ -353,7 +380,7 @@ export default function Notifications() {
           <div className="animate-spin w-10 h-10 border-4 border-amber-500 border-t-transparent rounded-full mx-auto"></div>
           <p className="text-gray-500 mt-4">Učitavanje notifikacija...</p>
         </div>
-      ) : filteredNotifications.length === 0 ? (
+      ) : notifications.length === 0 ? (
         <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-200/50 p-12 text-center shadow-lg">
           <div className="w-20 h-20 bg-gradient-to-br from-amber-100 to-orange-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <Bell className="w-10 h-10 text-amber-500" />
@@ -366,19 +393,28 @@ export default function Notifications() {
       ) : (
         <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-200/50 overflow-hidden shadow-lg">
           {/* Select all */}
-          <div className="px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-gray-100/50 flex items-center">
-            <input
-              type="checkbox"
-              checked={selectedNotifications.size === filteredNotifications.length && filteredNotifications.length > 0}
-              onChange={selectAll}
-              className="w-5 h-5 text-amber-600 border-gray-300 rounded-lg focus:ring-amber-500 mr-3 cursor-pointer"
-            />
-            <span className="text-sm text-gray-600 font-medium">Selektuj sve</span>
+          <div className="px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-gray-100/50 flex items-center justify-between">
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                checked={selectedNotifications.size === notifications.length && notifications.length > 0}
+                onChange={selectAll}
+                className="w-5 h-5 text-amber-600 border-gray-300 rounded-lg focus:ring-amber-500 mr-3 cursor-pointer"
+              />
+              <span className="text-sm text-gray-600 font-medium">Selektuj sve</span>
+            </div>
+            <button
+              onClick={() => refetch()}
+              className="flex items-center gap-2 text-sm text-gray-500 hover:text-amber-600 transition-colors"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Osveži
+            </button>
           </div>
 
           {/* Notifications */}
           <div className="divide-y divide-gray-100">
-            {filteredNotifications.map((notification: Notification) => (
+            {notifications.map((notification: Notification) => (
               <div
                 key={notification.id}
                 className={`p-5 hover:bg-gray-50/80 transition-all duration-200 ${
@@ -439,7 +475,7 @@ export default function Notifications() {
                 <div className="mt-4 ml-[68px] flex gap-3">
                   {!notification.isRead && (
                     <button
-                      onClick={() => markAsReadMutation.mutate([notification.id])}
+                      onClick={() => markAsReadMutation.mutate(notification.id)}
                       className="inline-flex items-center gap-1.5 text-xs text-amber-600 hover:text-amber-800 font-medium transition-colors"
                     >
                       <Check className="w-3.5 h-3.5" />
@@ -461,6 +497,16 @@ export default function Notifications() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+        onConfirm={confirmDelete}
+        title="Brisanje notifikacija"
+        message={`Da li ste sigurni da želite da obrišete ${selectedNotifications.size} notifikacija?`}
+        confirmText="Obriši"
+        variant="danger"
+      />
     </div>
   );
 }

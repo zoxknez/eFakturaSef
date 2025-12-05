@@ -1,73 +1,80 @@
+/**
+ * Recurring Invoice Service
+ * API calls for managing recurring/periodic invoices
+ */
+
 import apiClient, { ApiResponse } from './api';
+import type {
+  RecurringInvoiceListItem,
+  CreateRecurringInvoiceDTO,
+  UpdateRecurringInvoiceDTO,
+  RecurringInvoiceSummary
+} from '@sef-app/shared';
 
-export enum RecurringFrequency {
-  WEEKLY = 'WEEKLY',
-  MONTHLY = 'MONTHLY',
-  QUARTERLY = 'QUARTERLY',
-  YEARLY = 'YEARLY'
-}
-
-export enum RecurringInvoiceStatus {
-  ACTIVE = 'ACTIVE',
-  PAUSED = 'PAUSED',
-  COMPLETED = 'COMPLETED',
-  CANCELLED = 'CANCELLED'
-}
-
-interface Partner {
-  id: string;
-  name: string;
-  pib: string;
-  address?: string;
-  city?: string;
-  email?: string;
-}
-
-interface InvoiceItem {
-  id?: string;
-  productId?: string;
-  name: string;
-  quantity: number;
-  unitPrice: number;
-  taxRate: number;
-  totalAmount: number;
-}
-
-export interface RecurringInvoice {
-  id: string;
-  frequency: RecurringFrequency;
-  startDate: string;
-  endDate?: string;
-  nextRunAt: string;
-  lastRunAt?: string;
-  status: RecurringInvoiceStatus;
-  partnerId: string;
-  partner?: Partner;
-  currency: string;
-  items: InvoiceItem[];
-  note?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+// Re-export types for convenience
+export { RecurringFrequency, RecurringInvoiceStatus } from '@sef-app/shared';
+export type { RecurringInvoiceListItem, CreateRecurringInvoiceDTO, UpdateRecurringInvoiceDTO };
 
 export const recurringInvoiceService = {
-  getAll: async (): Promise<ApiResponse<RecurringInvoice[]>> => {
-    return apiClient.get('/api/recurring-invoices');
+  /**
+   * Get all recurring invoices for company
+   */
+  getAll: async (params?: {
+    status?: string;
+  }): Promise<ApiResponse<RecurringInvoiceListItem[]>> => {
+    const queryParams = new URLSearchParams();
+    if (params?.status) queryParams.set('status', params.status);
+    
+    const query = queryParams.toString();
+    return apiClient.get(`/api/recurring-invoices${query ? `?${query}` : ''}`);
   },
 
-  getById: async (id: string): Promise<ApiResponse<RecurringInvoice>> => {
+  /**
+   * Get single recurring invoice by ID
+   */
+  getById: async (id: string): Promise<ApiResponse<RecurringInvoiceListItem>> => {
     return apiClient.get(`/api/recurring-invoices/${id}`);
   },
 
-  create: async (data: Partial<RecurringInvoice>): Promise<ApiResponse<RecurringInvoice>> => {
+  /**
+   * Create new recurring invoice
+   */
+  create: async (data: CreateRecurringInvoiceDTO): Promise<ApiResponse<RecurringInvoiceListItem>> => {
     return apiClient.post('/api/recurring-invoices', data);
   },
 
-  update: async (id: string, data: Partial<RecurringInvoice>): Promise<ApiResponse<RecurringInvoice>> => {
+  /**
+   * Update recurring invoice
+   */
+  update: async (id: string, data: UpdateRecurringInvoiceDTO): Promise<ApiResponse<RecurringInvoiceListItem>> => {
     return apiClient.patch(`/api/recurring-invoices/${id}`, data);
   },
 
-  delete: async (id: string): Promise<ApiResponse<void>> => {
+  /**
+   * Pause a recurring invoice
+   */
+  pause: async (id: string): Promise<ApiResponse<RecurringInvoiceListItem>> => {
+    return apiClient.patch(`/api/recurring-invoices/${id}`, { status: 'PAUSED' });
+  },
+
+  /**
+   * Resume a paused recurring invoice
+   */
+  resume: async (id: string): Promise<ApiResponse<RecurringInvoiceListItem>> => {
+    return apiClient.patch(`/api/recurring-invoices/${id}`, { status: 'ACTIVE' });
+  },
+
+  /**
+   * Cancel (delete) a recurring invoice
+   */
+  cancel: async (id: string): Promise<ApiResponse<void>> => {
     return apiClient.delete(`/api/recurring-invoices/${id}`);
+  },
+
+  /**
+   * Get summary counts by status
+   */
+  getSummary: async (): Promise<ApiResponse<RecurringInvoiceSummary>> => {
+    return apiClient.get('/api/recurring-invoices/summary');
   }
 };

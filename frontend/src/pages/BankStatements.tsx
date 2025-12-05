@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import axios from 'axios';
+import { toast } from 'react-hot-toast';
+import apiClient from '../services/api';
 import { 
   Landmark, 
   Upload, 
@@ -11,20 +12,15 @@ import {
   CheckCircle2, 
   AlertCircle,
   Search,
-  ChevronRight
+  ChevronRight,
+  MousePointer,
+  ClipboardList,
+  Check,
+  Download,
+  ArrowUpRight,
+  ArrowDownLeft,
+  Ban
 } from 'lucide-react';
-
-// API instance
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3001/api',
-  headers: { 'Content-Type': 'application/json' },
-});
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('accessToken');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
 
 // Types
 interface BankStatement {
@@ -41,6 +37,7 @@ interface BankStatement {
   totalCredit: number;
   status: 'IMPORTED' | 'PROCESSING' | 'MATCHED' | 'POSTED';
   _count?: { transactions: number };
+  transactions?: BankTransaction[];
 }
 
 interface BankTransaction {
@@ -55,15 +52,16 @@ interface BankTransaction {
   description: string | null;
   matchStatus: 'UNMATCHED' | 'MATCHED' | 'PARTIAL' | 'IGNORED';
   matchedInvoiceId: string | null;
+  statement?: { statementNumber: string; accountNumber: string };
 }
 
-// Hooks
+// Hooks using apiClient
 function useBankStatements(params?: { page?: number; status?: string }) {
   return useQuery({
     queryKey: ['bankStatements', params],
     queryFn: async () => {
-      const { data } = await api.get('/bank-statements', { params });
-      return data;
+      const response = await apiClient.getBankStatements(params);
+      return response;
     },
   });
 }
@@ -72,8 +70,9 @@ function useBankStatement(id: string | null) {
   return useQuery({
     queryKey: ['bankStatements', id],
     queryFn: async () => {
-      const { data } = await api.get(`/bank-statements/${id}`);
-      return data;
+      if (!id) return null;
+      const response = await apiClient.getBankStatement(id);
+      return response;
     },
     enabled: !!id,
   });
@@ -83,8 +82,8 @@ function useUnmatchedTransactions() {
   return useQuery({
     queryKey: ['bankStatements', 'unmatched'],
     queryFn: async () => {
-      const { data } = await api.get('/bank-statements/transactions/unmatched');
-      return data;
+      const response = await apiClient.getUnmatchedTransactions();
+      return response;
     },
   });
 }
@@ -159,62 +158,118 @@ export default function BankStatements() {
 
   // Import mutation
   const importMutation = useMutation({
-    mutationFn: async (formData: FormData) => {
-      const { data } = await api.post('/bank-statements/import', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      return data;
+    mutationFn: async (file: File) => {
+      const response = await apiClient.uploadBankStatement(file);
+      return response;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bankStatements'] });
-      setShowUploadModal(false);
+    onSuccess: (response) => {
+      if (response.success) {
+        queryClient.invalidateQueries({ queryKey: ['bankStatements'] });
+        setShowUploadModal(false);
+        toast.success('Bankovni izvod uspešno uvezen');
+      } else {
+        toast.error(response.error || 'Greška pri uvozu');
+      }
+    },
+    onError: (error: Error) => {
+      toast.error(`Greška pri uvozu: ${error.message}`);
     },
   });
 
   // Auto-match mutation
   const autoMatchMutation = useMutation({
     mutationFn: async (statementId: string) => {
-      const { data } = await api.post(`/bank-statements/${statementId}/auto-match`);
-      return data;
+      const response = await apiClient.autoMatchTransactions(statementId);
+      return response;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bankStatements'] });
+    onSuccess: (response) => {
+      if (response.success && response.data) {
+        queryClient.invalidateQueries({ queryKey: ['bankStatements'] });
+        toast.success(`Auto-uparivanje završeno: ${response.data.matched} transakcija upareno`);
+      } else {
+        toast.error(response.error || 'Greška pri auto-uparivanju');
+      }
+    },
+    onError: (error: Error) => {
+      toast.error(`Greška pri auto-uparivanju: ${error.message}`);
     },
   });
 
   // Manual match mutation
   const matchMutation = useMutation({
     mutationFn: async ({ transactionId, invoiceId }: { transactionId: string; invoiceId: string }) => {
-      const { data } = await api.post(`/bank-statements/transactions/${transactionId}/match`, { invoiceId });
-      return data;
+      const response = await apiClient.matchTransaction(transactionId, invoiceId);
+      return response;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bankStatements'] });
-      setShowMatchModal(false);
-      setSelectedTransaction(null);
+    onSuccess: (response) => {
+      if (response.success) {
+        queryClient.invalidateQueries({ queryKey: ['bankStatements'] });
+        setShowMatchModal(false);
+        setSelectedTransaction(null);
+        toast.success('Transakcija uspešno uparena sa fakturom');
+      } else {
+        toast.error(response.error || 'Greška pri uparivanju');
+      }
+    },
+    onError: (error: Error) => {
+      toast.error(`Greška pri uparivanju: ${error.message}`);
     },
   });
 
-  // Create payment mutation
-  const createPaymentMutation = useMutation({
+  // Ignore transaction mutation
+  const ignoreMutation = useMutation({
     mutationFn: async (transactionId: string) => {
-      const { data } = await api.post(`/bank-statements/transactions/${transactionId}/create-payment`);
-      return data;
+      const response = await apiClient.ignoreTransaction(transactionId);
+      return response;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bankStatements'] });
+    onSuccess: (response) => {
+      if (response.success) {
+        queryClient.invalidateQueries({ queryKey: ['bankStatements'] });
+        toast.success('Transakcija označena kao ignorisana');
+      } else {
+        toast.error(response.error || 'Greška');
+      }
+    },
+    onError: (error: Error) => {
+      toast.error(`Greška: ${error.message}`);
+    },
+  });
+
+  // Post statement mutation
+  const postMutation = useMutation({
+    mutationFn: async (statementId: string) => {
+      const response = await apiClient.postBankStatement(statementId);
+      return response;
+    },
+    onSuccess: (response) => {
+      if (response.success) {
+        queryClient.invalidateQueries({ queryKey: ['bankStatements'] });
+        toast.success('Izvod uspešno proknjižen');
+      } else {
+        toast.error(response.error || 'Greška pri proknjiženju');
+      }
+    },
+    onError: (error: Error) => {
+      toast.error(`Greška pri proknjiženju: ${error.message}`);
     },
   });
 
   const handleFileUpload = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    importMutation.mutate(formData);
+    const file = formData.get('file') as File;
+    if (file) {
+      importMutation.mutate(file);
+    }
   }, [importMutation]);
 
-  const statements = statementsData?.data?.data || [];
-  const unmatchedTransactions = unmatchedData?.data || [];
-  const detailTransactions = statementDetail?.data?.transactions || [];
+  // Extract data with proper typing
+  const statementsResponse = statementsData as { data?: { data: BankStatement[] } } | undefined;
+  const statements: BankStatement[] = statementsResponse?.data?.data || [];
+  const unmatchedResponse = unmatchedData as { data?: BankTransaction[] } | undefined;
+  const unmatchedTransactions: BankTransaction[] = unmatchedResponse?.data || [];
+  const statementDetailData = (statementDetail as { data?: BankStatement } | undefined)?.data;
+  const detailTransactions: BankTransaction[] = statementDetailData?.transactions || [];
 
   return (
     <div className="min-h-screen space-y-6 animate-fadeIn">
@@ -312,9 +367,7 @@ export default function BankStatements() {
               <div className="text-center py-8 text-gray-500">Učitavanje...</div>
             ) : statements.length === 0 ? (
               <div className="text-center py-8">
-                <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
+                <FileText className="mx-auto h-12 w-12 text-gray-400" strokeWidth={1.5} />
                 <h3 className="mt-2 text-sm font-medium text-gray-900">Nema izvoda</h3>
                 <p className="mt-1 text-sm text-gray-500">Uvezite prvi bankovni izvod</p>
               </div>
@@ -346,9 +399,7 @@ export default function BankStatements() {
                       </p>
                     </div>
                     <div className="mt-2 flex items-center text-xs text-gray-500">
-                      <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                      </svg>
+                      <ClipboardList className="w-4 h-4 mr-1" />
                       {statement._count?.transactions || 0} transakcija
                     </div>
                   </button>
@@ -357,7 +408,7 @@ export default function BankStatements() {
             )}
 
             {/* Pagination */}
-            {statementsData?.pagination?.total > 20 && (
+            {statements.length > 20 && (
               <div className="flex justify-center gap-2">
                 <button
                   onClick={() => setPage(p => Math.max(1, p - 1))}
@@ -380,17 +431,17 @@ export default function BankStatements() {
 
           {/* Statement Detail */}
           <div className="lg:col-span-2">
-            {selectedStatement && statementDetail?.data ? (
+            {selectedStatement && statementDetailData ? (
               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
                 {/* Statement Header */}
                 <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
                   <div className="flex justify-between items-start">
                     <div>
                       <h2 className="text-xl font-bold text-gray-900">
-                        Izvod #{statementDetail.data.statementNumber}
+                        Izvod #{statementDetailData.statementNumber}
                       </h2>
                       <p className="text-sm text-gray-500">
-                        {statementDetail.data.bankName} • {statementDetail.data.accountNumber}
+                        {statementDetailData.bankName} • {statementDetailData.accountNumber}
                       </p>
                     </div>
                     <button
@@ -406,19 +457,19 @@ export default function BankStatements() {
                   <div className="mt-4 grid grid-cols-4 gap-4">
                     <div className="bg-white p-3 rounded-lg border border-gray-200">
                       <p className="text-xs text-gray-500">Početno stanje</p>
-                      <p className="text-sm font-semibold">{formatCurrency(Number(statementDetail.data.openingBalance))}</p>
+                      <p className="text-sm font-semibold">{formatCurrency(Number(statementDetailData.openingBalance))}</p>
                     </div>
                     <div className="bg-white p-3 rounded-lg border border-gray-200">
                       <p className="text-xs text-gray-500">Ukupno duguje</p>
-                      <p className="text-sm font-semibold text-red-600">{formatCurrency(Number(statementDetail.data.totalDebit))}</p>
+                      <p className="text-sm font-semibold text-red-600">{formatCurrency(Number(statementDetailData.totalDebit))}</p>
                     </div>
                     <div className="bg-white p-3 rounded-lg border border-gray-200">
                       <p className="text-xs text-gray-500">Ukupno potražuje</p>
-                      <p className="text-sm font-semibold text-green-600">{formatCurrency(Number(statementDetail.data.totalCredit))}</p>
+                      <p className="text-sm font-semibold text-green-600">{formatCurrency(Number(statementDetailData.totalCredit))}</p>
                     </div>
                     <div className="bg-white p-3 rounded-lg border border-gray-200">
                       <p className="text-xs text-gray-500">Krajnje stanje</p>
-                      <p className="text-sm font-semibold">{formatCurrency(Number(statementDetail.data.closingBalance))}</p>
+                      <p className="text-sm font-semibold">{formatCurrency(Number(statementDetailData.closingBalance))}</p>
                     </div>
                   </div>
                 </div>
@@ -467,13 +518,14 @@ export default function BankStatements() {
                                 Upari
                               </button>
                             )}
-                            {tx.matchStatus === 'MATCHED' && !tx.matchedInvoiceId && (
+                            {tx.matchStatus === 'UNMATCHED' && (
                               <button
-                                onClick={() => createPaymentMutation.mutate(tx.id)}
-                                disabled={createPaymentMutation.isPending}
-                                className="text-green-600 hover:text-green-800 text-sm font-medium"
+                                onClick={() => ignoreMutation.mutate(tx.id)}
+                                disabled={ignoreMutation.isPending}
+                                className="text-gray-400 hover:text-gray-600 text-sm"
+                                title="Ignoriši transakciju"
                               >
-                                Proknjiži
+                                <Ban className="w-4 h-4" />
                               </button>
                             )}
                           </td>
@@ -486,9 +538,7 @@ export default function BankStatements() {
             ) : (
               <div className="flex items-center justify-center h-64 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-300">
                 <div className="text-center">
-                  <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
-                  </svg>
+                  <MousePointer className="mx-auto h-12 w-12 text-gray-400" strokeWidth={1.5} />
                   <p className="mt-2 text-sm text-gray-500">Izaberite izvod za prikaz detalja</p>
                 </div>
               </div>
@@ -506,9 +556,7 @@ export default function BankStatements() {
           
           {unmatchedTransactions.length === 0 ? (
             <div className="p-8 text-center">
-              <svg className="mx-auto h-12 w-12 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+              <CheckCircle2 className="mx-auto h-12 w-12 text-green-400" />
               <p className="mt-2 text-sm text-gray-500">Sve transakcije su uparene!</p>
             </div>
           ) : (
@@ -576,9 +624,7 @@ export default function BankStatements() {
                 onClick={() => setShowUploadModal(false)}
                 className="text-gray-400 hover:text-gray-600"
               >
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                <X className="w-6 h-6" />
               </button>
             </div>
 
@@ -597,9 +643,7 @@ export default function BankStatements() {
                     id="file-upload"
                   />
                   <label htmlFor="file-upload" className="cursor-pointer">
-                    <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                    </svg>
+                    <Upload className="mx-auto h-12 w-12 text-gray-400" strokeWidth={1.5} />
                     <p className="mt-2 text-sm text-gray-600">
                       Kliknite za izbor fajla ili prevucite ovde
                     </p>
@@ -699,15 +743,13 @@ function MatchTransactionModal({
   const { data: invoicesData } = useQuery({
     queryKey: ['invoices', 'search', searchQuery],
     queryFn: async () => {
-      const { data } = await api.get('/invoices', {
-        params: { search: searchQuery, limit: 10 },
-      });
-      return data;
+      const response = await apiClient.getInvoices({ search: searchQuery, limit: 10 });
+      return response;
     },
     enabled: searchQuery.length >= 2,
   });
 
-  const invoices = invoicesData?.data?.data || [];
+  const invoicesList = invoicesData?.data?.data || [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
@@ -722,9 +764,7 @@ function MatchTransactionModal({
               </p>
             </div>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              <X className="w-6 h-6" />
             </button>
           </div>
 
@@ -745,13 +785,13 @@ function MatchTransactionModal({
             <div className="text-center text-gray-500 py-8">
               Unesite najmanje 2 karaktera za pretragu
             </div>
-          ) : invoices.length === 0 ? (
+          ) : invoicesList.length === 0 ? (
             <div className="text-center text-gray-500 py-8">
               Nema pronađenih faktura
             </div>
           ) : (
             <div className="space-y-2">
-              {invoices.map((invoice: Invoice) => (
+              {invoicesList.map((invoice) => (
                 <button
                   key={invoice.id}
                   onClick={() => setSelectedInvoice(invoice.id)}

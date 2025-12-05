@@ -33,23 +33,7 @@ import {
   TrendingUp
 } from 'lucide-react';
 import { Calculation, CalculationStatus, CalculationType } from '@sef-app/shared';
-
-// Types
-interface Partner {
-  id: string;
-  name: string;
-  pib: string;
-  city?: string;
-  address?: string;
-}
-
-interface Product {
-  id: string;
-  name: string;
-  sku?: string;
-  unitPrice: number; // Selling price
-  taxRate: number;
-}
+import type { PartnerAutocompleteItem, ProductAutocompleteItem } from '@sef-app/shared';
 
 // Validation schema
 const createCalculationSchema = z.object({
@@ -99,7 +83,7 @@ export const CalculationForm: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [selectedPartner, setSelectedPartner] = useState<Partner | null>(null);
+  const [selectedPartner, setSelectedPartner] = useState<PartnerAutocompleteItem | null>(null);
   
   // Lines state
   const [lines, setLines] = useState<CalculationLine[]>([
@@ -182,7 +166,7 @@ export const CalculationForm: React.FC = () => {
     try {
       const response = await apiClient.searchPartners(query);
       if (response.success && response.data) {
-        return response.data.map((partner: Partner) => ({
+        return response.data.map((partner) => ({
           id: partner.id,
           label: partner.name,
           sublabel: `PIB: ${partner.pib} | ${partner.city || 'N/A'}`,
@@ -199,7 +183,7 @@ export const CalculationForm: React.FC = () => {
     try {
       const response = await apiClient.searchProducts(query);
       if (response.success && response.data) {
-        return response.data.map((product: Product) => ({
+        return response.data.map((product) => ({
           id: product.id,
           label: product.name,
           sublabel: `${product.sku || ''} | Trenutna cena: ${product.unitPrice?.toFixed(2) || '0.00'} RSD`,
@@ -214,8 +198,9 @@ export const CalculationForm: React.FC = () => {
 
   const handlePartnerSelect = (option: AutocompleteOption | null) => {
     if (option) {
-      setSelectedPartner(option.data);
-      setValue('partnerId', option.data.id);
+      const partner = option.data as PartnerAutocompleteItem;
+      setSelectedPartner(partner);
+      setValue('partnerId', partner.id);
     } else {
       setSelectedPartner(null);
       setValue('partnerId', undefined);
@@ -225,11 +210,12 @@ export const CalculationForm: React.FC = () => {
   const handleProductSelect = (index: number, option: AutocompleteOption | null) => {
     const newLines = [...lines];
     if (option) {
+      const product = option.data as ProductAutocompleteItem;
       newLines[index] = {
         ...newLines[index],
-        productId: option.data.id,
-        productName: option.data.name,
-        vatRate: option.data.taxRate || 20
+        productId: product.id,
+        productName: product.name,
+        vatRate: product.taxRate || 20
       };
     } else {
       newLines[index] = {

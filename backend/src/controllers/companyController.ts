@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { logger } from '../utils/logger';
 import { CompanyService, CreateCompanySchema, UpdateCompanySchema } from '../services/companyService';
 import { AuthenticatedRequest } from '../middleware/auth';
-import { getErrorMessage } from '../types/common';
+import { AppError, Errors, handleControllerError } from '../utils/errorHandler';
 
 export class CompanyController {
   /**
@@ -12,18 +12,15 @@ export class CompanyController {
     try {
       const authReq = req as AuthenticatedRequest;
       const userId = authReq.user?.id;
+      
       if (!userId) {
-        return res.status(401).json({ success: false, error: 'Unauthorized' });
+        throw Errors.unauthorized('User not authenticated');
       }
+      
       const company = await CompanyService.getUserCompany(userId);
       return res.json({ success: true, data: company });
     } catch (error: unknown) {
-      const message = getErrorMessage(error);
-      logger.error('Failed to get company:', error);
-      if (message === 'Company not found for this user') {
-        return res.status(404).json({ success: false, error: message });
-      }
-      return res.status(500).json({ success: false, error: 'Failed to fetch company' });
+      return handleControllerError('CompanyController.get', error, res);
     }
   }
 
@@ -35,21 +32,13 @@ export class CompanyController {
       // Validate request body
       const validationResult = CreateCompanySchema.safeParse(req.body);
       if (!validationResult.success) {
-        return res.status(400).json({
-          error: 'Validation failed',
-          details: validationResult.error.format(),
-        });
+        throw Errors.validationError(validationResult.error.errors);
       }
 
       const company = await CompanyService.createCompany(validationResult.data);
-      return res.status(201).json(company);
+      return res.status(201).json({ success: true, data: company });
     } catch (error: unknown) {
-      const message = getErrorMessage(error);
-      logger.error('Failed to create company:', error);
-      if (message.includes('already exists')) {
-        return res.status(409).json({ error: message });
-      }
-      return res.status(500).json({ error: 'Failed to create company' });
+      return handleControllerError('CompanyController.create', error, res);
     }
   }
 
@@ -60,8 +49,9 @@ export class CompanyController {
     try {
       const authReq = req as AuthenticatedRequest;
       const userId = authReq.user?.id;
+      
       if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+        throw Errors.unauthorized('User not authenticated');
       }
       
       // Get user's company ID first
@@ -70,21 +60,13 @@ export class CompanyController {
       // Validate request body
       const validationResult = UpdateCompanySchema.safeParse(req.body);
       if (!validationResult.success) {
-        return res.status(400).json({
-          error: 'Validation failed',
-          details: validationResult.error.format(),
-        });
+        throw Errors.validationError(validationResult.error.errors);
       }
 
       const updatedCompany = await CompanyService.updateCompany(company.id, validationResult.data);
       return res.json({ success: true, data: updatedCompany });
     } catch (error: unknown) {
-      const message = getErrorMessage(error);
-      logger.error('Failed to update company:', error);
-      if (message === 'Company not found' || message === 'Company not found for this user') {
-        return res.status(404).json({ error: message });
-      }
-      return res.status(500).json({ error: 'Failed to update company' });
+      return handleControllerError('CompanyController.update', error, res);
     }
   }
 }

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { logger } from '../utils/logger';
 import { DashboardService } from '../services/dashboardService';
+import { SEFHealthService } from '../services/sefHealthService';
 import { AuthenticatedRequest } from '../middleware/auth';
 
 export class DashboardController {
@@ -115,5 +116,54 @@ export class DashboardController {
    */
   static async getRecentActivity(req: Request, res: Response) {
     return DashboardController.getRecent(req, res);
+  }
+
+  /**
+   * SEF Health Status
+   * GET /api/dashboard/sef-health
+   */
+  static async getSEFHealth(req: Request, res: Response) {
+    try {
+      const authReq = req as AuthenticatedRequest;
+      const companyId = authReq.user?.companyId;
+
+      if (!companyId) {
+        return res.status(401).json({ success: false, error: 'Unauthorized' });
+      }
+
+      const healthStatus = await SEFHealthService.getHealthStatus(companyId);
+      return res.json({ success: true, data: healthStatus });
+    } catch (error) {
+      logger.error('[SEF Health Error]', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch SEF health status'
+      });
+    }
+  }
+
+  /**
+   * Refresh SEF Health Status (with fresh ping)
+   * POST /api/dashboard/sef-health/refresh
+   */
+  static async refreshSEFHealth(req: Request, res: Response) {
+    try {
+      const authReq = req as AuthenticatedRequest;
+      const companyId = authReq.user?.companyId;
+
+      if (!companyId) {
+        return res.status(401).json({ success: false, error: 'Unauthorized' });
+      }
+
+      const healthStatus = await SEFHealthService.refreshHealthStatus(companyId);
+      
+      return res.json({ success: true, data: healthStatus });
+    } catch (error) {
+      logger.error('[SEF Health Refresh Error]', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to refresh SEF health status'
+      });
+    }
   }
 }
