@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { Building2 } from 'lucide-react';
 import { pettyCashService } from '../../services/pettyCashService';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
+import { logger } from '../../utils/logger';
 
 interface PettyCashAccountModalProps {
   isOpen: boolean;
@@ -44,7 +45,7 @@ export const PettyCashAccountModal: React.FC<PettyCashAccountModalProps> = ({
       onClose();
       reset();
     } catch (error) {
-      console.error('Failed to create account:', error);
+      logger.error('Failed to create account', error);
       toast.error('Greška pri kreiranju blagajne');
     } finally {
       setLoading(false);

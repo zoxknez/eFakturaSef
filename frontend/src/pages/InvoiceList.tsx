@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '../services/api';
 import { LoadingSpinner } from '../components/LoadingSpinner';
+import { logger } from '../utils/logger';
 import {
   Check, Send, FileEdit, Clock, X, Ban, HelpCircle,
   Calendar, Eye, FileText, Mail, ChevronRight,
@@ -256,7 +257,7 @@ export const InvoiceList: React.FC = () => {
       
       toast.success('PDF uspešno preuzet');
     } catch (error) {
-      console.error('PDF download error:', error);
+      logger.error('PDF download error', error);
       toast.error('Greška pri preuzimanju PDF-a');
     } finally {
       setDownloadingPdf(null);
@@ -311,7 +312,7 @@ export const InvoiceList: React.FC = () => {
         setTotalCount(response.data.pagination?.total || invoiceData.length);
       }
     } catch (error) {
-      console.error('Failed to fetch invoices:', error);
+      logger.error('Failed to fetch invoices', error);
     } finally {
       setLoading(false);
     }

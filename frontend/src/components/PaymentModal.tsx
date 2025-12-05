@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import api from '../services/api';
+import { logger } from '../utils/logger';
 
 type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'CARD' | 'CHECK' | 'COMPENSATION' | 'OTHER';
 
@@ -86,7 +87,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
         alert(response.error || 'Greška pri evidentiranju plaćanja');
       }
     } catch (error) {
-      console.error('Failed to record payment:', error);
+      logger.error('Failed to record payment', error);
       alert('Greška pri evidentiranju plaćanja');
     } finally {
       setLoading(false);

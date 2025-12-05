@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import cashFlowService, { CashFlowProjection, CashFlowPeriod } from '../services/cashFlowService';
+import { logger } from '../utils/logger';
 
 type Granularity = 'DAILY' | 'WEEKLY' | 'MONTHLY';
 
@@ -85,7 +86,7 @@ export const CashFlow: React.FC = () => {
         setCurrentPosition(positionRes.data);
       }
     } catch (error) {
-      console.error('Error fetching cash flow data:', error);
+      logger.error('Error fetching cash flow data', error);
       toast.error('Greška pri učitavanju podataka');
     } finally {
       setLoading(false);
@@ -103,7 +104,7 @@ export const CashFlow: React.FC = () => {
         setProjection(response.data);
       }
     } catch (error) {
-      console.error('Error fetching projection:', error);
+      logger.error('Error fetching projection', error);
     }
   };
 

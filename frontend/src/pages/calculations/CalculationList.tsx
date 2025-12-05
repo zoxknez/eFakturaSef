@@ -9,6 +9,8 @@ import { toast } from 'react-hot-toast';
 import { calculationService, CalculationListParams } from '../../services/calculationService';
 import { Calculation, CalculationStatus } from '@sef-app/shared';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
+import { useDebounce } from '../../hooks/useDebounce';
+import { logger } from '../../utils/logger';
 import {
   Plus,
   Calculator,
@@ -22,18 +24,6 @@ import {
   ChevronRight,
   TrendingUp
 } from 'lucide-react';
-
-// Debounce hook
-function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value);
-  
-  useEffect(() => {
-    const handler = setTimeout(() => setDebouncedValue(value), delay);
-    return () => clearTimeout(handler);
-  }, [value, delay]);
-  
-  return debouncedValue;
-}
 
 // Status Badge Component
 const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
@@ -194,7 +184,7 @@ export const CalculationList: React.FC = () => {
         setTotalCount(response.data.pagination?.total || 0);
       }
     } catch (error) {
-      console.error('Failed to fetch calculations:', error);
+      logger.error('Failed to fetch calculations', error);
       toast.error('Greška pri učitavanju kalkulacija');
     } finally {
       setLoading(false);

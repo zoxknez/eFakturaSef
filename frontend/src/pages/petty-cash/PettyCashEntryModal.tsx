@@ -7,6 +7,7 @@ import { Plus, Minus } from 'lucide-react';
 import { pettyCashService } from '../../services/pettyCashService';
 import { PettyCashEntrySchema, PettyCashType } from '@sef-app/shared';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
+import { logger } from '../../utils/logger';
 
 interface PettyCashEntryModalProps {
   isOpen: boolean;
@@ -54,7 +55,7 @@ export const PettyCashEntryModal: React.FC<PettyCashEntryModalProps> = ({
         setValue('entryNumber', response.data.number);
       }
     } catch (error) {
-      console.error('Failed to fetch next number:', error);
+      logger.error('Failed to fetch next number', error);
     }
   };
 
@@ -67,7 +68,7 @@ export const PettyCashEntryModal: React.FC<PettyCashEntryModalProps> = ({
       onClose();
       reset();
     } catch (error) {
-      console.error('Failed to create entry:', error);
+      logger.error('Failed to create entry', error);
       toast.error('Greška pri kreiranju naloga');
     } finally {
       setLoading(false);

@@ -16,6 +16,8 @@ import { srLatn } from 'date-fns/locale';
 import { toast } from 'react-hot-toast';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { useDebounce } from '../hooks/useDebounce';
+import { logger } from '../utils/logger';
 import {
   Plus,
   Calendar,
@@ -45,21 +47,6 @@ const FREQUENCY_CONFIG: Record<string, { label: string; icon: React.ElementType 
   QUARTERLY: { label: 'Kvartalno', icon: CalendarDays },
   YEARLY: { label: 'Godišnje', icon: CalendarDays },
 };
-
-// Debounce hook
-function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value);
-
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-
-    return () => clearTimeout(handler);
-  }, [value, delay]);
-
-  return debouncedValue;
-}
 
 export const RecurringInvoices: React.FC = () => {
   const [invoices, setInvoices] = useState<RecurringInvoiceListItem[]>([]);
@@ -96,7 +83,7 @@ export const RecurringInvoices: React.FC = () => {
         toast.error(response.error || 'Neuspešno učitavanje periodičnih faktura');
       }
     } catch (error) {
-      console.error(error);
+      logger.error('Error loading recurring invoices:', error);
       toast.error('Greška prilikom učitavanja');
     } finally {
       setLoading(false);
@@ -159,7 +146,7 @@ export const RecurringInvoices: React.FC = () => {
             toast.error(response.error || 'Neuspešno otkazivanje');
           }
         } catch (error) {
-          console.error(error);
+          logger.error('Error cancelling recurring invoice:', error);
           toast.error('Greška prilikom otkazivanja');
         } finally {
           setInvoiceActionLoading(invoice.id, false);
@@ -180,7 +167,7 @@ export const RecurringInvoices: React.FC = () => {
         toast.error(response.error || 'Neuspešno pauziranje');
       }
     } catch (error) {
-      console.error(error);
+      logger.error('Error pausing recurring invoice:', error);
       toast.error('Greška prilikom pauziranja');
     } finally {
       setInvoiceActionLoading(invoice.id, false);
@@ -198,7 +185,7 @@ export const RecurringInvoices: React.FC = () => {
         toast.error(response.error || 'Neuspešno nastavljanje');
       }
     } catch (error) {
-      console.error(error);
+      logger.error('Error resuming recurring invoice:', error);
       toast.error('Greška prilikom nastavljanja');
     } finally {
       setInvoiceActionLoading(invoice.id, false);

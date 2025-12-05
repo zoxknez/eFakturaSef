@@ -3,17 +3,10 @@
  * Avansne fakture endpoints
  */
 
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
 import AdvanceInvoiceService from '../services/advanceInvoiceService';
 import logger from '../utils/logger';
-
-interface AuthenticatedRequest extends Request {
-  user?: {
-    id: string;
-    companyId: string;
-    role: string;
-  };
-}
+import { AuthenticatedRequest } from '../middleware/auth';
 
 export class AdvanceInvoiceController {
   /**

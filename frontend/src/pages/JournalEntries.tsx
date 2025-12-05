@@ -8,6 +8,7 @@ import { toast } from 'react-hot-toast';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import api from '../services/api';
+import { logger } from '../utils/logger';
 import {
   BookOpen,
   Plus,
@@ -163,7 +164,7 @@ export const JournalEntries: React.FC = () => {
         setAccounts(response.data as Account[]);
       }
     } catch (err) {
-      console.error('Error fetching accounts:', err);
+      logger.error('Error fetching accounts', err);
     }
   };
 

@@ -13,7 +13,7 @@ export interface CalculationListParams {
 
 export const calculationService = {
   getAll: async (params?: CalculationListParams): Promise<ApiResponse<PaginatedResponse<Calculation>>> => {
-    return apiClient.get('/api/calculations', params);
+    return apiClient.get('/api/calculations', params as Record<string, unknown>);
   },
 
   getById: async (id: string): Promise<ApiResponse<Calculation>> => {

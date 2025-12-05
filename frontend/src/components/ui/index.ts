@@ -8,3 +8,7 @@ export {
   EmptyState, 
   CardSkeleton 
 } from './ResponsiveCard';
+
+// Status Badge
+export { StatusBadge, SimpleStatusBadge } from './StatusBadge';
+export type { StatusBadgeProps, StatusType, StatusConfig } from './StatusBadge';

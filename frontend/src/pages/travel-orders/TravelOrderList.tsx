@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { TravelOrder, TravelOrderStatus } from '@sef-app/shared';
 import { travelOrderService } from '../../services/travelOrderService';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
+import { logger } from '../../utils/logger';
 import toast from 'react-hot-toast';
 import { 
   Globe, 
@@ -109,7 +110,7 @@ export const TravelOrderList: React.FC = () => {
         setTotalCount(response.data.pagination?.total || 0);
       }
     } catch (error) {
-      console.error('Failed to fetch travel orders:', error);
+      logger.error('Failed to fetch travel orders:', error);
       toast.error('Greška pri učitavanju putnih naloga');
     } finally {
       setLoading(false);

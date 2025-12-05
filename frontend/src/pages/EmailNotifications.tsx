@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import apiClient from '../services/api';
+import { logger } from '../utils/logger';
 
 interface EmailTemplate {
   id: string;
@@ -125,7 +126,7 @@ export const EmailNotifications: React.FC = () => {
         setTemplates(response.data);
       }
     } catch (error) {
-      console.error('Error fetching templates:', error);
+      logger.error('Error fetching templates', error);
       toast.error('Greška pri učitavanju šablona');
     } finally {
       setLoading(false);
@@ -149,7 +150,7 @@ export const EmailNotifications: React.FC = () => {
         setLogTotalPages(response.data.pagination?.totalPages || 1);
       }
     } catch (error) {
-      console.error('Error fetching logs:', error);
+      logger.error('Error fetching logs', error);
       toast.error('Greška pri učitavanju logova');
     } finally {
       setLoading(false);

@@ -9,6 +9,8 @@ import { toast } from 'react-hot-toast';
 import { fixedAssetService } from '../../services/fixedAssetService';
 import { FixedAsset, FixedAssetStatus } from '@sef-app/shared';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
+import { useDebounce } from '../../hooks/useDebounce';
+import { logger } from '../../utils/logger';
 import {
   Plus,
   Building2,
@@ -22,18 +24,6 @@ import {
   ChevronRight,
   Calculator
 } from 'lucide-react';
-
-// Debounce hook
-function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value);
-  
-  useEffect(() => {
-    const handler = setTimeout(() => setDebouncedValue(value), delay);
-    return () => clearTimeout(handler);
-  }, [value, delay]);
-  
-  return debouncedValue;
-}
 
 // Status Badge Component
 const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
@@ -180,7 +170,7 @@ export const FixedAssetList: React.FC = () => {
         setTotalCount(response.data.pagination?.total || 0);
       }
     } catch (error) {
-      console.error('Failed to fetch fixed assets:', error);
+      logger.error('Failed to fetch fixed assets', error);
       toast.error('Greška pri učitavanju osnovnih sredstava');
     } finally {
       setLoading(false);

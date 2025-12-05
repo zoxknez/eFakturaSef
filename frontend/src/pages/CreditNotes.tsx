@@ -8,6 +8,7 @@ import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { toast } from 'react-hot-toast';
 import api from '../services/api';
+import { logger } from '../utils/logger';
 import {
   FileCheck,
   Plus,
@@ -153,7 +154,7 @@ export const CreditNotes: React.FC = () => {
         })) || []);
       }
     } catch (err) {
-      console.error('Error fetching invoices:', err);
+      logger.error('Error fetching invoices', err);
     }
   }, []);
 

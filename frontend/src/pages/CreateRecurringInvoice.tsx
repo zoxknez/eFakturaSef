@@ -8,6 +8,7 @@ import { Autocomplete, AutocompleteOption } from '../components/Autocomplete';
 import { toast } from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, Trash2, Save } from 'lucide-react';
+import { logger } from '../utils/logger';
 import type { PartnerAutocompleteItem, ProductAutocompleteItem } from '@sef-app/shared';
 
 interface InvoiceItem {
@@ -69,7 +70,7 @@ export const CreateRecurringInvoice: React.FC = () => {
         }));
       }
     } catch (err) {
-      console.error(err);
+      logger.error('Error searching partners', err);
     }
     return [];
   };
@@ -86,7 +87,7 @@ export const CreateRecurringInvoice: React.FC = () => {
         }));
       }
     } catch (err) {
-      console.error(err);
+      logger.error('Error searching products', err);
     }
     return [];
   };
@@ -161,7 +162,7 @@ export const CreateRecurringInvoice: React.FC = () => {
         toast.error(response.error || 'Greška prilikom kreiranja');
       }
     } catch (error) {
-      console.error(error);
+      logger.error('Error creating recurring invoice', error);
       toast.error('Greška prilikom kreiranja');
     } finally {
       setIsSubmitting(false);

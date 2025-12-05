@@ -5,20 +5,7 @@
 import React, { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
-import axios from 'axios';
-
-const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3001/api',
-  headers: { 'Content-Type': 'application/json' }
-});
-
-apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('accessToken');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+import { apiClient } from '../services/api';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -47,13 +34,13 @@ export default function ExportModal({ isOpen, onClose, exportType, filters = {},
 
   const exportMutation = useMutation({
     mutationFn: async () => {
-      const params = new URLSearchParams();
-      if (options.dateFrom) params.append('dateFrom', options.dateFrom);
-      if (options.dateTo) params.append('dateTo', options.dateTo);
-      if (options.status) params.append('status', options.status);
+      const params: Record<string, string> = {};
+      if (options.dateFrom) params.dateFrom = options.dateFrom;
+      if (options.dateTo) params.dateTo = options.dateTo;
+      if (options.status) params.status = options.status;
       if (filters) {
         Object.entries(filters).forEach(([key, value]) => {
-          if (value) params.append(key, value);
+          if (value) params[key] = value;
         });
       }
 
@@ -63,45 +50,35 @@ export default function ExportModal({ isOpen, onClose, exportType, filters = {},
       switch (exportType) {
         case 'invoices':
           endpoint = options.format === 'pdf' 
-            ? `/exports/report/excel` 
-            : `/exports/invoices/excel`;
+            ? `/api/exports/report/excel` 
+            : `/api/exports/invoices/excel`;
           filename = `fakture-${new Date().toISOString().split('T')[0]}`;
           break;
         case 'partners':
-          endpoint = `/partners/export`;
+          endpoint = `/api/partners/export`;
           filename = `partneri-${new Date().toISOString().split('T')[0]}`;
           break;
         case 'products':
-          endpoint = `/products/export`;
+          endpoint = `/api/products/export`;
           filename = `proizvodi-${new Date().toISOString().split('T')[0]}`;
           break;
         case 'payments':
-          endpoint = `/payments/export`;
+          endpoint = `/api/payments/export`;
           filename = `placanja-${new Date().toISOString().split('T')[0]}`;
           break;
         case 'vat':
-          endpoint = `/vat/export`;
+          endpoint = `/api/vat/export`;
           filename = `pdv-${new Date().toISOString().split('T')[0]}`;
           break;
         case 'journal':
-          endpoint = `/accounting/journal/export`;
+          endpoint = `/api/accounting/journal/export`;
           filename = `dnevnik-${new Date().toISOString().split('T')[0]}`;
           break;
       }
 
-      const response = await apiClient.get(`${endpoint}?${params}`, {
-        responseType: 'blob'
-      });
+      const blob = await apiClient.getBlob(endpoint, params);
 
       // Download file
-      const blob = new Blob([response.data], {
-        type: options.format === 'excel'
-          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-          : options.format === 'pdf'
-            ? 'application/pdf'
-            : 'text/csv'
-      });
-
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -116,11 +93,8 @@ export default function ExportModal({ isOpen, onClose, exportType, filters = {},
       onClose();
     },
     onError: (error: unknown) => {
-      if (axios.isAxiosError(error)) {
-        toast.error(error.response?.data?.error || 'Greška pri izvozu');
-      } else {
-        toast.error('Greška pri izvozu');
-      }
+      const message = error instanceof Error ? error.message : 'Greška pri izvozu';
+      toast.error(message);
     }
   });
 

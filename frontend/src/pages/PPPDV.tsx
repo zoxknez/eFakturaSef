@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { logger } from '../utils/logger';
 import {
   FileText,
   Plus,
@@ -87,7 +88,7 @@ export const PPPDV: React.FC = () => {
         setReports(response.data);
       }
     } catch (error) {
-      console.error('Error fetching PPPDV reports:', error);
+      logger.error('Error fetching PPPDV reports:', error);
       toast.error('Greška pri učitavanju PPPDV prijava');
     } finally {
       setLoading(false);
@@ -110,7 +111,7 @@ export const PPPDV: React.FC = () => {
         toast.error(response.error || 'Greška pri obračunu');
       }
     } catch (error) {
-      console.error('Error calculating PPPDV:', error);
+      logger.error('Error calculating PPPDV:', error);
       toast.error('Greška pri obračunu PPPDV');
     } finally {
       setCalculating(false);
@@ -136,7 +137,7 @@ export const PPPDV: React.FC = () => {
         toast.error(response.error || 'Greška pri kreiranju prijave');
       }
     } catch (error) {
-      console.error('Error creating PPPDV:', error);
+      logger.error('Error creating PPPDV:', error);
       toast.error('Greška pri kreiranju PPPDV prijave');
     } finally {
       setCalculating(false);

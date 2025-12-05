@@ -11,6 +11,7 @@ import { PettyCashEntryModal } from './PettyCashEntryModal';
 import { PettyCashAccountModal } from './PettyCashAccountModal';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { Plus, Minus, Landmark } from 'lucide-react';
+import { logger } from '../../utils/logger';
 
 export const PettyCashList: React.FC = () => {
   const [accounts, setAccounts] = useState<PettyCashAccount[]>([]);
@@ -49,7 +50,7 @@ export const PettyCashList: React.FC = () => {
         }
       }
     } catch (error) {
-      console.error('Failed to fetch accounts:', error);
+      logger.error('Failed to fetch accounts', error);
     } finally {
       setLoading(false);
     }
@@ -64,7 +65,7 @@ export const PettyCashList: React.FC = () => {
         setTotalPages(response.data.pagination.pages);
       }
     } catch (error) {
-      console.error('Failed to fetch entries:', error);
+      logger.error('Failed to fetch entries', error);
     } finally {
       setEntriesLoading(false);
     }

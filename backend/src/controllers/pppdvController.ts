@@ -3,17 +3,10 @@
  * PDV prijava endpoints
  */
 
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
 import PPPDVService from '../services/pppdvService';
 import logger from '../utils/logger';
-
-interface AuthenticatedRequest extends Request {
-  user?: {
-    id: string;
-    companyId: string;
-    role: string;
-  };
-}
+import { AuthenticatedRequest } from '../middleware/auth';
 
 export class PPPDVController {
   /**

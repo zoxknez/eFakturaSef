@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
+import { logger } from '../utils/logger';
 
 interface InventoryTransaction {
   id: string;
@@ -38,7 +39,7 @@ const InventoryHistory: React.FC<InventoryHistoryProps> = ({ productId }) => {
         setTotalPages(response.data.pagination.pages);
       }
     } catch (error) {
-      console.error('Failed to fetch inventory history:', error);
+      logger.error('Failed to fetch inventory history', error);
     } finally {
       setLoading(false);
     }

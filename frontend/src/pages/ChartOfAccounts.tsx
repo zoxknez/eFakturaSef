@@ -7,6 +7,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { toast } from 'react-hot-toast';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { useDebounce } from '../hooks/useDebounce';
 import api from '../services/api';
 import { 
   Search, 
@@ -22,18 +23,6 @@ import {
   AlertCircle,
   Loader2
 } from 'lucide-react';
-
-// Debounce hook
-function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value);
-  
-  useEffect(() => {
-    const handler = setTimeout(() => setDebouncedValue(value), delay);
-    return () => clearTimeout(handler);
-  }, [value, delay]);
-  
-  return debouncedValue;
-}
 
 // Account type colors
 const ACCOUNT_TYPE_COLORS: Record<string, string> = {

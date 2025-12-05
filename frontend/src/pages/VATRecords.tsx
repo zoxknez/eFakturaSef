@@ -7,6 +7,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { toast } from 'react-hot-toast';
 import api from '../services/api';
+import { logger } from '../utils/logger';
 import {
   Receipt,
   Download,
@@ -123,7 +124,7 @@ export const VATRecords: React.FC = () => {
         setSummary(response.data as VATSummary);
       }
     } catch (err) {
-      console.error('Error fetching summary:', err);
+      logger.error('Error fetching summary:', err);
     }
   }, [dateFrom, dateTo]);
 

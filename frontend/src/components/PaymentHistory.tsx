@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
+import { logger } from '../utils/logger';
 
 interface Payment {
   id: string;
@@ -36,7 +37,7 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = ({ invoiceId, onPaymentCan
         setPayments(response.data);
       }
     } catch (error) {
-      console.error('Failed to fetch payments:', error);
+      logger.error('Failed to fetch payments', error);
     } finally {
       setLoading(false);
     }
@@ -60,7 +61,7 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = ({ invoiceId, onPaymentCan
         alert(response.error || 'Greška pri storniranju plaćanja');
       }
     } catch (error) {
-      console.error('Failed to cancel payment:', error);
+      logger.error('Failed to cancel payment', error);
       alert('Greška pri storniranju plaćanja');
     }
   };

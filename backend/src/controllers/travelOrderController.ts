@@ -1,20 +1,21 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
+import { AuthenticatedRequest } from '../middleware/auth';
 import { travelOrderService } from '../services/travelOrderService';
 import { TravelOrderSchema, TravelOrderExpenseSchema } from '@sef-app/shared';
 import { z } from 'zod';
+import { logger } from '../utils/logger';
+import { parseOffsetPagination, parseStringParam, parseDateParam } from '../utils/pagination';
 
 export class TravelOrderController {
   
-  getTravelOrders = async (req: Request, res: Response) => {
+  getTravelOrders = async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 10;
-      const search = req.query.search as string;
-      const status = req.query.status as string;
-      const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
-      const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
+      const { page = 1, limit = 10 } = parseOffsetPagination(req.query as Record<string, string>);
+      const search = parseStringParam(req.query.search);
+      const status = parseStringParam(req.query.status);
+      const startDate = parseDateParam(req.query.startDate);
+      const endDate = parseDateParam(req.query.endDate);
 
-      // @ts-ignore - companyId will be added by auth middleware
       const companyId = req.user?.companyId;
 
       if (!companyId) {
@@ -25,16 +26,19 @@ export class TravelOrderController {
 
       res.json({ success: true, data: result });
     } catch (error) {
-      console.error('Error fetching travel orders:', error);
+      logger.error('Error fetching travel orders:', error);
       res.status(500).json({ success: false, error: 'Failed to fetch travel orders' });
     }
   };
 
-  getTravelOrderById = async (req: Request, res: Response) => {
+  getTravelOrderById = async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      // @ts-ignore
       const companyId = req.user?.companyId;
+
+      if (!companyId) {
+        return res.status(401).json({ success: false, error: 'Unauthorized' });
+      }
       
       const travelOrder = await travelOrderService.get(companyId, id);
 
@@ -44,15 +48,18 @@ export class TravelOrderController {
 
       res.json({ success: true, data: travelOrder });
     } catch (error) {
-      console.error('Error fetching travel order:', error);
+      logger.error('Error fetching travel order:', error);
       res.status(500).json({ success: false, error: 'Failed to fetch travel order' });
     }
   };
 
-  createTravelOrder = async (req: Request, res: Response) => {
+  createTravelOrder = async (req: AuthenticatedRequest, res: Response) => {
     try {
-      // @ts-ignore
       const companyId = req.user?.companyId;
+
+      if (!companyId) {
+        return res.status(401).json({ success: false, error: 'Unauthorized' });
+      }
 
       const validatedData = TravelOrderSchema.omit({ 
         id: true, 
@@ -70,16 +77,19 @@ export class TravelOrderController {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ success: false, error: error.errors });
       }
-      console.error('Error creating travel order:', error);
+      logger.error('Error creating travel order:', error);
       res.status(500).json({ success: false, error: 'Failed to create travel order' });
     }
   };
 
-  updateTravelOrder = async (req: Request, res: Response) => {
+  updateTravelOrder = async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      // @ts-ignore
       const companyId = req.user?.companyId;
+
+      if (!companyId) {
+        return res.status(401).json({ success: false, error: 'Unauthorized' });
+      }
 
       const validatedData = TravelOrderSchema.partial().omit({
         id: true,
@@ -97,21 +107,24 @@ export class TravelOrderController {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ success: false, error: error.errors });
       }
-      console.error('Error updating travel order:', error);
+      logger.error('Error updating travel order:', error);
       res.status(500).json({ success: false, error: 'Failed to update travel order' });
     }
   };
 
-  deleteTravelOrder = async (req: Request, res: Response) => {
+  deleteTravelOrder = async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      // @ts-ignore
       const companyId = req.user?.companyId;
+
+      if (!companyId) {
+        return res.status(401).json({ success: false, error: 'Unauthorized' });
+      }
 
       await travelOrderService.delete(companyId, id);
       res.json({ success: true, message: 'Travel order deleted successfully' });
     } catch (error) {
-      console.error('Error deleting travel order:', error);
+      logger.error('Error deleting travel order:', error);
       res.status(500).json({ success: false, error: 'Failed to delete travel order' });
     }
   };

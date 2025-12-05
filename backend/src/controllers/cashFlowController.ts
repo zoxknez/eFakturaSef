@@ -3,17 +3,10 @@
  * Cash flow prognoza endpoints
  */
 
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
 import CashFlowForecastService from '../services/cashFlowForecastService';
 import logger from '../utils/logger';
-
-interface AuthenticatedRequest extends Request {
-  user?: {
-    id: string;
-    companyId: string;
-    role: string;
-  };
-}
+import { AuthenticatedRequest } from '../middleware/auth';
 
 export class CashFlowController {
   /**

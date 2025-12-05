@@ -415,3 +415,57 @@ export function buildAdvancedInvoiceFilters(
   return combineFilters(...conditions) || { companyId };
 }
 
+// =====================================================
+// QUERY PARAMETER PARSING UTILITIES
+// =====================================================
+
+/**
+ * Parse a query parameter as integer with default value
+ */
+export function parseIntParam(value: unknown, defaultValue: number): number {
+  if (typeof value === 'string') {
+    const parsed = parseInt(value, 10);
+    return isNaN(parsed) ? defaultValue : parsed;
+  }
+  if (typeof value === 'number') {
+    return value;
+  }
+  return defaultValue;
+}
+
+/**
+ * Parse a query parameter as boolean
+ */
+export function parseBoolParam(value: unknown, defaultValue = false): boolean {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const lower = value.toLowerCase();
+    if (lower === 'true' || lower === '1' || lower === 'yes') return true;
+    if (lower === 'false' || lower === '0' || lower === 'no') return false;
+  }
+  return defaultValue;
+}
+
+/**
+ * Parse a query parameter as date
+ */
+export function parseDateParam(value: unknown): Date | undefined {
+  if (!value) return undefined;
+  if (value instanceof Date) return value;
+  if (typeof value === 'string') {
+    const date = new Date(value);
+    return isNaN(date.getTime()) ? undefined : date;
+  }
+  return undefined;
+}
+
+/**
+ * Parse a query parameter as string with optional trim
+ */
+export function parseStringParam(value: unknown, defaultValue?: string): string | undefined {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : defaultValue;
+  }
+  return defaultValue;
+}

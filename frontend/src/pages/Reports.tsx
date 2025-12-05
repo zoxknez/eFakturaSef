@@ -7,6 +7,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'react-hot-toast';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import api from '../services/api';
+import { formatAmount, formatDateShort } from '../utils/formatters';
+import { logger } from '../utils/logger';
 import { 
   FileText, 
   TrendingUp, 
@@ -205,17 +207,9 @@ export const Reports: React.FC = () => {
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('sr-RS', {
-      style: 'currency',
-      currency: 'RSD',
-      minimumFractionDigits: 2,
-    }).format(amount);
-  };
-
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('sr-RS');
-  };
+  // Use centralized formatters
+  const formatCurrency = formatAmount;
+  const formatDate = formatDateShort;
 
   const downloadReport = async (format: 'pdf' | 'excel') => {
     try {
@@ -246,7 +240,7 @@ export const Reports: React.FC = () => {
       window.URL.revokeObjectURL(downloadUrl);
       toast.success('Izveštaj uspešno preuzet');
     } catch (err) {
-      console.error(err);
+      logger.error('Error downloading report', err);
       toast.error('Greška pri preuzimanju izveštaja');
     }
   };

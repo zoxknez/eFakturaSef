@@ -4,6 +4,7 @@ import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { TravelOrderSchema, TravelOrder, TravelOrderStatus, TravelOrderExpenseType } from '@sef-app/shared';
 import { travelOrderService } from '../../services/travelOrderService';
+import { logger } from '../../utils/logger';
 import toast from 'react-hot-toast';
 import { Trash2 } from 'lucide-react';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
@@ -74,7 +75,7 @@ export const TravelOrderForm: React.FC = () => {
         }
       }
     } catch (error) {
-      console.error('Failed to load order:', error);
+      logger.error('Failed to load order:', error);
       toast.error('Greška pri učitavanju naloga');
     } finally {
       setLoading(false);
@@ -106,7 +107,7 @@ export const TravelOrderForm: React.FC = () => {
       }
       navigate('/travel-orders');
     } catch (error) {
-      console.error('Failed to save order:', error);
+      logger.error('Failed to save order:', error);
       toast.error('Greška pri čuvanju naloga');
     } finally {
       setLoading(false);

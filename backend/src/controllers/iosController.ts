@@ -3,18 +3,11 @@
  * Izvod otvorenih stavki endpoints
  */
 
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
 import IOSService from '../services/iosService';
 import EmailNotificationService from '../services/emailNotificationService';
 import logger from '../utils/logger';
-
-interface AuthenticatedRequest extends Request {
-  user?: {
-    id: string;
-    companyId: string;
-    role: string;
-  };
-}
+import { AuthenticatedRequest } from '../middleware/auth';
 
 export class IOSController {
   /**

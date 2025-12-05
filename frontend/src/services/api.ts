@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
+import { API_BASE_URL, API_TIMEOUT, API_DEFAULT_HEADERS } from '../config/api';
 import type { 
   DashboardOverview, 
   DashboardCharts, 
@@ -21,8 +22,30 @@ import type {
   IncomingInvoiceLineItem,
   PartnerAutocompleteItem,
   ProductAutocompleteItem,
-  CreateInvoiceDTO
+  CreateInvoiceDTO,
+  User
 } from '@sef-app/shared';
+
+// Auth response types
+export interface AuthUser extends Omit<User, 'createdAt' | 'updatedAt'> {
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LoginResponse {
+  accessToken: string;
+  refreshToken: string;
+  user: AuthUser;
+}
+
+export interface RegisterResponse {
+  user: AuthUser;
+}
+
+export interface RefreshTokenResponse {
+  accessToken: string;
+  user: AuthUser;
+}
 
 // API Response types
 export interface ApiResponse<T = unknown> {
@@ -48,16 +71,12 @@ class ApiClient {
   private baseURL: string;
 
   constructor() {
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-    // Remove trailing slash and /api suffix to prevent double /api/api issues
-    this.baseURL = apiUrl.replace(/\/$/, '').replace(/\/api$/, '');
+    this.baseURL = API_BASE_URL;
     
     this.client = axios.create({
       baseURL: this.baseURL,
-      timeout: 30000,
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      timeout: API_TIMEOUT,
+      headers: API_DEFAULT_HEADERS,
     });
 
     this.setupInterceptors();
@@ -144,32 +163,44 @@ class ApiClient {
   }
 
   // Generic HTTP methods
-  async get<T = any>(url: string, params?: any, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
+  // NOTE: Using 'any' here for backward compatibility with existing codebase patterns.
+  // Proper typing should be done on a case-by-case basis when calling these methods.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async get<T = any>(url: string, params?: Record<string, unknown>, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
     return this.request({ method: 'GET', url, params, ...config });
   }
 
-  async post<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async post<T = any>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
     return this.request({ method: 'POST', url, data, ...config });
   }
 
-  async put<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async put<T = any>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
     return this.request({ method: 'PUT', url, data, ...config });
   }
 
-  async patch<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async patch<T = any>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
     return this.request({ method: 'PATCH', url, data, ...config });
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async delete<T = any>(url: string): Promise<ApiResponse<T>> {
     return this.request({ method: 'DELETE', url });
   }
 
+  // Blob download method for file exports
+  async getBlob(url: string, params?: Record<string, unknown>): Promise<Blob> {
+    const response = await this.client.get(url, {
+      params,
+      responseType: 'blob'
+    });
+    return response.data;
+  }
+
   // Auth methods
-  async login(email: string, password: string): Promise<ApiResponse<{
-    accessToken: string;
-    refreshToken: string;
-    user: any;
-  }>> {
+  async login(email: string, password: string): Promise<ApiResponse<LoginResponse>> {
     return this.request({
       method: 'POST',
       url: '/api/auth/login',
@@ -183,7 +214,7 @@ class ApiClient {
     firstName: string;
     lastName: string;
     companyId: string;
-  }): Promise<ApiResponse<{ user: any }>> {
+  }): Promise<ApiResponse<RegisterResponse>> {
     return this.request({
       method: 'POST',
       url: '/api/auth/register',
@@ -191,10 +222,7 @@ class ApiClient {
     });
   }
 
-  async refreshToken(refreshToken: string): Promise<ApiResponse<{
-    accessToken: string;
-    user: any;
-  }>> {
+  async refreshToken(refreshToken: string): Promise<ApiResponse<RefreshTokenResponse>> {
     return this.request({
       method: 'POST',
       url: '/api/auth/refresh',

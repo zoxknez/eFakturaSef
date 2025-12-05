@@ -9,6 +9,7 @@ import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Autocomplete, type AutocompleteOption } from '../components/Autocomplete';
 import { ResponsiveModal, ModalFooter } from '../components/ui';
+import { useDebounce } from '../hooks/useDebounce';
 import {
   Receipt,
   Plus,
@@ -26,6 +27,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import advanceInvoiceService from '../services/advanceInvoiceService';
+import { logger } from '../utils/logger';
 import type { AdvanceInvoiceListItem, AdvanceInvoiceDetail, CreateAdvanceInvoiceDTO, PartnerAutocompleteItem } from '@sef-app/shared';
 import apiClient from '../services/api';
 
@@ -51,23 +53,6 @@ const getPartnerInfo = (invoice: AdvanceInvoiceListItem) => ({
   name: invoice.partner?.name || 'N/A',
   pib: invoice.partner?.pib || 'N/A',
 });
-
-// Debounce hook
-function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value);
-
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-
-    return () => {
-      clearTimeout(handler);
-    };
-  }, [value, delay]);
-
-  return debouncedValue;
-}
 
 export const AdvanceInvoices: React.FC = () => {
   const { user } = useAuth();
@@ -155,7 +140,7 @@ export const AdvanceInvoices: React.FC = () => {
         setTotalPages(response.data.pagination?.totalPages || 1);
       }
     } catch (error) {
-      console.error('Error fetching advance invoices:', error);
+      logger.error('Error fetching advance invoices', error);
       toast.error('Greška pri učitavanju avansnih faktura');
     } finally {
       setLoading(false);
@@ -181,7 +166,7 @@ export const AdvanceInvoices: React.FC = () => {
       }
       return [];
     } catch (error) {
-      console.error('Error searching partners:', error);
+      logger.error('Error searching partners', error);
       return [];
     }
   }, [companyId]);

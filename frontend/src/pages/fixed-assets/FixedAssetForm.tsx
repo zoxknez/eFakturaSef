@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import { fixedAssetService } from '../../services/fixedAssetService';
 import { FixedAssetStatus } from '@sef-app/shared';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
+import { logger } from '../../utils/logger';
 import { ArrowLeft, Save, Loader2 } from 'lucide-react';
 
 // Schema for the form
@@ -65,7 +66,7 @@ export const FixedAssetForm: React.FC = () => {
         });
       }
     } catch (error) {
-      console.error('Failed to load asset:', error);
+      logger.error('Failed to load asset', error);
       toast.error('Greška pri učitavanju podataka');
       navigate('/fixed-assets');
     } finally {
@@ -98,7 +99,7 @@ export const FixedAssetForm: React.FC = () => {
       }
       navigate('/fixed-assets');
     } catch (error) {
-      console.error('Failed to save asset:', error);
+      logger.error('Failed to save asset', error);
       toast.error('Greška pri čuvanju podataka');
     } finally {
       setIsSubmitting(false);

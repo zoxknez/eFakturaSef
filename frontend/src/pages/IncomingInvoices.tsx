@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, subMonths, startOfYear } from 'date-fns';
 import { toast } from 'react-hot-toast';
+import { useDebounce } from '../hooks/useDebounce';
+import { logger } from '../utils/logger';
 import { 
   RefreshCw, Plus, Search, Download, FileText, FileSpreadsheet,
   ChevronLeft, ChevronRight, Check, X, Clock, CreditCard
@@ -13,21 +15,6 @@ import type {
   IncomingInvoiceStatusCounts,
   IncomingInvoicePaymentCounts
 } from '@sef-app/shared';
-
-// Debounce hook
-function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value);
-  
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-    
-    return () => clearTimeout(handler);
-  }, [value, delay]);
-  
-  return debouncedValue;
-}
 
 // Date range presets
 type DateRangePreset = 'all' | 'today' | 'thisWeek' | 'thisMonth' | 'lastMonth' | 'thisYear';
@@ -154,7 +141,7 @@ export const IncomingInvoices: React.FC = () => {
         toast.error(response.error || 'Neuspešno učitavanje ulaznih faktura');
       }
     } catch (error) {
-      console.error('Error loading invoices:', error);
+      logger.error('Error loading invoices', error);
       toast.error('Greška prilikom učitavanja');
     } finally {
       setLoading(false);
@@ -176,7 +163,7 @@ export const IncomingInvoices: React.FC = () => {
         setPaymentCounts(paymentRes.data);
       }
     } catch (error) {
-      console.error('Error loading counts:', error);
+      logger.error('Error loading counts', error);
     }
   }, []);
 
@@ -202,7 +189,7 @@ export const IncomingInvoices: React.FC = () => {
         toast.error(response.error || 'Sinhronizacija nije uspela');
       }
     } catch (error) {
-      console.error('Sync error:', error);
+      logger.error('Sync error', error);
       toast.error('Greška prilikom sinhronizacije');
     } finally {
       setSyncing(false);
@@ -285,7 +272,7 @@ export const IncomingInvoices: React.FC = () => {
         toast.error(response.error || 'Greška pri odobravanju');
       }
     } catch (error) {
-      console.error('Bulk accept error:', error);
+      logger.error('Bulk accept error', error);
       toast.error('Greška pri odobravanju faktura');
     } finally {
       setBulkProcessing(false);
@@ -317,7 +304,7 @@ export const IncomingInvoices: React.FC = () => {
         toast.error(response.error || 'Greška pri odbijanju');
       }
     } catch (error) {
-      console.error('Bulk reject error:', error);
+      logger.error('Bulk reject error', error);
       toast.error('Greška pri odbijanju faktura');
     } finally {
       setBulkProcessing(false);
@@ -331,7 +318,7 @@ export const IncomingInvoices: React.FC = () => {
       await api.exportIncomingInvoices({ ...filters, format });
       toast.success(`Export u ${format.toUpperCase()} uspešan`);
     } catch (error) {
-      console.error('Export error:', error);
+      logger.error('Export error', error);
       toast.error('Greška pri exportu');
     } finally {
       setExporting(false);

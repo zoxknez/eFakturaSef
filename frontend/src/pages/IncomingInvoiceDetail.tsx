@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { toast } from 'react-hot-toast';
 import { ArrowLeft, Check, X, FileText, Download, Printer, Calculator } from 'lucide-react';
 import { Autocomplete } from '../components/Autocomplete';
+import { logger } from '../utils/logger';
 import type { 
   IncomingInvoiceDetail as InvoiceDetailType, 
   IncomingInvoiceLineItem,
@@ -36,7 +37,7 @@ export const IncomingInvoiceDetail: React.FC = () => {
         navigate('/incoming-invoices');
       }
     } catch (error) {
-      console.error(error);
+      logger.error('Error loading invoice', error);
       toast.error('Greška prilikom učitavanja');
       navigate('/incoming-invoices');
     } finally {
@@ -62,7 +63,7 @@ export const IncomingInvoiceDetail: React.FC = () => {
         toast.error(response.error || 'Greška prilikom promene statusa');
       }
     } catch (error) {
-      console.error(error);
+      logger.error('Error changing status', error);
       toast.error('Greška prilikom promene statusa');
     } finally {
       setProcessing(false);
@@ -90,7 +91,7 @@ export const IncomingInvoiceDetail: React.FC = () => {
         }));
       }
     } catch (error) {
-      console.error('Product search error:', error);
+      logger.error('Product search error', error);
     }
     return [];
   };
@@ -106,7 +107,7 @@ export const IncomingInvoiceDetail: React.FC = () => {
         toast.error(response.error || 'Greška pri mapiranju');
       }
     } catch (error) {
-      console.error(error);
+      logger.error('Error mapping product', error);
       toast.error('Greška pri mapiranju');
     }
   };
@@ -116,7 +117,7 @@ export const IncomingInvoiceDetail: React.FC = () => {
     try {
       await api.downloadIncomingInvoicePDF(id);
     } catch (error) {
-      console.error(error);
+      logger.error('Error downloading PDF', error);
       toast.error('Greška pri preuzimanju PDF-a');
     }
   };
@@ -126,7 +127,7 @@ export const IncomingInvoiceDetail: React.FC = () => {
     try {
       await api.downloadIncomingInvoiceXML(id);
     } catch (error) {
-      console.error(error);
+      logger.error('Error downloading XML', error);
       toast.error('Greška pri preuzimanju XML-a');
     }
   };

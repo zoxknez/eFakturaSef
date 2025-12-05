@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { logger } from '../utils/logger';
 
 export interface AutocompleteOption {
   id: string;
@@ -104,7 +105,7 @@ export const Autocomplete: React.FC<AutocompleteProps> = ({
     } catch (error) {
       // Ignore abort errors
       if (error instanceof Error && error.name !== 'AbortError') {
-        console.error('Autocomplete search error:', error);
+        logger.error('Autocomplete search error', error);
       }
       setOptions([]);
     } finally {
