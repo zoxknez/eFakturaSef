@@ -741,135 +741,214 @@ export const AdvancedInvoiceList: React.FC = () => {
           </div>
         )}
 
-        {/* Table */}
+        {/* Table for Desktop/Tablet */}
         {!loading && !error && invoices.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50/50">
-                <tr>
-                  <th className="px-6 py-4 text-left">
-                    <input
-                      type="checkbox"
-                      checked={selectedInvoices.length === invoices.length && invoices.length > 0}
-                      onChange={handleSelectAll}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Broj/Datum
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Partner/PIB
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Iznos/PDV
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status/Tip
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Rok/Izmena
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Akcije
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {invoices.map((invoice) => (
-                  <tr 
-                    key={invoice.id}
-                    className="hover:bg-gray-50/50 cursor-pointer transition-colors"
-                    onClick={() => handleRowClick(invoice)}
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap">
+          <>
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50/50">
+                  <tr>
+                    <th className="px-6 py-4 text-left w-12">
+                      <input
+                        type="checkbox"
+                        checked={selectedInvoices.length === invoices.length && invoices.length > 0}
+                        onChange={handleSelectAll}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    </th>
+                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Broj/Datum
+                    </th>
+                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Partner/PIB
+                    </th>
+                    <th className="px-6 py-4 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Iznos/PDV
+                    </th>
+                    <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status/Tip
+                    </th>
+                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Rok/Izmena
+                    </th>
+                    <th className="px-6 py-4 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Akcije
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {invoices.map((invoice) => (
+                    <tr 
+                      key={invoice.id}
+                      className="hover:bg-gray-50/50 cursor-pointer transition-colors group"
+                      onClick={() => handleRowClick(invoice)}
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={selectedInvoices.includes(invoice.id)}
+                          onChange={() => handleSelectInvoice(invoice.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-gray-900">{invoice.invoiceNumber}</span>
+                            <SpecialBadge invoice={invoice} />
+                          </div>
+                          <div className="text-sm text-gray-500">{formatDate(invoice.issueDate)}</div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div>
+                          <div className="flex items-center">
+                            <span className="text-sm font-medium text-gray-900 truncate max-w-[200px]" title={getPartnerName(invoice)}>
+                              {getPartnerName(invoice)}
+                            </span>
+                            <PartnerBadge invoice={invoice} />
+                          </div>
+                          <div className="text-sm text-gray-500">PIB: {getPartnerPIB(invoice)}</div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                        <div>
+                          <div className="text-sm font-bold text-gray-900">
+                            {formatAmount(invoice.totalAmount, invoice.currency)}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            PDV: {formatAmount(invoice.taxAmount, invoice.currency)} ({getVatRate(invoice)}%)
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-center">
+                        <div className="flex flex-col items-center gap-1">
+                          <StatusBadge status={invoice.status} />
+                          <TypeBadge type={invoice.type} />
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div>
+                          {invoice.dueDate && (
+                            <div className="text-sm text-gray-900">Rok: {formatDate(invoice.dueDate)}</div>
+                          )}
+                          <div className="text-sm text-gray-500">Izmena: {formatDateTime(invoice.updatedAt)}</div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <div className="flex justify-end space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Link
+                            to={`/invoices/${invoice.id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-blue-600 hover:text-blue-900 p-1"
+                            title="Pregled"
+                          >
+                            👁️
+                          </Link>
+                          <button 
+                            onClick={(e) => { 
+                              e.stopPropagation(); 
+                              handleDownloadPDF(invoice.id, invoice.invoiceNumber);
+                            }}
+                            className="text-green-600 hover:text-green-900 p-1"
+                            title="PDF"
+                          >
+                            📄
+                          </button>
+                          <button 
+                            onClick={(e) => { 
+                              e.stopPropagation(); 
+                              handleDownloadXML(invoice.id, invoice.invoiceNumber);
+                            }}
+                            className="text-purple-600 hover:text-purple-900 p-1"
+                            title="XML"
+                          >
+                            📋
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Card View */}
+            <div className="md:hidden space-y-4 p-4 bg-gray-50">
+              {invoices.map((invoice) => (
+                <div 
+                  key={invoice.id}
+                  className="bg-white rounded-xl p-4 shadow-sm border border-gray-200 active:scale-[0.98] transition-transform"
+                  onClick={() => handleRowClick(invoice)}
+                >
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex items-center gap-3">
                       <input
                         type="checkbox"
                         checked={selectedInvoices.includes(invoice.id)}
                         onChange={() => handleSelectInvoice(invoice.id)}
                         onClick={(e) => e.stopPropagation()}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-5 h-5"
                       />
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-gray-900">{invoice.invoiceNumber}</span>
+                          <span className="font-bold text-gray-900">{invoice.invoiceNumber}</span>
                           <SpecialBadge invoice={invoice} />
                         </div>
-                        <div className="text-sm text-gray-500">{formatDate(invoice.issueDate)}</div>
+                        <span className="text-xs text-gray-500">{formatDate(invoice.issueDate)}</span>
                       </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div>
-                        <div className="flex items-center">
-                          <span className="text-sm font-medium text-gray-900">{getPartnerName(invoice)}</span>
-                          <PartnerBadge invoice={invoice} />
-                        </div>
-                        <div className="text-sm text-gray-500">PIB: {getPartnerPIB(invoice)}</div>
+                    </div>
+                    <StatusBadge status={invoice.status} />
+                  </div>
+                  
+                  <div className="mb-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm text-gray-600 truncate max-w-[60%]">{getPartnerName(invoice)}</span>
+                      <PartnerBadge invoice={invoice} />
+                    </div>
+                    <div className="text-xs text-gray-400">PIB: {getPartnerPIB(invoice)}</div>
+                  </div>
+                  
+                  <div className="flex items-end justify-between pt-3 border-t border-gray-100">
+                    <div>
+                      <TypeBadge type={invoice.type} />
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-bold text-gray-900">
+                        {formatAmount(invoice.totalAmount, invoice.currency)}
                       </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div>
-                        <div className="text-sm font-medium text-gray-900">
-                          {formatAmount(invoice.totalAmount, invoice.currency)}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          PDV: {formatAmount(invoice.taxAmount, invoice.currency)} ({getVatRate(invoice)}%)
-                        </div>
+                      <div className="text-xs text-gray-500">
+                        PDV: {formatAmount(invoice.taxAmount, invoice.currency)}
                       </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex flex-col gap-1">
-                        <StatusBadge status={invoice.status} />
-                        <TypeBadge type={invoice.type} />
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div>
-                        {invoice.dueDate && (
-                          <div className="text-sm text-gray-900">Rok: {formatDate(invoice.dueDate)}</div>
-                        )}
-                        <div className="text-sm text-gray-500">Izmena: {formatDateTime(invoice.updatedAt)}</div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <div className="flex space-x-2">
-                        <Link
-                          to={`/invoices/${invoice.id}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="text-blue-600 hover:text-blue-900"
-                          title="Pregled"
-                        >
-                          👁️
-                        </Link>
-                        <button 
-                          onClick={(e) => { 
-                            e.stopPropagation(); 
-                            handleDownloadPDF(invoice.id, invoice.invoiceNumber);
-                          }}
-                          className="text-green-600 hover:text-green-900"
-                          title="PDF"
-                        >
-                          📄
-                        </button>
-                        <button 
-                          onClick={(e) => { 
-                            e.stopPropagation(); 
-                            handleDownloadXML(invoice.id, invoice.invoiceNumber);
-                          }}
-                          className="text-purple-600 hover:text-purple-900"
-                          title="XML"
-                        >
-                          📋
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-3 flex justify-end gap-3 pt-2 border-t border-gray-50">
+                    <button 
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        handleDownloadPDF(invoice.id, invoice.invoiceNumber);
+                      }}
+                      className="text-sm text-green-600 font-medium flex items-center gap-1"
+                    >
+                      📄 PDF
+                    </button>
+                    <button 
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        handleDownloadXML(invoice.id, invoice.invoiceNumber);
+                      }}
+                      className="text-sm text-purple-600 font-medium flex items-center gap-1"
+                    >
+                      📋 XML
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
         
         {/* Pagination */}

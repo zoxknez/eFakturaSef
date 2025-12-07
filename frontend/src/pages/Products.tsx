@@ -659,93 +659,129 @@ const Products: React.FC = () => {
           ))}
         </div>
       ) : (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-100">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Proizvod</th>
-                <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Kategorija</th>
-                <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Cena</th>
-                <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">PDV</th>
-                <th className="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Zalihe</th>
-                <th className="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Korišćeno</th>
-                <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Akcije</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {products.map((product) => {
-                const stockStatus = getStockStatus(product);
-                return (
-                  <tr key={product.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4">
-                      <div>
-                        <p className="font-semibold text-gray-900">{product.name}</p>
-                        <p className="text-sm text-gray-500">
-                          <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded text-xs">{product.code}</span>
-                          {product.barcode && <span className="ml-2 text-gray-400">| {product.barcode}</span>}
-                          {!product.isActive && <span className="ml-2 text-red-500">(Neaktivan)</span>}
-                        </p>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      {product.category ? (
-                        <span className="px-2 py-1 bg-violet-100 text-violet-700 text-xs font-medium rounded-lg">
-                          {product.category}
-                        </span>
-                      ) : '-'}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <p className="font-semibold text-gray-900">{product.unitPrice.toLocaleString('sr-RS', { minimumFractionDigits: 2 })} RSD</p>
-                      {product.costPrice && (
-                        <p className="text-xs text-gray-500">Nabavna: {product.costPrice.toLocaleString('sr-RS', { minimumFractionDigits: 2 })}</p>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <span className={`px-2 py-1 rounded-lg text-xs font-bold ${
-                        product.vatRate === 20 ? 'bg-blue-100 text-blue-700' :
-                        product.vatRate === 10 ? 'bg-amber-100 text-amber-700' :
-                        'bg-green-100 text-green-700'
-                      }`}>
-                        {product.vatRate}%
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      {product.trackInventory ? (
-                        <div>
-                          <p className="font-semibold text-gray-900">{product.currentStock} {product.unit}</p>
-                          {stockStatus && (
-                            <span className={`text-xs font-medium ${stockStatus.class}`}>{stockStatus.label}</span>
-                          )}
-                          <button onClick={() => openStockModal(product)} className="block text-xs text-violet-600 hover:text-violet-700 mt-1 mx-auto">
-                            Prilagodi
-                          </button>
-                          <button onClick={() => openHistoryModal(product)} className="block text-xs text-gray-500 hover:text-gray-700 mt-1 mx-auto">
-                            Istorija
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <span className="font-semibold text-gray-900">{product._count?.invoiceLines || 0}</span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button onClick={() => openEditModal(product)} className="p-2 text-gray-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-colors">
-                          <Edit className="w-5 h-5" />
-                        </button>
-                        <button onClick={() => handleDelete(product.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                          <Trash2 className="w-5 h-5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <>
+          {/* Mobile View - Always Cards */}
+          <div className="md:hidden grid grid-cols-1 gap-4">
+            {products.map((product) => (
+              <ProductCard
+                key={product.id}
+                product={product}
+                onEdit={() => openEditModal(product)}
+                onDelete={() => handleDelete(product.id)}
+                onStockAdjust={() => openStockModal(product)}
+                onViewHistory={() => openHistoryModal(product)}
+                getStockStatus={getStockStatus}
+              />
+            ))}
+          </div>
+
+          {/* Desktop View - Respects viewMode */}
+          <div className="hidden md:block">
+            {viewMode === 'grid' ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {products.map((product) => (
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    onEdit={() => openEditModal(product)}
+                    onDelete={() => handleDelete(product.id)}
+                    onStockAdjust={() => openStockModal(product)}
+                    onViewHistory={() => openHistoryModal(product)}
+                    getStockStatus={getStockStatus}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                <table className="min-w-full divide-y divide-gray-100">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Proizvod</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Kategorija</th>
+                      <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Cena</th>
+                      <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">PDV</th>
+                      <th className="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Zalihe</th>
+                      <th className="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Korišćeno</th>
+                      <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Akcije</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {products.map((product) => {
+                      const stockStatus = getStockStatus(product);
+                      return (
+                        <tr key={product.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-6 py-4">
+                            <div>
+                              <p className="font-semibold text-gray-900">{product.name}</p>
+                              <p className="text-sm text-gray-500">
+                                <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded text-xs">{product.code}</span>
+                                {product.barcode && <span className="ml-2 text-gray-400">| {product.barcode}</span>}
+                                {!product.isActive && <span className="ml-2 text-red-500">(Neaktivan)</span>}
+                              </p>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            {product.category ? (
+                              <span className="px-2 py-1 bg-violet-100 text-violet-700 text-xs font-medium rounded-lg">
+                                {product.category}
+                              </span>
+                            ) : '-'}
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <p className="font-semibold text-gray-900">{product.unitPrice.toLocaleString('sr-RS', { minimumFractionDigits: 2 })} RSD</p>
+                            {product.costPrice && (
+                              <p className="text-xs text-gray-500">Nabavna: {product.costPrice.toLocaleString('sr-RS', { minimumFractionDigits: 2 })}</p>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <span className={`px-2 py-1 rounded-lg text-xs font-bold ${
+                              product.vatRate === 20 ? 'bg-blue-100 text-blue-700' :
+                              product.vatRate === 10 ? 'bg-amber-100 text-amber-700' :
+                              'bg-green-100 text-green-700'
+                            }`}>
+                              {product.vatRate}%
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            {product.trackInventory ? (
+                              <div>
+                                <p className="font-semibold text-gray-900">{product.currentStock} {product.unit}</p>
+                                {stockStatus && (
+                                  <span className={`text-xs font-medium ${stockStatus.class}`}>{stockStatus.label}</span>
+                                )}
+                                <button onClick={() => openStockModal(product)} className="block text-xs text-violet-600 hover:text-violet-700 mt-1 mx-auto">
+                                  Prilagodi
+                                </button>
+                                <button onClick={() => openHistoryModal(product)} className="block text-xs text-gray-500 hover:text-gray-700 mt-1 mx-auto">
+                                  Istorija
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <span className="font-semibold text-gray-900">{product._count?.invoiceLines || 0}</span>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button onClick={() => openEditModal(product)} className="p-2 text-gray-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-colors">
+                                <Edit className="w-5 h-5" />
+                              </button>
+                              <button onClick={() => handleDelete(product.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                                <Trash2 className="w-5 h-5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {/* Pagination */}

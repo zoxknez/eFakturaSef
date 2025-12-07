@@ -12,18 +12,18 @@ export const SERBIAN_VAT_RATES = [0, 10, 20] as const;
  * Must be exactly 9 digits
  */
 export const PIBSchema = z.string()
-  .regex(/^\d{9}$/, 'PIB must be exactly 9 digits')
+  .regex(/^\d{9}$/, 'PIB mora imati tačno 9 cifara')
   .refine((pib) => {
     // Additional checksum validation if needed
     return pib.length === 9;
-  }, 'Invalid PIB format');
+  }, 'Neispravan format PIB-a');
 
 /**
  * Currency code validation (ISO 4217)
  */
 export const CurrencyCodeSchema = z.string()
   .length(3)
-  .regex(/^[A-Z]{3}$/, 'Currency code must be 3 uppercase letters (ISO 4217)')
+  .regex(/^[A-Z]{3}$/, 'Šifra valute mora imati 3 velika slova (ISO 4217)')
   .default('RSD');
 
 /**
@@ -31,7 +31,7 @@ export const CurrencyCodeSchema = z.string()
  */
 export const PastOrPresentDateSchema = z.coerce.date()
   .refine((date) => date <= new Date(), {
-    message: 'Date cannot be in the future',
+    message: 'Datum ne može biti u budućnosti',
   });
 
 /**
@@ -39,59 +39,59 @@ export const PastOrPresentDateSchema = z.coerce.date()
  */
 export const FutureDateSchema = z.coerce.date()
   .refine((date) => date >= new Date(), {
-    message: 'Date must be in the future',
+    message: 'Datum mora biti u budućnosti',
   });
 
 /**
  * Positive amount validation
  */
 export const PositiveAmountSchema = z.number()
-  .nonnegative('Amount cannot be negative')
-  .finite('Amount must be a finite number');
+  .nonnegative('Iznos ne može biti negativan')
+  .finite('Iznos mora biti konačan broj');
 
 /**
  * Quantity validation
  */
 export const QuantitySchema = z.number()
-  .positive('Quantity must be greater than zero')
-  .finite('Quantity must be a finite number');
+  .positive('Količina mora biti veća od nule')
+  .finite('Količina mora biti konačan broj');
 
 /**
  * Tax rate validation (0-100%)
  */
 export const TaxRateSchema = z.number()
-  .min(0, 'Tax rate cannot be negative')
-  .max(100, 'Tax rate cannot exceed 100%')
+  .min(0, 'Poreska stopa ne može biti negativna')
+  .max(100, 'Poreska stopa ne može biti veća od 100%')
   .refine((rate) => SERBIAN_VAT_RATES.includes(rate as any), {
-    message: `Tax rate must be one of: ${SERBIAN_VAT_RATES.join(', ')}%`,
+    message: `Poreska stopa mora biti jedna od: ${SERBIAN_VAT_RATES.join(', ')}%`,
   });
 
 /**
  * Invoice number validation
  */
 export const InvoiceNumberSchema = z.string()
-  .min(1, 'Invoice number is required')
-  .max(50, 'Invoice number too long')
-  .regex(/^[A-Za-z0-9\-\/]+$/, 'Invoice number can only contain letters, numbers, hyphens and slashes');
+  .min(1, 'Broj fakture je obavezan')
+  .max(50, 'Broj fakture je predugačak')
+  .regex(/^[A-Za-z0-9\-\/]+$/, 'Broj fakture može sadržati samo slova, brojeve, crtice i kose crte');
 
 /**
  * Company/Party schema
  */
 export const PartySchema = z.object({
-  name: z.string().min(1, 'Name is required').max(200, 'Name too long'),
+  name: z.string().min(1, 'Naziv je obavezan').max(200, 'Naziv je predugačak'),
   pib: PIBSchema,
-  address: z.string().min(1, 'Address is required').max(200, 'Address too long'),
-  city: z.string().min(1, 'City is required').max(100, 'City too long'),
-  postalCode: z.string().min(1, 'Postal code is required').max(20, 'Postal code too long'),
-  country: z.string().length(2, 'Country code must be 2 letters (ISO 3166-1)').default('RS'),
+  address: z.string().min(1, 'Adresa je obavezna').max(200, 'Adresa je predugačka'),
+  city: z.string().min(1, 'Grad je obavezan').max(100, 'Grad je predugačak'),
+  postalCode: z.string().min(1, 'Poštanski broj je obavezan').max(20, 'Poštanski broj je predugačak'),
+  country: z.string().length(2, 'Oznaka države mora imati 2 slova (ISO 3166-1)').default('RS'),
 });
 
 /**
  * Invoice line item schema
  */
 export const InvoiceLineItemSchema = z.object({
-  id: z.number().int().positive('Line ID must be a positive integer'),
-  name: z.string().min(1, 'Item name is required').max(200, 'Item name too long'),
+  id: z.number().int().positive('ID stavke mora biti pozitivan ceo broj'),
+  name: z.string().min(1, 'Naziv stavke je obavezan').max(200, 'Naziv stavke je predugačak'),
   quantity: QuantitySchema,
   unitCode: z.string().default('C62'), // C62 = piece (UNE/CEFACT)
   unitPrice: PositiveAmountSchema,

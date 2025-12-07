@@ -69,7 +69,7 @@ const SEFHealthCard = ({
   onRefresh: () => void;
 }) => {
   const formatTimeSince = (isoString: string | null): string => {
-    if (!isoString) return 'N/A';
+    if (!isoString) return 'N/D';
     const diff = Date.now() - new Date(isoString).getTime();
     const seconds = Math.floor(diff / 1000);
     if (seconds < 60) return `Pre ${seconds}s`;
@@ -87,14 +87,14 @@ const SEFHealthCard = ({
     <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-bold text-gray-900 flex items-center">
-          {health?.isOnline ? '💚' : '❤️'} SEF Health Status
+          {health?.isOnline ? '💚' : '❤️'} Status SEF Sistema
         </h3>
         <span className={`px-2 py-1 rounded-full text-xs font-medium ${
           health?.environment === 'production' 
             ? 'bg-green-100 text-green-800' 
             : 'bg-orange-100 text-orange-800'
         }`}>
-          {health?.environment === 'production' ? 'PROD' : 'DEMO'}
+          {health?.environment === 'production' ? 'PRODUKCIJA' : 'DEMO'}
         </span>
       </div>
       
@@ -668,7 +668,7 @@ export const AdvancedDashboard: React.FC = () => {
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
               placeholder="broj:2024-001 PIB:12345678 status:poslato datum:2024-10 iznos:>50000"
-              className="w-full px-4 py-3 pl-12 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+              className="w-full px-4 py-3 pl-12 pr-24 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
               aria-label="Pretraga faktura"
             />
             <div className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" aria-hidden="true">
@@ -796,9 +796,9 @@ export const AdvancedDashboard: React.FC = () => {
               <div 
                 key={invoice.id}
                 onClick={() => navigate(`/invoices/${invoice.id}`)}
-                className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer"
+                className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer gap-4 sm:gap-0"
               >
-                <div className="flex items-center space-x-4 flex-1 min-w-0">
+                <div className="flex items-center space-x-4 flex-1 min-w-0 w-full sm:w-auto">
                   <div className="flex-shrink-0">
                     <span className="text-2xl">{invoice.type === 'OUTGOING' ? '📤' : '📥'}</span>
                   </div>
@@ -820,7 +820,7 @@ export const AdvancedDashboard: React.FC = () => {
                     <p className="text-xs text-gray-600 truncate">{invoice.partnerName}</p>
                   </div>
                 </div>
-                <div className="flex items-center space-x-4 flex-shrink-0">
+                <div className="flex items-center justify-between sm:justify-end space-x-4 flex-shrink-0 w-full sm:w-auto">
                   <div className="text-right">
                     <p className="text-sm font-bold text-gray-900">{formatCurrency(invoice.totalAmount)} {invoice.currency}</p>
                     <p className="text-xs text-gray-500">{new Date(invoice.createdAt).toLocaleDateString('sr-RS')}</p>

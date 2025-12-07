@@ -17,29 +17,39 @@ interface InvoiceListItemProps {
 }
 
 const getStatusColor = (status: string): string => {
+  const s = status.toUpperCase();
   const colors: Record<string, string> = {
     DRAFT: 'bg-gray-100 text-gray-700',
+    NEW: 'bg-blue-50 text-blue-600',
     SENT: 'bg-blue-100 text-blue-700',
-    DELIVERED: 'bg-cyan-100 text-cyan-700',
+    SENDING: 'bg-blue-50 text-blue-600 animate-pulse',
+    APPROVED: 'bg-green-100 text-green-700',
     ACCEPTED: 'bg-green-100 text-green-700',
     REJECTED: 'bg-red-100 text-red-700',
     CANCELLED: 'bg-gray-100 text-gray-500',
     STORNO: 'bg-orange-100 text-orange-700',
+    MISTAKE: 'bg-red-50 text-red-600',
+    DELIVERED: 'bg-cyan-100 text-cyan-700',
   };
-  return colors[status] || 'bg-gray-100 text-gray-700';
+  return colors[s] || 'bg-gray-100 text-gray-700';
 };
 
 const getStatusLabel = (status: string): string => {
+  const s = status.toUpperCase();
   const labels: Record<string, string> = {
     DRAFT: 'Nacrt',
+    NEW: 'Novo',
     SENT: 'Poslato',
-    DELIVERED: 'Dostavljeno',
-    ACCEPTED: 'Prihvaćeno',
+    SENDING: 'Slanje u toku',
+    APPROVED: 'Odobreno',
+    ACCEPTED: 'Odobreno',
     REJECTED: 'Odbijeno',
     CANCELLED: 'Otkazano',
     STORNO: 'Stornirano',
+    MISTAKE: 'Greška',
+    DELIVERED: 'Dostavljeno',
   };
-  return labels[status] || status;
+  return labels[s] || status;
 };
 
 /**

@@ -202,7 +202,7 @@ export const CreateInvoice: React.FC = () => {
         return response.data.map((partner) => ({
           id: partner.id,
           label: partner.name,
-          sublabel: `PIB: ${partner.pib} | ${partner.city || 'N/A'}`,
+          sublabel: `PIB: ${partner.pib} | ${partner.city || 'N/D'}`,
           data: partner
         }));
       }
@@ -469,7 +469,7 @@ export const CreateInvoice: React.FC = () => {
         <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-50" />
         
         <div className="relative z-10">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <button
                 onClick={() => navigate(-1)}
@@ -483,17 +483,19 @@ export const CreateInvoice: React.FC = () => {
                     <Receipt className="w-8 h-8" />
                   </div>
                   <div>
-                    <h1 className="text-3xl font-bold">Nova Faktura</h1>
-                    <p className="text-indigo-200 mt-1">Kreiranje izlazne fakture</p>
+                    <h1 className="text-2xl md:text-3xl font-bold">Nova Faktura</h1>
+                    <p className="text-indigo-200 mt-1 text-sm md:text-base">Kreiranje izlazne fakture</p>
                   </div>
                 </div>
               </div>
             </div>
             
             {/* Live Total */}
-            <div className="text-right bg-white/10 backdrop-blur-sm rounded-xl p-4">
-              <p className="text-sm text-indigo-200">Ukupno</p>
-              <p className="text-3xl font-bold">{formatCurrency(totals.total)}</p>
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 w-full md:w-auto">
+              <div className="flex justify-between items-center md:block text-right">
+                <p className="text-sm text-indigo-200">Ukupno</p>
+                <p className="text-2xl md:text-3xl font-bold">{formatCurrency(totals.total)}</p>
+              </div>
             </div>
           </div>
 
@@ -514,7 +516,7 @@ export const CreateInvoice: React.FC = () => {
                       }`}
                       disabled={step.id > currentStep}
                     >
-                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-300 ${
+                      <div className={`w-10 h-10 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-300 ${
                         isCompleted 
                           ? 'bg-emerald-500 shadow-lg shadow-emerald-500/30' 
                           : isActive 
@@ -522,13 +524,13 @@ export const CreateInvoice: React.FC = () => {
                             : 'bg-white/10'
                       }`}>
                         {isCompleted ? (
-                          <CheckCircle2 className="w-6 h-6 text-white" />
+                          <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                         ) : (
-                          <StepIcon className={`w-6 h-6 ${isActive ? 'text-indigo-900' : 'text-white'}`} />
+                          <StepIcon className={`w-5 h-5 sm:w-6 sm:h-6 ${isActive ? 'text-indigo-900' : 'text-white'}`} />
                         )}
                       </div>
                       <div className="text-center">
-                        <p className={`text-sm font-semibold ${isActive ? 'text-white' : 'text-indigo-200'}`}>
+                        <p className={`text-xs sm:text-sm font-semibold ${isActive ? 'text-white' : 'text-indigo-200'} hidden xs:block`}>
                           {step.title}
                         </p>
                         <p className="text-xs text-indigo-300 hidden sm:block">{step.description}</p>
@@ -536,7 +538,7 @@ export const CreateInvoice: React.FC = () => {
                     </button>
                     
                     {index < steps.length - 1 && (
-                      <div className={`flex-1 h-1 mx-4 rounded-full transition-colors duration-300 ${
+                      <div className={`flex-1 h-1 mx-2 sm:mx-4 rounded-full transition-colors duration-300 ${
                         currentStep > step.id ? 'bg-emerald-500' : 'bg-white/20'
                       }`} />
                     )}
@@ -665,7 +667,7 @@ export const CreateInvoice: React.FC = () => {
                     <CreditCard className="w-4 h-4 text-gray-400" />
                     Način plaćanja
                   </label>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     {[
                       { value: 'TRANSFER', label: 'Virman', icon: Building2 },
                       { value: 'CASH', label: 'Gotovina', icon: Banknote },

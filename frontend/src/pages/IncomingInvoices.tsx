@@ -630,7 +630,8 @@ export const IncomingInvoices: React.FC = () => {
 
       {/* Table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Desktop Table View */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
@@ -747,6 +748,99 @@ export const IncomingInvoices: React.FC = () => {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile Card View */}
+        <div className="md:hidden bg-gray-50 p-4 space-y-4">
+          {invoices.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+              <div className="p-3 bg-gray-100 rounded-full">
+                <Download className="w-8 h-8 text-gray-400" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900">Nema ulaznih faktura</h3>
+              <p className="max-w-sm text-gray-500 text-sm">
+                Trenutno nemate učitanih ulaznih faktura.
+              </p>
+              <button
+                onClick={handleSync}
+                disabled={syncing}
+                className="mt-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors font-medium text-sm"
+              >
+                {syncing ? 'Sinhronizacija...' : 'Sinhronizuj'}
+              </button>
+            </div>
+          ) : (
+            invoices.map((invoice) => (
+              <div 
+                key={invoice.id}
+                className="bg-white rounded-xl p-4 shadow-sm border border-gray-200 active:scale-[0.98] transition-transform"
+                onClick={() => navigate(`/incoming-invoices/${invoice.id}`)}
+              >
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(invoice.id)}
+                      onChange={() => toggleSelect(invoice.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-gray-900">{invoice.invoiceNumber}</span>
+                        {invoice.sefId && (
+                          <span className="px-1.5 py-0.5 text-[10px] bg-blue-50 text-blue-600 rounded border border-blue-100">
+                            SEF
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-xs text-gray-500">{formatDate(invoice.issueDate)}</span>
+                    </div>
+                  </div>
+                  {getStatusBadge(invoice.status)}
+                </div>
+                
+                <div className="mb-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm font-medium text-gray-900 truncate max-w-[60%]">{invoice.supplierName}</span>
+                    <span className="text-xs text-gray-500">PIB: {invoice.supplierPIB}</span>
+                  </div>
+                </div>
+                
+                <div className="flex items-end justify-between pt-3 border-t border-gray-100">
+                  <div>
+                    {getPaymentBadge(invoice.paymentStatus)}
+                  </div>
+                  <div className="text-right">
+                    <div className="text-lg font-bold text-gray-900">
+                      {formatCurrency(Number(invoice.totalAmount), invoice.currency)}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      PDV: {formatCurrency(Number(invoice.taxAmount), invoice.currency)}
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="mt-3 flex justify-end gap-3 pt-2 border-t border-gray-50">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      api.downloadIncomingInvoicePDF(invoice.id);
+                    }}
+                    className="text-sm text-gray-600 font-medium flex items-center gap-1"
+                  >
+                    <FileText className="w-4 h-4" /> PDF
+                  </button>
+                  <Link
+                    to={`/incoming-invoices/${invoice.id}`}
+                    className="text-sm text-blue-600 font-medium flex items-center gap-1"
+                  >
+                    Detalji
+                  </Link>
+                </div>
+              </div>
+            ))
+          )}
         </div>
 
         {/* Pagination */}

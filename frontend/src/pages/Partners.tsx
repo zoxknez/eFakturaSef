@@ -570,74 +570,93 @@ const Partners: React.FC = () => {
             Dodaj prvog partnera
           </button>
         </div>
-      ) : viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {partners.map((partner) => (
-            <PartnerCard
-              key={partner.id}
-              partner={partner}
-              onEdit={() => openEditModal(partner)}
-              onDelete={() => handleDelete(partner.id)}
-            />
-          ))}
-        </div>
       ) : (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-100">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Partner</th>
-                <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Tip</th>
-                <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Kontakt</th>
-                <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Uslovi</th>
-                <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Fakture</th>
-                <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Akcije</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {partners.map((partner) => {
-                const config = typeConfig[partner.type];
-                return (
-                  <tr key={partner.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4">
-                      <div>
-                        <p className="font-semibold text-gray-900">{partner.name}</p>
-                        <p className="text-sm text-gray-500">PIB: {partner.pib} • {partner.city}</p>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold ${config.bg} ${config.text}`}>
-                        {config.icon}
-                        {config.label}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      <p>{partner.email || '-'}</p>
-                      <p className="text-gray-400">{partner.phone || '-'}</p>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      <p>{partner.defaultPaymentTerms} dana</p>
-                      {partner.discount ? <p className="text-emerald-600">Popust: {partner.discount}%</p> : null}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="font-semibold text-gray-900">{partner._count?.invoices || 0}</span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button onClick={() => openEditModal(partner)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                          <Edit2 className="w-5 h-5" />
-                        </button>
-                        <button onClick={() => handleDelete(partner.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                          <Trash2 className="w-5 h-5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <>
+          {/* Mobile View - Always Cards */}
+          <div className="md:hidden grid grid-cols-1 gap-4">
+            {partners.map((partner) => (
+              <PartnerCard
+                key={partner.id}
+                partner={partner}
+                onEdit={() => openEditModal(partner)}
+                onDelete={() => handleDelete(partner.id)}
+              />
+            ))}
+          </div>
+
+          {/* Desktop View - Respects viewMode */}
+          <div className="hidden md:block">
+            {viewMode === 'grid' ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {partners.map((partner) => (
+                  <PartnerCard
+                    key={partner.id}
+                    partner={partner}
+                    onEdit={() => openEditModal(partner)}
+                    onDelete={() => handleDelete(partner.id)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                <table className="min-w-full divide-y divide-gray-100">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Partner</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Tip</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Kontakt</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Uslovi</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Fakture</th>
+                      <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Akcije</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {partners.map((partner) => {
+                      const config = typeConfig[partner.type];
+                      return (
+                        <tr key={partner.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-6 py-4">
+                            <div>
+                              <p className="font-semibold text-gray-900">{partner.name}</p>
+                              <p className="text-sm text-gray-500">PIB: {partner.pib} • {partner.city}</p>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold ${config.bg} ${config.text}`}>
+                              {config.icon}
+                              {config.label}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600">
+                            <p>{partner.email || '-'}</p>
+                            <p className="text-gray-400">{partner.phone || '-'}</p>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600">
+                            <p>{partner.defaultPaymentTerms} dana</p>
+                            {partner.discount ? <p className="text-emerald-600">Popust: {partner.discount}%</p> : null}
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="font-semibold text-gray-900">{partner._count?.invoices || 0}</span>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button onClick={() => openEditModal(partner)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                                <Edit2 className="w-5 h-5" />
+                              </button>
+                              <button onClick={() => handleDelete(partner.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                                <Trash2 className="w-5 h-5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {/* Pagination */}

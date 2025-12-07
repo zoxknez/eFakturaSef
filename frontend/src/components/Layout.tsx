@@ -97,7 +97,7 @@ const navigation: NavItem[] = [
     icon: Icons.settings,
     children: [
       { name: 'Profil kompanije', href: '/company', icon: Icons.company },
-      { name: 'Audit log', href: '/audit-logs', icon: Icons.audit },
+      { name: 'Dnevnik aktivnosti', href: '/audit-logs', icon: Icons.audit },
       { name: 'Podešavanja', href: '/settings', icon: Icons.settings },
     ]
   },

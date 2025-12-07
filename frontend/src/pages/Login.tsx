@@ -31,8 +31,8 @@ export const Login: React.FC = () => {
 
   const features = [
     { icon: '🔐', title: 'UBL 2.1 standard', desc: 'Potpuna kompatibilnost sa SEF sistemom' },
-    { icon: '⚡', title: 'Realtime praćenje', desc: 'Instant notifikacije o statusima' },
-    { icon: '🛡️', title: 'Sigurnost', desc: 'Enkripcija i bezbednosni protokoli' },
+    { icon: '⚡', title: 'Praćenje u realnom vremenu', desc: 'Trenutna obaveštenja o statusima' },
+    { icon: '🛡️', title: 'Bezbednost', desc: 'Šifrovanje i bezbednosni protokoli' },
     { icon: '📊', title: 'Izveštaji', desc: 'Detaljna analitika poslovanja' },
   ];
 
@@ -95,7 +95,7 @@ export const Login: React.FC = () => {
             <div className="space-y-4">
               <div>
                 <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-2">
-                  Email adresa
+                  Adresa e-pošte
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
